@@ -116,6 +116,26 @@
     edge-fade 10s linear both;
 }
 
+/* Page chrome that full-height layouts (home) subtract. Kiosk hides the nav and zooms. */
+:root {
+  --nav-h: 60px;
+  --zoom: 1;
+}
+
+html[data-kiosk] {
+  --nav-h: 0px;
+  --zoom: 1.15;
+}
+
+/* Kiosk (key f or ?kiosk=1): no nav or rail, type about 15% larger. */
+html[data-kiosk] body {
+  zoom: 1.15;
+}
+
+html[data-kiosk] [data-chrome] {
+  display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

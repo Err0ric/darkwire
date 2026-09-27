@@ -39,7 +39,7 @@ export default async function RowReview() {
 
   return (
     <main className="flex-1 px-4 pb-24 md:px-12">
-      <div className="max-w-[1060px]">
+      <div className="@container">
         <h1 className="mt-10 text-[13px] font-medium text-fg">Row review</h1>
         <p className="mt-1 text-xs text-muted">
           Live rows from {process.env.NEXT_PUBLIC_API_URL ?? "the local API"}: {rows.map((r) => r.why).join(" · ")}.

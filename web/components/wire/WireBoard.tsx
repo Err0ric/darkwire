@@ -6,7 +6,8 @@ import { cn } from "cn"
 import { FeedRow } from "@/components/FeedRow"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Rail } from "@/components/wire/Rail"
+import { Elsewhere, Stats } from "@/components/wire/Rail"
+import { useFitCount } from "@/lib/fit"
 import {
   getElsewhere,
   getFeed,
@@ -61,6 +62,8 @@ export function WireBoard({ initial }: { initial: WireData }) {
   const request = useRef(0)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const addUnseen = useUnseen()
+  const list = useRef<HTMLDivElement>(null)
+  const fit = useFitCount(list)
 
   useEffect(() => {
     itemsRef.current = items
@@ -144,14 +147,31 @@ export function WireBoard({ initial }: { initial: WireData }) {
     return () => clearInterval(timer)
   }, [addUnseen])
 
+  // Tall displays: keep at least a screenful of rows loaded.
+  const loadedRef = useRef(0)
+  useEffect(() => {
+    if (fit === null || items.length >= total || fit <= items.length || loadedRef.current >= fit) return
+    loadedRef.current = fit
+    const f = filtersRef.current
+    getFeed({ ...feedQuery(f), limit: Math.min(200, fit), offset: 0 })
+      .then((page) => {
+        if (f !== filtersRef.current) return
+        setItems((prev) => (page.items.length > prev.length ? page.items : prev))
+        setTotal(page.total)
+      })
+      .catch(() => undefined)
+  }, [fit, items.length, total])
+
   const byName = [...vendors].sort((a, b) => a.name.localeCompare(b.name))
   const active = vendors.filter((v) => v.items_7d > 0).slice(0, 5)
   const counts = status?.counts
 
   return (
     <main className="flex-1 px-4 pb-24 md:px-12">
-      <div className="lg:flex lg:gap-16">
-        <div className="min-w-0 max-w-[1060px] flex-1">
+      {/* Rail beside the feed from 1000px, stacked below it under that; three columns
+          (feed | Elsewhere | stats) from 2200px. The feed is fluid; no page cap. */}
+      <div className="min-[1000px]:flex min-[1000px]:gap-16">
+        <div className="@container min-w-0 flex-1">
           <header className="pt-6 md:pt-[33px]">
             <h1 className="text-[36px] leading-[44px] font-bold tracking-[-0.02em] text-fg">Today</h1>
             <p className="mt-[3px] flex flex-wrap gap-x-4 text-[15px] leading-5 text-muted md:gap-x-0">
@@ -174,7 +194,8 @@ export function WireBoard({ initial }: { initial: WireData }) {
             </p>
           </header>
 
-          <div className="mt-8 flex flex-col-reverse border-b border-rule md:mt-[32px] md:flex-row md:items-end md:justify-between">
+          {/* Tabs and filters share a line only when the feed column is wide enough for both. */}
+          <div className="mt-8 flex flex-col-reverse border-b border-rule md:mt-[32px] @min-[940px]:flex-row @min-[940px]:items-end @min-[940px]:justify-between">
             <nav aria-label="Categories" className="-mb-px flex gap-6 overflow-x-auto [scrollbar-width:none]">
               {TABS.map(([tab, label]) => (
                 <button
@@ -192,7 +213,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 </button>
               ))}
             </nav>
-            <div className="mb-4 flex items-center gap-5 md:mb-[10px] md:shrink-0">
+            <div className="mb-4 flex items-center gap-5 @min-[940px]:mb-[10px] @min-[940px]:shrink-0">
               <Select
                 value={filters.vendor || ALL_VENDORS}
                 onValueChange={(v) => apply({ vendor: v === ALL_VENDORS ? "" : v })}
@@ -216,12 +237,12 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 onKeyDown={(e) => e.key === "Escape" && onSearch("")}
                 placeholder="Search or CVE ID"
                 aria-label="Search headlines or CVE IDs"
-                className="h-[30px] min-w-0 flex-1 md:w-[200px] md:flex-none"
+                className="h-[30px] min-w-0 flex-1 @min-[940px]:w-[200px] @min-[940px]:flex-none"
               />
             </div>
           </div>
 
-          <div className={cn(loading && "opacity-60")} aria-busy={loading}>
+          <div ref={list} className={cn(loading && "opacity-60")} aria-busy={loading}>
             {items.map((item) => (
               <FeedRow key={item.id} item={item} fresh={fresh.has(item.id)} />
             ))}
@@ -245,9 +266,18 @@ export function WireBoard({ initial }: { initial: WireData }) {
           )}
         </div>
 
-        <div className="mt-16 lg:mt-0 lg:w-[220px] lg:shrink-0 lg:pt-[133px]">
-          <Rail elsewhere={elsewhere} active={active} kev={kev} status={status} onVendor={(slug) => apply({ vendor: slug })} />
-        </div>
+        <aside
+          data-chrome
+          aria-label="Context"
+          className="mt-16 text-[13px] min-[1000px]:mt-0 min-[1000px]:w-[clamp(280px,20vw,320px)] min-[1000px]:shrink-0 min-[1000px]:pt-[133px] min-[2200px]:flex min-[2200px]:w-auto min-[2200px]:gap-16"
+        >
+          <div className="min-[2200px]:w-[320px]">
+            <Elsewhere elsewhere={elsewhere} />
+          </div>
+          <div className="mt-10 min-[2200px]:mt-0 min-[2200px]:w-[320px]">
+            <Stats active={active} kev={kev} status={status} onVendor={(slug) => apply({ vendor: slug })} />
+          </div>
+        </aside>
       </div>
     </main>
   )

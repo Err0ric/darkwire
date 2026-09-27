@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db import get_session
-from app.models import Category, Item, ItemCve, ItemSource, MsrcUpdate, Stream, Vendor
+from app.models import Category, Item, ItemCve, ItemSource, MsrcUpdate, Severity, Stream, Vendor
 from app.schemas import (
     CveDetail,
     ElsewhereItem,
@@ -80,6 +80,7 @@ async def feed(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     since: datetime | None = Query(None, description="only rows with an event after this time"),
+    pinned: bool = Query(False, description="only Critical or KEV rows with an event in the last 48h"),
     session: AsyncSession = Depends(get_session),
 ) -> FeedPage:
     where = [Item.stream == Stream.main]
@@ -100,6 +101,9 @@ async def feed(
         )
     if since:
         where.append(Item.last_event_at > since)
+    if pinned:
+        where.append(or_(Item.severity == Severity.critical, Item.kev.is_(True)))
+        where.append(Item.last_event_at >= datetime.now(UTC) - timedelta(hours=48))
 
     total = await session.scalar(select(func.count()).select_from(Item).where(*where))
     rows = await session.scalars(

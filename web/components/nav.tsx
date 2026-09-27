@@ -66,7 +66,7 @@ export function Nav() {
   const label = sync.failing ? "Sync unavailable" : minutes !== null ? syncedLabel(minutes) : ""
 
   return (
-    <header className="flex h-15 items-center px-4 md:px-12">
+    <header data-chrome className="flex h-15 items-center px-4 md:px-12">
       <Link href="/" className="flex items-center gap-2 outline-none focus-visible:outline-1 focus-visible:outline-rule">
         <span
           aria-hidden

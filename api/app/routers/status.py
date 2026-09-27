@@ -32,6 +32,15 @@ async def status(session: AsyncSession = Depends(get_session)) -> Status:
         ).all()
     )
     items_24h = sum(by_severity.values())
+    by_severity_7d = dict(
+        (
+            await session.execute(
+                select(Item.severity, func.count())
+                .where(Item.stream == Stream.main, Item.last_event_at >= now - timedelta(days=7))
+                .group_by(Item.severity)
+            )
+        ).all()
+    )
     articles_24h = await session.scalar(
         select(func.count())
         .select_from(ItemSource)
@@ -66,5 +75,9 @@ async def status(session: AsyncSession = Depends(get_session)) -> Status:
             items_24h=items_24h,
             articles_24h=articles_24h or 0,
             kev_added_7d=kev_added_7d or 0,
+            critical_7d=by_severity_7d.get(Severity.critical, 0),
+            high_7d=by_severity_7d.get(Severity.high, 0),
+            medium_7d=by_severity_7d.get(Severity.medium, 0),
+            low_7d=by_severity_7d.get(Severity.low, 0),
         ),
     )

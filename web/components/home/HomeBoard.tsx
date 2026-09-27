@@ -6,9 +6,12 @@ import { cn } from "cn"
 
 import { FeedRow } from "@/components/FeedRow"
 import { getFeed, getStatus, type FeedItem, type Status, type Tab } from "@/lib/api"
+import { useRowsIn } from "@/lib/fit"
 import { useUnseen } from "@/lib/unseen"
 
-const LATEST = 8
+// Home shows as many rows as fit the screen. Load a generous first page, more on tall screens.
+const INITIAL = 40
+const MAX = 200
 const FEED_POLL_MS = Number(process.env.NEXT_PUBLIC_POLL_SECONDS ?? 900) * 1000
 const STATUS_POLL_MS = 60_000
 
@@ -43,15 +46,21 @@ function zoneName(d: Date): string {
 
 export function HomeBoard({
   initialItems,
+  initialPinned,
   initialStatus,
   initialFailed,
 }: {
   initialItems: FeedItem[]
+  initialPinned: FeedItem[]
   initialStatus: Status | null
   initialFailed: boolean
 }) {
   const [tab, setTab] = useState<Tab>("all")
   const [items, setItems] = useState(initialItems)
+  const [pinned, setPinned] = useState(initialPinned)
+  const [limit, setLimit] = useState(INITIAL)
+  const box = useRef<HTMLDivElement>(null)
+  const fit = useRowsIn(box)
   const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set())
   const [status, setStatus] = useState(initialStatus)
   const [failed, setFailed] = useState(initialFailed)
@@ -61,16 +70,39 @@ export function HomeBoard({
   const addUnseen = useUnseen()
   const now = useClock()
 
+  const limitRef = useRef(limit)
   useEffect(() => {
     itemsRef.current = items
-  }, [items])
+    limitRef.current = limit
+  }, [items, limit])
+
+  // A screen taller than the first page: load enough rows to fill it.
+  useEffect(() => {
+    if (fit === null || fit <= limitRef.current || limitRef.current >= MAX) return
+    const next = Math.min(MAX, fit + 10)
+    const t = tabRef.current
+    getFeed({ tab: t, limit: next })
+      .then((page) => {
+        if (t !== tabRef.current) return
+        limitRef.current = next
+        setLimit(next)
+        setItems(page.items)
+      })
+      .catch(() => undefined)
+  }, [fit])
+
+  // Critical or KEV rows from the last 48h stay on top of the All tab, then newest first.
+  const pins = tab === "all" ? pinned : []
+  const pinIds = new Set(pins.map((p) => p.id))
+  const rows = [...pins, ...items.filter((i) => !pinIds.has(i.id))]
+  const visible = fit === null ? rows : rows.slice(0, fit)
 
   async function choose(next: Tab) {
     tabRef.current = next
     setTab(next)
     const id = ++request.current
     try {
-      const page = await getFeed({ tab: next, limit: LATEST })
+      const page = await getFeed({ tab: next, limit })
       if (id !== request.current) return
       setItems(page.items)
       setFresh(new Set())
@@ -85,11 +117,12 @@ export function HomeBoard({
     const timer = setInterval(async () => {
       const t = tabRef.current
       try {
-        const page = await getFeed({ tab: t, limit: LATEST })
+        const [page, pins] = await Promise.all([getFeed({ tab: t, limit: limitRef.current }), getFeed({ pinned: true, limit: 10 })])
         if (t !== tabRef.current) return
         const known = new Set(itemsRef.current.map((i) => i.id))
         const incoming = page.items.filter((i) => !known.has(i.id))
         setItems(page.items)
+        setPinned(pins.items)
         setFresh(new Set(incoming.map((i) => i.id)))
         void addUnseen(incoming.length, incoming.some((i) => i.severity === "critical" || i.kev))
       } catch {
@@ -110,7 +143,8 @@ export function HomeBoard({
   const nextSync = status?.sync.next_run_at ? new Date(status.sync.next_run_at) : null
 
   return (
-    <main className="flex flex-1 flex-col px-4 md:px-12">
+    // Exactly one screen tall: the row list takes what the header and footer leave.
+    <main className="flex h-[calc(100dvh/var(--zoom)-var(--nav-h))] min-h-0 flex-col px-4 md:px-12">
       <header className="pt-6 md:pt-[39px]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <h1 className="min-h-7 text-[22px] leading-7 font-medium tracking-[-0.01em] text-fg">
@@ -174,21 +208,23 @@ export function HomeBoard({
             </button>
           ))}
         </nav>
-        <p className="hidden text-[13px] text-dim md:block">latest 8 · full feed, filters and detail on the wire</p>
+        <p className="hidden text-[13px] text-dim md:block">
+          latest {visible.length} · full feed, filters and detail on the wire
+        </p>
       </div>
 
-      <div>
-        {items.map((item) => (
-          <FeedRow key={item.id} item={item} fresh={fresh.has(item.id)} />
+      <div ref={box} className="@container min-h-0 flex-1 overflow-hidden">
+        {visible.map((item) => (
+          <FeedRow key={item.id} item={item} fresh={fresh.has(item.id)} pinned={pinIds.has(item.id)} />
         ))}
-        {items.length === 0 && (
+        {rows.length === 0 && (
           <p className="py-10 text-[15px] text-muted">
             {failed ? "The feed is unreachable right now. It retries on the next refresh." : "Nothing here in the last 14 days."}
           </p>
         )}
       </div>
 
-      <footer className="mt-auto flex items-baseline justify-between gap-4 pt-16 pb-[30px] text-[13px] text-muted">
+      <footer className="flex shrink-0 items-baseline justify-between gap-4 pt-6 pb-[30px] text-[13px] text-muted">
         <span>
           Sources: NVD, CISA KEV, vendor PSIRTs, {status?.sources_total ?? "–"} feeds. Refreshes every{" "}
           {status?.sync.interval_minutes ?? 15} minutes.

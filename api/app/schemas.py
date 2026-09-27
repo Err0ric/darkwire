@@ -142,6 +142,10 @@ class Counts(BaseModel):
     items_24h: int
     articles_24h: int  # main-stream articles published in the last 24h (rows can hold several)
     kev_added_7d: int
+    critical_7d: int
+    high_7d: int
+    medium_7d: int
+    low_7d: int
 
 
 class KevRow(BaseModel):

@@ -20,51 +20,53 @@ function Section({ title, aside, children, className }: { title: string; aside?:
   )
 }
 
-export function Rail({
-  elsewhere,
+export function Elsewhere({ elsewhere }: { elsewhere: ElsewhereItem[] }) {
+  const now = useNow()
+  return (
+    <Section title="Elsewhere" aside="policy · privacy · culture">
+      <ul className="mt-3 space-y-3.5">
+        {elsewhere.map((e) => (
+          <li key={e.id}>
+            <a href={e.url} {...EXTERNAL} className="block leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
+              {e.headline}
+            </a>
+            <p className="mt-1 text-[11px] leading-4 text-dim">
+              {e.source}
+              {e.published_at && now !== null && <> · {age(e.published_at, now)}</>}
+            </p>
+          </li>
+        ))}
+        {elsewhere.length === 0 && <li className="text-dim">Nothing yet.</li>}
+      </ul>
+    </Section>
+  )
+}
+
+export function Stats({
   active,
   kev,
   status,
   onVendor,
 }: {
-  elsewhere: ElsewhereItem[]
   active: VendorOut[]
   kev: KevRow[]
   status: Status | null
   onVendor: (slug: string) => void
 }) {
-  const now = useNow()
   const counts = status?.counts
-  const last24: [string, number, string][] = counts
+  const week: [string, number, string][] = counts
     ? [
-        ["Critical", counts.critical_24h, "bg-critical"],
-        ["High", counts.high_24h, "bg-accent"],
-        ["Medium", counts.medium_24h, "bg-dim"],
-        ["Low", counts.low_24h, "bg-outline-medium"],
+        ["Critical", counts.critical_7d, "bg-critical"],
+        ["High", counts.high_7d, "bg-accent"],
+        ["Medium", counts.medium_7d, "bg-dim"],
+        ["Low", counts.low_7d, "bg-outline-medium"],
       ]
     : []
-  const peak = Math.max(1, ...last24.map(([, n]) => n))
+  const peak = Math.max(1, ...week.map(([, n]) => n))
 
   return (
-    <aside aria-label="Context" className="text-[13px]">
-      <Section title="Elsewhere" aside="policy · privacy · culture">
-        <ul className="mt-3 space-y-3.5">
-          {elsewhere.map((e) => (
-            <li key={e.id}>
-              <a href={e.url} {...EXTERNAL} className="block leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
-                {e.headline}
-              </a>
-              <p className="mt-1 text-[11px] leading-4 text-dim">
-                {e.source}
-                {e.published_at && now !== null && <> · {age(e.published_at, now)}</>}
-              </p>
-            </li>
-          ))}
-          {elsewhere.length === 0 && <li className="text-dim">Nothing yet.</li>}
-        </ul>
-      </Section>
-
-      <Section title="Most active this week" className="mt-10">
+    <>
+      <Section title="Most active this week">
         <ul className="mt-2.5">
           {active.map((v) => (
             <li key={v.slug} className="flex h-6 items-center justify-between">
@@ -97,15 +99,15 @@ export function Rail({
         </ul>
       </Section>
 
-      <Section title="Last 24 hours" className="mt-10">
+      <Section title="Last 7 days" className="mt-10">
         <ul className="mt-2.5">
-          {last24.map(([label, n, fill]) => (
+          {week.map(([label, n, fill]) => (
             <li key={label} className="flex h-[22px] items-center">
               <span className="w-[62px] text-muted">{label}</span>
               <span className="relative h-[3px] flex-1 bg-rule" aria-hidden>
                 <span className={cn("absolute inset-y-0 left-0", fill)} style={{ width: `${(n / peak) * 100}%` }} />
               </span>
-              <span className="w-7 text-right font-mono text-xs text-fg-2">{n}</span>
+              <span className="w-8 text-right font-mono text-xs text-fg-2">{n}</span>
             </li>
           ))}
         </ul>
@@ -119,6 +121,6 @@ export function Rail({
           <span className="mt-2 inline-block">Refreshes every {status.sync.interval_minutes} minutes.</span>
         </p>
       )}
-    </aside>
+    </>
   )
 }

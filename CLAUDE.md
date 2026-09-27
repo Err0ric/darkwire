@@ -17,7 +17,7 @@ Reference mockups: `/design-refs/home.png` and `/design-refs/wire.png`. Match th
 
 | Route | Purpose |
 |---|---|
-| `/` | Home. Status header, latest 8 rows, four tabs, OPEN WIRE link. Meant to be left open. |
+| `/` | Home. Status header, as many rows as fit the screen (Critical/KEV of the last 48h pinned first), four tabs, OPEN WIRE link. Meant to be left open. |
 | `/wire` | The board. Full feed, seven tabs, vendor filter, search, right rail. |
 | `/cves` | Sortable table: CVE, vendor, product, CVSS, EPSS, KEV, published. |
 | `/vendor/[slug]` | Everything tagged to one vendor. |
@@ -50,6 +50,17 @@ Type: Geist Sans for words, Geist Mono for data (CVE IDs, scores, timestamps, ve
 
 Layout: no boxes, no cards, no panel borders. Separate regions with background tone and 1px hairlines. 48px page gutter on desktop, 16px on mobile. Row height 64px. Radius: 4px on inputs and buttons, 3px on badges, 0 elsewhere.
 
+## Layout
+
+Built for wall displays as much as laptops: portrait and landscape, 390px to 3440px wide.
+
+- One container on every page: nav and content share the same gutters (16px mobile, 48px from 768px), no max width, so edges line up. Home and wire use the same container.
+- Feed column is fluid. The headline absorbs extra width; vendor mark, CVE ID, score, bar, badge, age and chevron stay fixed. When the feed column is under 760px (rail beside it), the CVE ID column drops out; under 940px, the wire's tabs and filters split onto two lines. Both are container queries on the feed column, not viewport breakpoints.
+- Wire rail: 280-320px on the right from 1000px wide; below that it stacks under the feed. From 2200px: three columns, feed | Elsewhere | stats (Most active, Added to KEV, Last 7 days, sources), 320px each.
+- Fill the height with rows, never a fixed count. Home is exactly one screen tall: header, as many whole rows as fit, footer at the bottom; on the All tab, Critical or KEV rows with an event in the last 48h are pinned first with a dim `pinned` marker. Wire loads at least a screenful and scrolls.
+- Kiosk: key `f` (or `?kiosk=1`) hides nav and rail and scales type about 15%. `f` again leaves it.
+- Check new work at 390x844, 1080x1920, 1440x2560, 1920x1080, 2560x1440 and 3440x1440.
+
 ## The row (non-negotiable anatomy)
 
 ```
@@ -81,7 +92,7 @@ Click anywhere on the row except a link. Background `--surface`, extends 24px pa
 1. Elsewhere. Five most recent from the policy/privacy/culture pool (EFF, 404 Media, Citizen Lab, Lawfare, Wired, TechCrunch Security, Ars). Headline 13px + `source · age` 11px. No vendor, no score.
 2. Most active this week. Vendor + count.
 3. Added to KEV. CVE ID + vendor, last 7 days.
-4. Last 24 hours. Four 3px bars: Critical, High, Medium, Low.
+4. Last 7 days. Four 3px bars: Critical, High, Medium, Low.
 5. Sources line: count, health, refresh interval.
 
 ## Data rules
@@ -143,7 +154,7 @@ NVD, FIRST.org EPSS and the CISA KEV JSON are enrichment APIs, not feeds, and ar
 
 ## Keyboard
 
-`j` / `k` move, `enter` expand, `o` open primary source, `/` focus search, `f` kiosk (hide nav and rail, bigger type).
+`j` / `k` move, `enter` expand, `o` open primary source, `/` focus search, `f` kiosk (hide nav and rail, bigger type; also `?kiosk=1`).
 
 ## Banned
 

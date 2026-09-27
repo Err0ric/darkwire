@@ -143,6 +143,10 @@ export interface Counts {
   items_24h: number
   articles_24h: number
   kev_added_7d: number
+  critical_7d: number
+  high_7d: number
+  medium_7d: number
+  low_7d: number
 }
 
 export interface Status {
@@ -186,6 +190,8 @@ export interface FeedQuery {
   limit?: number
   offset?: number
   since?: string
+  /** Only Critical or KEV rows with an event in the last 48h. */
+  pinned?: boolean
 }
 
 export const getFeed = (query: FeedQuery = {}, init?: RequestInit) =>

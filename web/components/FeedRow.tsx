@@ -37,12 +37,15 @@ export function FeedRow({
   detail: initialDetail,
   defaultExpanded = false,
   fresh = false,
+  pinned = false,
 }: {
   item: FeedItem
   detail?: ItemDetail
   defaultExpanded?: boolean
   /** Arrived on a poll: fades in with the red left edge. */
   fresh?: boolean
+  /** Held at the top of home (Critical or KEV in the last 48h). */
+  pinned?: boolean
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [detail, setDetail] = useState<Detail>(
@@ -88,7 +91,7 @@ export function FeedRow({
           >
             {item.headline}
           </a>
-          <MetaLine item={item} />
+          <MetaLine item={item} pinned={pinned} />
           <div className="mt-2 flex items-center md:hidden">
             <Score item={item} className="mr-3" />
             <Bar item={item} />
@@ -98,7 +101,9 @@ export function FeedRow({
         </div>
 
         <div className="hidden shrink-0 items-center md:flex">
-          <span className="w-[128px] font-mono text-xs text-muted">{item.cve_id}</span>
+          {/* Dropped when the feed column is narrow (rail beside it at ~1000-1300px), so the
+              headline keeps room. Needs an @container ancestor; without one it always shows. */}
+          <span className="w-[128px] font-mono text-xs text-muted @max-[760px]:hidden">{item.cve_id}</span>
           <Score item={item} className="w-[47px] text-right" />
           <Bar item={item} className="ml-[21px]" />
           <Badge item={item} className="ml-5" />
@@ -165,7 +170,7 @@ function Sep({ wide = false }: { wide?: boolean }) {
   )
 }
 
-function MetaLine({ item }: { item: FeedItem }) {
+function MetaLine({ item, pinned = false }: { item: FeedItem; pinned?: boolean }) {
   const parts: ReactNode[] = []
   if (item.sources.length === 0) {
     parts.push("NVD", "CVE published", "no coverage yet")
@@ -189,6 +194,7 @@ function MetaLine({ item }: { item: FeedItem }) {
   }
   if (item.kev) parts.push(<span key="kev" className="text-critical">KEV</span>)
   else if (item.exploited) parts.push(<span key="exploited" className="text-critical">EXPLOITED</span>)
+  if (pinned) parts.push(<span key="pinned" className="text-dim">pinned</span>)
 
   return (
     <p className="mt-0.5 truncate text-xs leading-4 text-muted">

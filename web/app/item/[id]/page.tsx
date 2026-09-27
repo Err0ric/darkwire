@@ -19,7 +19,7 @@ async function load(id: string) {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const item = await load((await params).id).catch(() => null)
-  return { title: item ? `${item.headline} · darkwire` : "darkwire" }
+  return item ? { title: item.headline } : {}
 }
 
 // Permalink: one row, already expanded.

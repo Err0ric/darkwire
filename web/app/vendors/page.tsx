@@ -5,7 +5,7 @@ import { SiteFooter } from "@/components/SiteFooter"
 import { VendorList } from "@/components/VendorList"
 import { getVendors } from "@/lib/api"
 
-export const metadata: Metadata = { title: "Vendors · darkwire" }
+export const metadata: Metadata = { title: "Vendors" }
 
 // Every vendor we tag, alphabetical, with rows in the last 7 days. Each opens the wire filtered
 // to it and can be added to your stack (?stack=, no account).

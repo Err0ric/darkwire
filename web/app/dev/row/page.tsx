@@ -5,7 +5,7 @@ import { FeedRow } from "@/components/FeedRow"
 import { getFeed, getItem, type FeedItem } from "@/lib/api"
 
 export const metadata: Metadata = {
-  title: "Row review · darkwire",
+  title: "Row review",
   robots: { index: false, follow: false },
 }
 

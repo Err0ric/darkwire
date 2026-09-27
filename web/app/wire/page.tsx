@@ -1,9 +1,12 @@
+import type { Metadata } from "next"
 import { connection } from "next/server"
 
 import { WireBoard } from "@/components/wire/WireBoard"
 import { feedQuery, parseSeverity, stackCriticalQuery, TABS, type Filters, type WireData, type WireTab } from "@/lib/wire"
 import { parseStack } from "@/lib/stack"
 import { getElsewhere, getFeed, getKev, getServices, getStatus, getVendors } from "@/lib/api"
+
+export const metadata: Metadata = { title: "wire" }
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? ""
 

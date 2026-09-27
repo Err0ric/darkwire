@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 
 import { AutoUpdate } from "@/components/AutoUpdate"
@@ -19,9 +19,34 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 })
 
+const DESCRIPTION = "Security news and CVEs on one live board. No accounts. No ads. No bullshit."
+
+// Link previews (Discord, Slack, X, iMessage, Teams). The images are static files made by
+// scripts/make-og.py (npm run og): og.gif pulses the dot, og.png is the still for X.
+// Pages set only a title; the template adds " · darkwire" and everything else is inherited.
 export const metadata: Metadata = {
-  title: "darkwire",
-  description: "Live board of security news and CVEs.",
+  metadataBase: new URL("https://darkwire.tech"),
+  title: { default: "darkwire", template: "%s · darkwire" },
+  description: DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "darkwire.tech",
+    url: "/",
+    title: "darkwire",
+    description: DESCRIPTION,
+    images: [{ url: "/og.gif", width: 1200, height: 630, type: "image/gif", alt: "darkwire" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "darkwire",
+    description: DESCRIPTION,
+    images: ["/og.png"],
+  },
+}
+
+// theme-color: Discord's embed side bar.
+export const viewport: Viewport = {
+  themeColor: "#b91c1c",
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

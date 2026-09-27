@@ -4,7 +4,7 @@ import { connection } from "next/server"
 import { OutagesBoard } from "@/components/OutagesBoard"
 import { getServices } from "@/lib/api"
 
-export const metadata: Metadata = { title: "Outages · darkwire" }
+export const metadata: Metadata = { title: "Outages" }
 
 // Every service we watch, grouped, with the last 24 hours as a strip of hourly cells.
 export default async function Outages() {

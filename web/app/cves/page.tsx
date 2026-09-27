@@ -5,7 +5,7 @@ import { CveTable } from "@/components/CveTable"
 import { SiteFooter } from "@/components/SiteFooter"
 import { getCves } from "@/lib/api"
 
-export const metadata: Metadata = { title: "CVEs · darkwire" }
+export const metadata: Metadata = { title: "CVEs" }
 
 // Every CVE on the board, newest first; the table sorts client-side.
 export default async function Cves() {

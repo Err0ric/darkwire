@@ -2,15 +2,14 @@ import type { VendorRef } from "@/lib/api"
 
 // Slugs with a monochrome mark in /public/vendors/{slug}.svg, from Simple Icons (CC0; the marks
 // stay their owners' trademarks). Rendered as a CSS mask in currentColor. Add a slug here when its
-// SVG lands; everything else falls back to initials, so no request ever 404s.
+// SVG lands; everything else falls back to initials, so no request ever 404s. Wordmark-only
+// logos (Arm, AMD, Cisco, Intel, Juniper, OpenSSL, QNAP, Samsung, SAP, SonicWall, Synology,
+// Veeam, VMware) are left out on purpose: at 20px they read as noise, initials read better.
 export const VENDOR_LOGOS = new Set<string>([
-  "amd",
   "apache",
   "apple",
-  "arm",
   "atlassian",
   "broadcom",
-  "cisco",
   "citrix",
   "cloudflare",
   "docker",
@@ -19,32 +18,22 @@ export const VENDOR_LOGOS = new Set<string>([
   "github",
   "gitlab",
   "google",
-  "intel",
   "jenkins",
   "jetbrains",
-  "juniper",
   "kubernetes",
   "linux",
   "mozilla",
   "npm",
   "nvidia",
   "okta",
-  "openssl",
   "palo-alto-networks",
   "progress",
   "pypi",
-  "qnap",
   "qualcomm",
   "red-hat",
-  "samsung",
-  "sap",
-  "sonicwall",
-  "synology",
   "tp-link",
   "trend-micro",
   "ubiquiti",
-  "veeam",
-  "vmware",
   "wordpress",
 ])
 

@@ -17,7 +17,7 @@ Reference mockups: `/design-refs/home.png` and `/design-refs/wire.png`. Match th
 
 | Route | Purpose |
 |---|---|
-| `/` | Home, a landing page (`design-refs/home-v3.png`, `home-v3-mobile.png`). Centered block: date, large mono clock (seconds in `--dim`, zone under it), status line (`N critical · N KEV due this week · worst service incident`, nonzero parts only, each linking to its filtered view, else "All quiet"), Right now (critical, KEV and exploited in the last 48h, max 5 one-line rows linking to `/item/[id]`, or "Nothing critical in the last 48h."), a one-line ticker crossfading through the last 10 headlines every 8s, OPEN WIRE with CVEs · Vendors · Outages under it, and the stack link. Footer: sources line from `/status`, darkwire.tech. Scales with one `clamp()`; no scrolling at 1920x1080 or 2560x1440; vertically centered in portrait. `/wire` is the all-day screen. |
+| `/` | Home, a calm landing page (layout after `design-refs/home-v3.png`, calmer). A centered block, max 880px, about half the viewport tall with black space around it: date (17px), mono clock `clamp(44px, 3.6vw, 72px)` with seconds in `--dim`, a zone line `PDT · 19:08 UTC` (just `UTC` for UTC viewers; 12px mono `--dim`), the tagline "Security news and CVEs on one live board." (15px `--muted`), Right now (critical, KEV and exploited in the last 48h, max 3 rows of 44px with 14px headlines, linking to `/item/[id]`, or "Nothing critical in the last 48h."), a 13px ticker crossfading through the last 10 headlines every 8s, OPEN WIRE (40px, 13px mono) with CVEs · Vendors · Outages under it, and the stack link. No status line: counts, KEV due and services live on `/wire`. Footer: sources line from `/status`, darkwire.tech. No scrolling at 1920x1080 or 2560x1440; vertically centered in portrait. The nav hides its UTC time here. |
 | `/wire` | The board. Full feed, seven tabs, vendor filter, search, right rail. |
 | `/cves` | Sortable table: CVE, vendor, product, CVSS, EPSS, KEV, published. |
 | `/vendor/[slug]` | Everything tagged to one vendor. |
@@ -58,7 +58,7 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 - One container on every page: nav and content share the same gutters (16px mobile, 48px from 768px) and left edge.
 - The feed column fills what the rail leaves from 1200 to 2199px, and is capped at 1100px and centered from 2200px, so the data columns (CVE ID, score, bar, badge, age, chevron) stay near the headline instead of across dead space. Inside it the headline absorbs width; the data columns stay fixed. Under a 760px feed the CVE ID column drops out; under 940px the wire's tabs and filters split onto two lines (container queries on the feed column).
 - Wire rail: see "Wire rails". Under 1200px (so 1080px portrait) it stacks below the feed, at most 640px wide, and the Services block moves to the top of the feed, under the counts, so an outage is seen without scrolling.
-- Home has no rail and no feed: one centered block sized in em off a single `clamp()`, so it scales smoothly instead of jumping at breakpoints.
+- Home has no rail and no feed: one centered block, max 880px; the clock scales with the width and the gaps with the height, so it scales smoothly instead of jumping at breakpoints.
 - Fill the height with rows, never a fixed count. Home is exactly one screen tall with the block vertically centered. Wire loads at least a screenful and scrolls.
 - Kiosk: key `f` (or `?kiosk=1`) hides nav and rail and scales type about 15%. `f` again leaves it.
 - Check new work at 1920x1080 and 2560x1440 first, then 1080x1920, 1440x2560 and 390x844.
@@ -142,7 +142,7 @@ Sections:
 
 The feed has day separators: a label row ("Today", "Yesterday", then "Thu Sep 24") in 13px sans `--muted` over a hairline, in the viewer's zone. They are not rows: no dot, not counted by "N new ↑", and not `<article>`, so row navigation skips them.
 
-The nav shows the current UTC time ("19:08 UTC", 12px mono `--dim`) before "Synced N min ago" on every page, from 1200px wide.
+The nav shows the current UTC time ("19:08 UTC", 12px mono `--dim`) before "Synced N min ago" on every page but home (its clock line shows UTC), from 1200px wide.
 
 ## Data rules
 

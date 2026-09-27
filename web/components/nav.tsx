@@ -109,7 +109,7 @@ export function Nav() {
       </nav>
 
       <div className="ml-auto flex shrink-0 items-center gap-4 pl-3">
-        {now !== null && (
+        {now !== null && pathname !== "/" && (
           <time
             dateTime={new Date(now).toISOString()}
             title="Coordinated Universal Time"

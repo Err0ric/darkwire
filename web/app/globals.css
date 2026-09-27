@@ -275,3 +275,10 @@ html[data-kiosk] [data-chrome] {
     transition: none !important;
   }
 }
+
+/* The landing ticker's reduced-motion swap: a 200ms crossfade instead of the decode. */
+@media (prefers-reduced-motion: reduce) {
+  .ticker-fade {
+    transition: opacity 200ms ease !important;
+  }
+}

@@ -222,7 +222,7 @@ Web (`web/proxy.ts`, `web/next.config.ts`): a Content-Security-Policy with a per
 - No dots on first page load: everything on screen at load is baseline. Same behavior for Right now rows on `/`.
 - Reduced motion: a solid 60% dot, no pulse, gone at 10 minutes.
 - Bar cells fill left to right, 25ms per cell, on first paint and for new rows.
-- Home ticker crossfades every 8s; static under reduced motion. Nothing scrolls.
+- Landing ticker (`/` only) advances every 8s with the one allowed text animation: encode out (~300ms, the old headline's characters flip to random 0/1 right to left in `--critical`), then decode in (~700ms, red 0/1 glyphs the length of the new headline resolve left to right with a small random stagger, unresolved glyphs re-randomize every 50ms, spaces stay spaces), then the meta fades in over 200ms. Glyphs are Geist Mono at the headline size; the line is locked to the new headline's width, overflow clipped. The scramble is aria-hidden; a visually hidden `aria-live="polite"` element gets the real headline once per swap, and the link points at the new article from the start. Reduced motion: 200ms crossfade. Hidden tab: instant swap. No glow, no blur, no other text animation anywhere. Nothing scrolls.
 - Nothing else moves. No hover lifts, no bounce, no parallax, no background effects.
 
 ## Live updates

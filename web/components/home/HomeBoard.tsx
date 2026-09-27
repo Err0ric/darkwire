@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
 import { cn } from "cn"
 
+import { Ticker } from "@/components/home/Ticker"
 import { PrefsControls } from "@/components/PrefsControls"
 import { SyncDot, syncState, type SyncState } from "@/components/SyncDot"
 import { getFeed, getStatus, type FeedItem, type Status } from "@/lib/api"
@@ -25,8 +26,6 @@ const STATUS_POLL_MS = 60_000
 const RESYNC_MS = 5 * 60_000
 const RIGHT_NOW_MS = 48 * 3600_000
 const RIGHT_NOW_ROWS = 3
-const TICKER_MS = 8_000
-const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const
 
 export interface HomeData {
   rightNow: FeedItem[]
@@ -309,54 +308,5 @@ function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
         </span>
       </Link>
     </li>
-  )
-}
-
-// ---------------------------------------------------------------- ticker
-
-/** The latest headline, crossfading to the next every 8s through the last 10. Not a marquee:
- * nothing scrolls. Under prefers-reduced-motion it stays on the newest. */
-function Ticker({ items }: { items: FeedItem[] }) {
-  const now = useNow()
-  const [index, setIndex] = useState(0)
-  const list = items.slice(0, 10)
-
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || list.length < 2) return
-    const timer = setInterval(() => setIndex((i) => i + 1), TICKER_MS)
-    return () => clearInterval(timer)
-  }, [list.length])
-
-  if (!list.length) return null
-  const active = index % list.length
-  return (
-    <div className="relative mt-[clamp(20px,3vh,36px)] h-5 w-full">
-      {list.map((item, i) => (
-        <p
-          key={item.id}
-          aria-hidden={i !== active}
-          className={cn(
-            "absolute inset-0 flex items-baseline justify-center gap-2.5 text-[13px] leading-5 transition-opacity duration-700 motion-reduce:transition-none",
-            i === active ? "opacity-100" : "pointer-events-none opacity-0",
-          )}
-        >
-          <span aria-hidden className="text-critical">
-            ›
-          </span>
-          <a
-            href={item.primary_url}
-            {...EXTERNAL}
-            tabIndex={i === active ? 0 : -1}
-            className="min-w-0 truncate text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
-          >
-            {item.headline}
-          </a>
-          <span className="hidden shrink-0 font-mono text-[11px] text-dim sm:inline">
-            {item.sources[0]?.name}
-            {now !== null && <> · {age(item.last_event_at, now)}</>}
-          </span>
-        </p>
-      ))}
-    </div>
   )
 }

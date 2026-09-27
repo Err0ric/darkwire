@@ -8,6 +8,7 @@ venv/
 .ruff_cache/
 .env
 .env.*
+.env*.local
 !.env.example
 *.log
 
@@ -33,3 +34,15 @@ playwright-report/
 
 # Playwright MCP output
 .playwright-mcp/
+
+# Local database dumps
+*.sql
+*.dump
+*.backup
+*.pgdump
+*.sql.gz
+
+# Scratch and review output (screenshots stay local)
+scratch/
+tmp/
+design-refs/review/

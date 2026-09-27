@@ -110,13 +110,21 @@ export function FeedRow({
           >
             {item.headline}
           </a>
-          <MetaLine item={item} pinned={pinned} inStack={inStack} />
-          <div className="mt-2 flex items-center md:hidden">
-            <Score item={item} className="mr-3" />
-            <Bar item={item} />
-            <Badge item={item} className="ml-3" />
-            <Age iso={item.last_event_at} clock={clockAge} className="ml-auto" />
-          </div>
+          {/* Phones: the age ends the meta line (right-aligned), and the score / bar / badge line
+              shows only when the row has one. The chevron stays in its column. */}
+          <MetaLine
+            item={item}
+            pinned={pinned}
+            inStack={inStack}
+            end={<Age iso={item.last_event_at} clock={clockAge} className="ml-auto shrink-0 pl-3 md:hidden" />}
+          />
+          {hasData && (
+            <div className="mt-2 flex items-center md:hidden">
+              <Score item={item} className="mr-3" />
+              <Bar item={item} />
+              <Badge item={item} className="ml-3" />
+            </div>
+          )}
         </div>
 
         <div className="hidden shrink-0 items-center md:flex">
@@ -184,7 +192,18 @@ function Sep({ wide = false }: { wide?: boolean }) {
   )
 }
 
-function MetaLine({ item, pinned = false, inStack = false }: { item: FeedItem; pinned?: boolean; inStack?: boolean }) {
+function MetaLine({
+  item,
+  pinned = false,
+  inStack = false,
+  end,
+}: {
+  item: FeedItem
+  pinned?: boolean
+  inStack?: boolean
+  /** Right-aligned at the end of the line (the age on phones). */
+  end?: ReactNode
+}) {
   const parts: ReactNode[] = []
   if (item.sources.length === 0) {
     parts.push("NVD", "CVE published", "no coverage yet")
@@ -212,13 +231,16 @@ function MetaLine({ item, pinned = false, inStack = false }: { item: FeedItem; p
   if (inStack) parts.push(<span key="stack" className="text-dim-text">your stack</span>)
 
   return (
-    <p className="mt-0.5 truncate text-xs leading-4 text-muted">
-      {parts.map((p, i) => (
-        <span key={i}>
-          {i > 0 && <Sep />}
-          {p}
-        </span>
-      ))}
+    <p className="mt-0.5 flex items-baseline text-xs leading-4 text-muted">
+      <span className="min-w-0 truncate">
+        {parts.map((p, i) => (
+          <span key={i}>
+            {i > 0 && <Sep />}
+            {p}
+          </span>
+        ))}
+      </span>
+      {end}
     </p>
   )
 }

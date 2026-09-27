@@ -123,8 +123,8 @@ export function Nav() {
       </nav>
 
       <div className="ml-auto flex shrink-0 items-center gap-3 pl-5 sm:gap-4">
-        {/* CVEs is a quiet link at the start of the status group. The UTC slot keeps its width on
-            pages with their own clock (/ and /wire), so CVEs sits in the same spot everywhere. */}
+        {/* CVEs is a quiet link at the start of the status group. On / and /wire (their own
+            clocks show UTC) there is no UTC slot, so CVEs sits right next to "Synced". */}
         <Link
           href={`/cves${query()}`}
           aria-current={cvesActive ? "page" : undefined}
@@ -135,17 +135,20 @@ export function Nav() {
         >
           CVEs
         </Link>
-        <span aria-hidden className={cn("-mx-1.5 hidden text-xs text-dim-text min-[1200px]:block", ownClock && "invisible")}>
-          ·
-        </span>
-        <time
-          dateTime={now !== null ? new Date(now).toISOString() : undefined}
-          title="Coordinated Universal Time"
-          aria-hidden={ownClock || undefined}
-          className={cn("hidden w-[70px] font-mono text-xs leading-none text-dim-text min-[1200px]:block", ownClock && "invisible")}
-        >
-          {now !== null ? `${utcHHMM(new Date(now))} UTC` : ""}
-        </time>
+        {!ownClock && (
+          <>
+            <span aria-hidden className="-mx-1.5 hidden text-xs text-dim-text min-[1200px]:block">
+              ·
+            </span>
+            <time
+              dateTime={now !== null ? new Date(now).toISOString() : undefined}
+              title="Coordinated Universal Time"
+              className="hidden w-[70px] font-mono text-xs leading-none text-dim-text min-[1200px]:block"
+            >
+              {now !== null ? `${utcHHMM(new Date(now))} UTC` : ""}
+            </time>
+          </>
+        )}
         <p className={cn("hidden text-[15px] leading-none sm:block", sync.unreachable ? "text-critical-text" : "text-muted")} aria-live="polite">
           {label}
         </p>

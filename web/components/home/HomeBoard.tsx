@@ -234,7 +234,8 @@ const BADGE: Record<string, string> = {
   high: "border-accent text-fg",
   medium: "border-outline-medium text-fg-2",
   low: "border-outline-muted text-muted",
-  exploited: "border-accent text-critical-text",
+  exploited: "border-critical text-critical-text",
+  kev: "border-critical text-critical-text",
 }
 
 const BAR_FILL: Record<string, string> = { critical: "bg-critical", high: "bg-accent", medium: "bg-medium", low: "bg-dim" }
@@ -243,14 +244,16 @@ function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
   const { query } = usePrefs()
   const now = useNow()
   const severity = item.severity && item.severity !== "none" ? item.severity : null
-  const badge = severity ?? (item.exploited ? "exploited" : null)
+  // No CVSS score: the badge column still says why the row is here, EXPLOITED or else KEV
+  // (outlined red), so the columns line up with the scored rows.
+  const badge = item.cvss === null ? (item.exploited ? "exploited" : item.kev ? "kev" : severity) : (severity ?? (item.exploited ? "exploited" : null))
 
   // Right side tag: KEV due / KEV, else "no fix yet" when vendor data says there is none.
   const due = now === null ? null : kevDueIn(item, now)
   const tag =
     due !== null ? (
       <span className="text-critical-text">{due < 0 ? "KEV overdue" : due === 0 ? "KEV due today" : `KEV due in ${due}d`}</span>
-    ) : item.kev ? (
+    ) : item.kev && badge !== "kev" ? (
       <span className="text-critical-text">KEV</span>
     ) : item.patch_status === "no_fix" ? (
       <span className="text-muted">no fix yet</span>
@@ -282,7 +285,7 @@ function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
         <span className="hidden w-10 shrink-0 pl-1 sm:block">{score}</span>
         <span className="hidden w-[84px] shrink-0 sm:block">
           {item.cvss !== null && (
-            <span className="flex gap-0.5" aria-label={`CVSS ${item.cvss}`}>
+            <span className="flex gap-0.5" role="img" aria-label={`CVSS ${item.cvss}`}>
               {Array.from({ length: 10 }, (_, i) => (
                 <span
                   key={i}

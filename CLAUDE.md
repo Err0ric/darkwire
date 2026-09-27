@@ -218,7 +218,7 @@ Web (`web/proxy.ts`, `web/next.config.ts`): a Content-Security-Policy with a per
 
 ## Motion (all respect prefers-reduced-motion)
 
-- Wordmark dot pulses 2.4s while live. Solid if last sync > 30 min. Gray if fetch failing.
+- Wordmark dot pulses 2.4s while live. Solid if last sync > 30 min. Gray if fetch failing. When the API does not answer, the nav status reads "Feed unreachable · retrying" in red, it retries every 15s, and the last good data stays on screen.
 - The wire clock ticks seconds; the landing's date line and the nav UTC time change each minute.
 - New rows (see Live updates) fade in from the top over 300ms and get a 6px `--critical` dot just left of the headline, inside the gutter, so the headline does not shift. The dot fades in over 300ms, pulses opacity 1 -> 0.3 -> 1 three times on the 2.4s cycle (about 7.5s), then holds solid at 60%. At 10 minutes it fades out over 1s. Expanding the row clears it at once.
 - A row that arrived while the tab was hidden gets a solid dot; its three pulses start on the next visibilitychange to visible, so a returning viewer sees them.

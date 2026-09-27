@@ -18,11 +18,14 @@ const LINKS = [
 ]
 
 const STATUS_POLL_MS = 60_000
+const RETRY_MS = 15_000
 const CLOCK_TICK_MS = 15_000
 // Pages whose own header shows the time: no UTC in the nav there.
 const OWN_CLOCK = new Set(["/", "/wire"])
 
-type Sync = { status: Status | null; failing: boolean }
+// failing: the API answered but the last ingest run failed. unreachable: the API did not answer;
+// the last good data stays on screen and the next poll retries.
+type Sync = { status: Status | null; failing: boolean; unreachable: boolean }
 
 function syncedLabel(minutes: number): string {
   if (minutes < 1) return "Synced just now"
@@ -34,20 +37,28 @@ function syncedLabel(minutes: number): string {
 export function Nav() {
   const pathname = usePathname()
   const { query } = usePrefs()
-  const [sync, setSync] = useState<Sync>({ status: null, failing: false })
+  const [sync, setSync] = useState<Sync>({ status: null, failing: false, unreachable: false })
   const [now, setNow] = useState<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
+    let retry: ReturnType<typeof setTimeout> | undefined
     const load = () =>
       getStatus()
-        .then((status) => !cancelled && setSync({ status, failing: status.sync.last_ok === false }))
-        .catch(() => !cancelled && setSync((prev) => ({ ...prev, failing: true })))
+        .then((status) => !cancelled && setSync({ status, failing: status.sync.last_ok === false, unreachable: false }))
+        .catch(() => {
+          if (cancelled) return
+          setSync((prev) => ({ ...prev, unreachable: true }))
+          // Unreachable: try again sooner than the minute poll.
+          clearTimeout(retry)
+          retry = setTimeout(load, RETRY_MS)
+        })
     load()
     const poll = setInterval(load, STATUS_POLL_MS)
     return () => {
       cancelled = true
       clearInterval(poll)
+      clearTimeout(retry)
     }
   }, [])
 
@@ -62,12 +73,18 @@ export function Nav() {
   }, [])
 
   const minutes = minutesSinceSync(sync.status, now)
-  const dot = syncState(sync.status, sync.failing, now)
+  const dot = syncState(sync.status, sync.failing || sync.unreachable, now)
   // Home leads with a large wordmark of its own; the nav's would repeat it.
   const home = pathname === "/"
   const ownClock = OWN_CLOCK.has(pathname)
   const cvesActive = pathname === "/cves" || pathname.startsWith("/cve/")
-  const label = sync.failing ? "Sync unavailable" : minutes !== null ? syncedLabel(minutes) : ""
+  const label = sync.unreachable
+    ? "Feed unreachable · retrying"
+    : sync.failing
+      ? "Sync failing"
+      : minutes !== null
+        ? syncedLabel(minutes)
+        : ""
 
   return (
     <header data-chrome className="flex h-15 items-center page-frame">
@@ -128,7 +145,7 @@ export function Nav() {
         >
           {now !== null ? `${utcHHMM(new Date(now))} UTC` : ""}
         </time>
-        <p className="hidden text-[15px] leading-none text-muted sm:block" aria-live="polite">
+        <p className={cn("hidden text-[15px] leading-none sm:block", sync.unreachable ? "text-critical" : "text-muted")} aria-live="polite">
           {label}
         </p>
         <ThemePicker />

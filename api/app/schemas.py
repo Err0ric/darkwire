@@ -105,6 +105,7 @@ class CveRow(BaseModel):
     severity: Severity | None
     epss: float | None
     kev: bool
+    patch_status: PatchStatus | None
     published_at: datetime | None
     item_id: int | None
 

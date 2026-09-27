@@ -106,6 +106,7 @@ export interface CveRow {
   severity: Severity | null
   epss: number | null
   kev: boolean
+  patch_status: PatchStatus | null
   published_at: string | null
   item_id: number | null
 }

@@ -4,10 +4,10 @@ import { useState, type MouseEvent, type ReactNode } from "react"
 import { cn } from "cn"
 import { Bug, ChevronDown, FileText, FlaskConical, Newspaper, ShieldAlert, type LucideIcon } from "lucide-react"
 
+import { VendorGlyph } from "@/components/VendorGlyph"
 import { getItem, type Category, type FeedItem, type ItemDetail, type PatchStatus, type Severity } from "@/lib/api"
 import { IMPACT_METRICS, parseVector } from "@/lib/cvss"
 import { age, useNow } from "@/lib/time"
-import { vendorLogo, vendorMark } from "@/lib/vendors"
 
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const
 const MAX_SOURCES = 4
@@ -137,19 +137,9 @@ export function FeedRow({
 function VendorMark({ item }: { item: FeedItem }) {
   const box = "mr-3 flex h-5 w-5 shrink-0 items-center justify-center text-muted md:mr-5"
   if (item.vendor) {
-    const logo = vendorLogo(item.vendor)
     return (
       <span className={box} title={item.vendor.name}>
-        {logo ? (
-          // Monochrome SVG tinted through CSS mask so it follows currentColor.
-          <span
-            aria-hidden
-            className="size-5 bg-current"
-            style={{ mask: `url(${logo}) center / contain no-repeat` }}
-          />
-        ) : (
-          <span className="font-mono text-[11px] leading-none">{vendorMark(item.vendor)}</span>
-        )}
+        <VendorGlyph vendor={item.vendor} />
         <span className="sr-only">{item.vendor.name}</span>
       </span>
     )

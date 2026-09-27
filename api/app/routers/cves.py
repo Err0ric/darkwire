@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.models import Cve, Item, ItemCve, Vendor
+from app.product_names import display_name
 from app.schemas import CveRow, VendorRef
 
 router = APIRouter(tags=["cves"])
@@ -32,12 +33,12 @@ SORT_COLUMN = {
 
 
 def _product(cpes: list | None) -> str | None:
-    """cpe:2.3:a:vendor:product:version:... -> product, from the first CPE match."""
+    """cpe:2.3:a:vendor:product:version:... -> display name of the product in the first CPE match."""
     for match in cpes or []:
         criteria = match.get("criteria", "") if isinstance(match, dict) else str(match)
         parts = criteria.split(":")
         if len(parts) > 4 and parts[4] not in ("*", "-"):
-            return parts[4].replace("_", " ")
+            return display_name(parts[4])
     return None
 
 
@@ -88,6 +89,7 @@ async def cves(
             severity=cve.base_severity,
             epss=cve.epss,
             kev=cve.kev,
+            patch_status=cve.patch_status,
             published_at=cve.published_at,
             item_id=item_id,
         )

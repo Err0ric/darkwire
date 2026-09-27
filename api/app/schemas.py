@@ -65,6 +65,8 @@ class CveDetail(ORM):
     epss_percentile: float | None
     kev: bool
     kev_added_at: datetime | None
+    # When enrichment last ran. Null means kev / scores are defaults, not checked facts.
+    fetched_at: datetime | None
 
 
 class MsrcDetail(ORM):

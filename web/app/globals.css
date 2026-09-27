@@ -16,6 +16,15 @@
   --accent: #b91c1c;
   --critical: #dc2626;
 
+  /* Row details. Values from "The row" / "Expanded row" in CLAUDE.md. */
+  --medium: #6b6b6b; /* MEDIUM bar fill */
+  --outline-medium: #333333; /* MEDIUM badge outline */
+  --outline-muted: #262626; /* BREACH / INFO badge outline */
+  --chevron: #404040;
+  --summary: #b5b5b5;
+  --chip: #161616;
+  --chip-impact: #1c1010; /* C / I / A at High */
+
   color-scheme: dark;
 }
 
@@ -30,6 +39,13 @@
   --color-dim: var(--dim);
   --color-accent: var(--accent);
   --color-critical: var(--critical);
+  --color-medium: var(--medium);
+  --color-outline-medium: var(--outline-medium);
+  --color-outline-muted: var(--outline-muted);
+  --color-chevron: var(--chevron);
+  --color-summary: var(--summary);
+  --color-chip: var(--chip);
+  --color-chip-impact: var(--chip-impact);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -64,6 +80,17 @@
 
 @utility animate-pulse-dot {
   animation: pulse-dot 2.4s ease-in-out infinite;
+}
+
+/* Severity bar: filled cells fill left to right, 25ms apart (delay set inline). */
+@keyframes cell-fill {
+  from {
+    background-color: var(--rule);
+  }
+}
+
+@utility animate-cell-fill {
+  animation: cell-fill 150ms ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {

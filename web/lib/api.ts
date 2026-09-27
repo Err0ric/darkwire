@@ -66,6 +66,8 @@ export interface CveDetail {
   epss_percentile: number | null
   kev: boolean
   kev_added_at: string | null
+  // When enrichment last ran. Null means kev / scores are defaults, not checked facts.
+  fetched_at: string | null
 }
 
 export interface MsrcDetail {

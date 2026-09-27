@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { cn } from "cn"
 
 import { FeedRow } from "@/components/FeedRow"
@@ -25,7 +25,7 @@ import { useDots } from "@/lib/dots"
 import { usePrefs } from "@/lib/prefs"
 import { isImportant } from "@/lib/kev"
 import { apply as applyDiff, changedSince, cursorOf, diff, LIVE_POLL_MS } from "@/lib/live"
-import { dayLabel, useNow } from "@/lib/time"
+import { groupByDay, useNow } from "@/lib/time"
 import { useUnseen } from "@/lib/unseen"
 import { feedQuery, stackCriticalQuery, TABS, type Filters, type WireData, type WireTab } from "@/lib/wire"
 
@@ -439,27 +439,40 @@ export function WireBoard({ initial }: { initial: WireData }) {
           )}
 
           <div ref={list} className={cn(loading && "opacity-60")} aria-busy={loading}>
-            {items.map((item, i) => {
-              // Day separators in the viewer's zone. Not rows: no dot, not counted, not <article>.
-              const label = now !== null ? dayLabel(item.last_event_at, now) : null
-              const prev = i > 0 && now !== null ? dayLabel(items[i - 1].last_event_at, now) : null
-              return (
-                <Fragment key={item.id}>
-                  {label && label !== prev && (
-                    <div role="separator" aria-label={label} className="flex h-9 items-end border-b border-hairline pb-2 text-[13px] text-muted">
-                      {label}
-                    </div>
-                  )}
+            {/* One section per local day of last_event_at (the sort key, also what the age column
+                uses). The day label pins to the top while its rows scroll past; the next day's
+                section pushes it out. Labels are not rows: no dot, not counted, not <article>. */}
+            {(now === null ? [{ key: "all", name: "", date: "", today: true, items }] : groupByDay(items, now)).map((g, gi) => (
+              <section key={g.key} aria-label={g.name || undefined} className={cn(gi > 0 && "mt-8")}>
+                {g.name && (
+                  <div
+                    role="separator"
+                    aria-label={`${g.name}, ${g.items.length} rows`}
+                    className={cn(
+                      "sticky top-0 z-[5] flex h-9 items-center border-t bg-bg text-[13px]",
+                      // The tabs row's rule is already right above the first label.
+                      gi === 0 ? "border-transparent" : "border-rule",
+                    )}
+                  >
+                    <span className="font-semibold text-fg-2">{g.name}</span>
+                    <span className="text-dim">
+                      {g.name !== g.date && <> · {g.date}</>} · {g.items.length}
+                    </span>
+                  </div>
+                )}
+                {g.items.map((item) => (
                   <FeedRow
+                    key={item.id}
                     item={item}
                     fresh={fresh.has(item.id)}
                     dot={dots.get(item.id)}
                     onSeen={() => clearDot(item.id)}
+                    clockAge={!g.today}
                     inStack={filters.tab !== "stack" && !!item.vendor && stack.includes(item.vendor.slug)}
                   />
-                </Fragment>
-              )
-            })}
+                ))}
+              </section>
+            ))}
           </div>
 
           {failed && items.length === 0 ? (

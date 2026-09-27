@@ -10,7 +10,7 @@ import { IMPACT_METRICS, parseVector } from "@/lib/cvss"
 import { kevDueIn, URGENT_DAYS } from "@/lib/kev"
 import { kevDate, ticketText, whatToDo, type Todo } from "@/lib/todo"
 import { NewDot, type DotState } from "@/lib/dots"
-import { age, useNow } from "@/lib/time"
+import { age, clockTime, useNow } from "@/lib/time"
 
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const
 const MAX_SOURCES = 4
@@ -44,6 +44,7 @@ export function FeedRow({
   inStack = false,
   dot,
   onSeen,
+  clockAge = false,
 }: {
   item: FeedItem
   detail?: ItemDetail
@@ -58,6 +59,8 @@ export function FeedRow({
   dot?: DotState
   /** Expanding the row clears its dot. */
   onSeen?: () => void
+  /** Under a day separator older than today: the age column shows the local clock time. */
+  clockAge?: boolean
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [detail, setDetail] = useState<Detail>(
@@ -110,7 +113,7 @@ export function FeedRow({
             <Score item={item} className="mr-3" />
             <Bar item={item} />
             <Badge item={item} className="ml-3" />
-            <Age iso={item.last_event_at} className="ml-auto" />
+            <Age iso={item.last_event_at} clock={clockAge} className="ml-auto" />
           </div>
         </div>
 
@@ -121,7 +124,7 @@ export function FeedRow({
           <Score item={item} className="w-[47px] text-right" />
           <Bar item={item} className="ml-[21px]" />
           <Badge item={item} className="ml-5" />
-          <Age iso={item.last_event_at} className="w-[51px] text-right" />
+          <Age iso={item.last_event_at} clock={clockAge} className="w-[51px] text-right" />
         </div>
 
         <button
@@ -300,11 +303,18 @@ function Badge({ item, className }: { item: FeedItem; className?: string }) {
   )
 }
 
-function Age({ iso, className }: { iso: string; className?: string }) {
+/** Relative age ("6h") for today's rows; local clock time ("14:32") for older ones, with the
+ * relative age on hover. Both from last_event_at, the row's sort key, like the day separators. */
+function Age({ iso, clock = false, className }: { iso: string; clock?: boolean; className?: string }) {
   const now = useNow()
+  const relative = now === null ? "" : age(iso, now)
   return (
-    <time dateTime={iso} title={new Date(iso).toUTCString()} className={cn("font-mono text-xs text-muted", className)}>
-      {now === null ? "" : age(iso, now)}
+    <time
+      dateTime={iso}
+      title={clock ? (relative ? `${relative} ago` : undefined) : new Date(iso).toLocaleString()}
+      className={cn("font-mono text-xs text-muted", className)}
+    >
+      {now === null ? "" : clock ? clockTime(iso) : relative}
     </time>
   )
 }

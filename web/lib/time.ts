@@ -55,3 +55,40 @@ export function dayLabel(iso: string, nowMs: number): string {
   const month = d.toLocaleDateString([], { month: "short" })
   return `${weekday} ${month} ${d.getDate()}`
 }
+
+export interface DayGroup<T> {
+  /** Local calendar date, "2026-09-26". */
+  key: string
+  /** "Today", "Yesterday", else the short date. */
+  name: string
+  /** "Sat Sep 26". */
+  date: string
+  today: boolean
+  items: T[]
+}
+
+const shortDate = (d: Date) =>
+  `${d.toLocaleDateString([], { weekday: "short" })} ${d.toLocaleDateString([], { month: "short" })} ${d.getDate()}`
+
+/** Consecutive rows grouped by the local calendar day of last_event_at (their sort key). */
+export function groupByDay<T extends { last_event_at: string }>(items: T[], nowMs: number): DayGroup<T>[] {
+  const groups: DayGroup<T>[] = []
+  for (const item of items) {
+    const d = new Date(item.last_event_at)
+    const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+    const last = groups.at(-1)
+    if (last && last.key === key) {
+      last.items.push(item)
+      continue
+    }
+    const name = dayLabel(item.last_event_at, nowMs)
+    groups.push({ key, name, date: shortDate(d), today: name === "Today", items: [item] })
+  }
+  return groups
+}
+
+/** "14:32", local, 24-hour. */
+export function clockTime(iso: string): string {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+}

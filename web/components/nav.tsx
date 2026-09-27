@@ -15,7 +15,7 @@ import { minutesSinceSync, syncState } from "@/lib/sync"
 const LINKS = [
   { href: "/wire", label: "Wire" },
   { href: "/vendors", label: "Vendors" },
-  { href: "/outages", label: "Outages" },
+  { href: "/services", label: "Services" },
 ]
 
 const STATUS_POLL_MS = 60_000

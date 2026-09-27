@@ -21,9 +21,9 @@ export function Services({ data }: { data: ServicesOut | null }) {
   const impacted = list.filter(isImpacted)
   const ok = list.filter((s) => s.state === "operational").length
   const silent = list.length - impacted.length - ok
-  const outages = (
-    <Link href={`/outages${query()}`} className="max-md:tap outline-none hover:text-fg-2 focus-visible:text-fg-2">
-      all outages
+  const all = (
+    <Link href={`/services${query()}`} className="max-md:tap outline-none hover:text-fg-2 focus-visible:text-fg-2">
+      all services
     </Link>
   )
 
@@ -35,7 +35,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
           {" · "}
           {silent ? `${ok} operational · ${silent} not reporting` : `all ${ok} operational`}
         </p>
-        <span className="text-[11px] min-[2200px]:text-[12px] text-dim-text">{outages}</span>
+        <span className="text-[11px] min-[2200px]:text-[12px] text-dim-text">{all}</span>
       </section>
     )
   }
@@ -44,7 +44,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
     <section aria-label="Services">
       <div className="flex items-baseline justify-between">
         <h2 className="text-[13px] font-medium text-fg">Services</h2>
-        <span className="text-[11px] min-[2200px]:text-[12px] text-dim-text">{outages}</span>
+        <span className="text-[11px] min-[2200px]:text-[12px] text-dim-text">{all}</span>
       </div>
       <ul className="mt-3">
         {impacted.map((s) => (

@@ -5,7 +5,7 @@ import { cn } from "cn"
 import type { ServiceOut, ServiceState } from "@/lib/api"
 import { useNow } from "@/lib/time"
 
-// Shared by the rail's Services block and /outages: one visual language for service state,
+// Shared by the rail's Services block and /services: one visual language for service state,
 // the same as the CVSS bar (5x10px cells, 2px gap): gray ok, amber degraded, red major,
 // --rule where there is no data.
 

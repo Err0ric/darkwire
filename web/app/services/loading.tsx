@@ -1,10 +1,10 @@
 import { Bar, Loading, SkeletonHeader } from "@/components/Skeleton"
 
-// /outages while it renders: header, the Impacted now block and the four groups of name + strip.
-export default function OutagesLoading() {
+// /services while it renders: header, the Impacted now block and the four groups of name + strip.
+export default function ServicesLoading() {
   return (
     <main className="flex-1 page-frame pb-16">
-      <Loading label="outages" />
+      <Loading label="services" />
       <SkeletonHeader title="w-[170px]" counts="w-[300px]" />
       <div className="mt-8" aria-hidden>
         <div className="border-b border-rule pb-2.5">

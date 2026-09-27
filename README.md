@@ -8,9 +8,9 @@ Security news and CVEs on one live board. No accounts. No ads. No tracking.
 
 ![The wire](docs/screenshots/wire.png)
 
-| Outages | CVEs, one row expanded |
+| Services | CVEs, one row expanded |
 |---|---|
-| ![Outages](docs/screenshots/outages.png) | ![CVEs](docs/screenshots/cves.png) |
+| ![Services](docs/screenshots/services.png) | ![CVEs](docs/screenshots/cves.png) |
 
 ## What it is
 
@@ -18,7 +18,7 @@ Security news and CVEs on one live board. No accounts. No ads. No tracking.
 - **Vendor tagging.** Rows are tagged to one of 56 vendors by alias match on the headline, so the board can be filtered to a vendor.
 - **CVSS, EPSS and KEV.** CVE rows carry the NVD score, vector and affected versions, the FIRST EPSS probability, and CISA KEV status with its due date.
 - **Patch status.** "Patched" only when NVD or the vendor names a fix and no coverage says otherwise; "no fix" when coverage says unpatched; otherwise unverified.
-- **Service outages.** About 20 third-party services (cloud, identity, collaboration, dev) from their official status pages, with a 24-hour strip each.
+- **Services.** About 20 third-party services (cloud, identity, collaboration, dev) from their official status pages: a 24-hour strip each and the last 7 days of incidents.
 - **Your stack.** Pick vendors with `?stack=` and the board filters to them. The URL is the setting, so it can be shared as-is.
 
 ## How it works

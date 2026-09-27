@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import ServiceHour, ServiceStatus
+from app.models import ServiceHour, ServiceIncident, ServiceStatus
 from app.services import BY_SLUG, DEFAULTS, GROUPS, SERVICES, UNKNOWN
 from app.throttle import read_limit
 
@@ -27,6 +27,14 @@ class StaleEvent(BaseModel):
     updated_at: datetime | None
 
 
+class PastIncident(BaseModel):
+    title: str | None
+    state: str  # degraded | major
+    url: str | None
+    started_at: datetime | None
+    ended_at: datetime | None  # None while it is still open
+
+
 class ServiceOut(BaseModel):
     slug: str
     name: str
@@ -38,6 +46,7 @@ class ServiceOut(BaseModel):
     changed_at: datetime | None
     hours: list[str]  # 24 UTC hours, oldest first, ending with the current hour; unknown = no data
     stale: list[StaleEvent]  # open events with no vendor update in 72h; never counted in state
+    incidents: list[PastIncident] = []  # the last 7 days, newest first
 
 
 class ServicesOut(BaseModel):
@@ -66,6 +75,18 @@ async def services(
     for h in (await session.scalars(select(ServiceHour).where(ServiceHour.slug.in_(wanted), ServiceHour.hour >= hours[0]))).all():
         history.setdefault(h.slug, {})[h.hour] = h.worst
 
+    week: dict[str, list[PastIncident]] = {}
+    for inc in (
+        await session.scalars(
+            select(ServiceIncident)
+            .where(ServiceIncident.slug.in_(wanted), ServiceIncident.started_at >= now - timedelta(days=7))
+            .order_by(ServiceIncident.started_at.desc())
+        )
+    ).all():
+        week.setdefault(inc.slug, []).append(
+            PastIncident(title=inc.title, state=inc.state, url=inc.url, started_at=inc.started_at, ended_at=inc.ended_at)
+        )
+
     out = []
     for slug in wanted:
         svc, row = BY_SLUG[slug], rows.get(slug)
@@ -80,6 +101,7 @@ async def services(
                 changed_at=row.changed_at if row else None,
                 hours=[history.get(slug, {}).get(h, UNKNOWN) for h in hours],
                 stale=[StaleEvent(**e) for e in (row.stale or [])] if row else [],
+                incidents=week.get(slug, []),
             )
         )
     return ServicesOut(services=out, defaults=DEFAULTS, groups=GROUPS)

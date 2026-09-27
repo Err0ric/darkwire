@@ -132,7 +132,7 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
           {[
             ["/cves", "CVEs"],
             ["/vendors", "Vendors"],
-            ["/outages", "Outages"],
+            ["/services", "Services"],
           ].map(([href, label]) => (
             <Link key={href} href={`${href}${query()}`} className="max-md:tap outline-none hover:text-fg-2 focus-visible:text-fg-2">
               {label}

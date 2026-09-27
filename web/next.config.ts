@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BUILD_ID: process.env.VERCEL_GIT_COMMIT_SHA ?? "dev",
   },
   poweredByHeader: false,
+  // /outages was renamed /services; keep old links working.
+  async redirects() {
+    return [{ source: "/outages", destination: "/services", permanent: true }]
+  },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

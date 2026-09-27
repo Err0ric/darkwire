@@ -276,8 +276,10 @@ export interface ServiceOut {
   checked_at: string | null
   changed_at: string | null
   hours: ServiceState[] // 24 UTC hours, oldest first; unknown = no data
-  /** Open events with no vendor update in 72h. Listed on /outages, never counted. */
+  /** Open events with no vendor update in 72h. Listed on /services, never counted. */
   stale: { state: ServiceState; title: string | null; url: string | null; started_at: string | null; updated_at: string | null }[]
+  /** Incidents of the last 7 days, newest first; ended_at null while still open. */
+  incidents?: { title: string | null; state: "degraded" | "major"; url: string | null; started_at: string | null; ended_at: string | null }[]
 }
 
 export interface ServicesOut {
@@ -286,7 +288,7 @@ export interface ServicesOut {
   groups: string[]
 }
 
-/** Service status. No slugs = the default eight; "all" = every service (/outages). */
+/** Service status. No slugs = the default eight; "all" = every service (/services). */
 export const getServices = (slugs?: string, init?: RequestInit) =>
   get<ServicesOut>("/services", slugs ? { slugs } : {}, init)
 

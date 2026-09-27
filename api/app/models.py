@@ -14,6 +14,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -305,6 +306,25 @@ class ServiceStatus(Base):
     error: Mapped[str | None] = mapped_column(Text)
     # Open events with no vendor update in 72h: [{state, title, url, started_at, updated_at}].
     stale: Mapped[list | None] = mapped_column(JSONB)
+
+
+class ServiceIncident(Base):
+    """An incident on a third-party status page, kept 8 days for the /services panel: recorded
+    from each poll while it is open (ended_at set when it is gone) and, for Statuspage services,
+    backfilled from the page's incident history."""
+
+    __tablename__ = "service_incidents"
+    __table_args__ = (UniqueConstraint("slug", "key", name="uq_service_incidents_slug_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(64), index=True)
+    key: Mapped[str] = mapped_column(Text)  # the incident URL, else title + start
+    title: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(String(16))  # degraded | major (worst seen)
+    url: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class ServiceHour(Base):

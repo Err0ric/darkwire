@@ -42,13 +42,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import jobstate
 from app.db import SessionLocal
-from app.models import ServiceHour, ServiceStatus
+from app.models import ServiceHour, ServiceIncident, ServiceStatus
 
 log = logging.getLogger(__name__)
 
 JOB_ID = "services"
 POLL_MINUTES = 3
 HISTORY = timedelta(hours=24)
+INCIDENT_KEEP = timedelta(days=8)  # the /services panel shows 7 days
+INCIDENT_HISTORY_EVERY = timedelta(hours=1)  # Statuspage incident history backfill
 # An open event the vendor has not updated in this long is stale: listed, never counted.
 STALE_AFTER = timedelta(hours=72)
 TIMEOUT = 20.0
@@ -402,6 +404,84 @@ async def store(
         existing.worst = state
 
 
+async def record_incidents(session: AsyncSession, svc: Service, readings: list[Reading] | None, now: datetime) -> None:
+    """Keep each open incident (a titled degraded / major reading that is not stale) in
+    service_incidents; one that is no longer open gets ended_at. Skipped when the read failed."""
+    if readings is None:
+        return
+    current, _ = split(readings, now)
+    open_now = [
+        r for r in readings
+        if r.title and r.state in (DEGRADED, MAJOR) and (r.updated_at is None or now - r.updated_at <= STALE_AFTER)
+    ]
+    seen = []
+    for r in open_now:
+        key = r.url if r.url and r.url != svc.page else f"{r.title}|{r.started_at.isoformat() if r.started_at else ''}"
+        if key in seen:
+            continue
+        seen.append(key)
+        existing = await session.scalar(
+            select(ServiceIncident).where(ServiceIncident.slug == svc.slug, ServiceIncident.key == key)
+        )
+        if existing is None:
+            session.add(ServiceIncident(
+                slug=svc.slug, key=key, title=r.title, state=r.state, url=r.url or svc.page,
+                started_at=r.started_at or now, ended_at=None, last_seen_at=now,
+            ))
+        else:
+            existing.title = r.title
+            existing.last_seen_at = now
+            existing.ended_at = None
+            if RANK[r.state] > RANK.get(existing.state, 0):
+                existing.state = r.state
+    await session.flush()
+    stmt = select(ServiceIncident).where(ServiceIncident.slug == svc.slug, ServiceIncident.ended_at.is_(None))
+    for inc in (await session.scalars(stmt)).all():
+        if inc.key not in seen:
+            inc.ended_at = now
+
+
+async def backfill_statuspage_history(client: httpx.AsyncClient, session: AsyncSession, now: datetime) -> int:
+    """Hourly: Statuspage services publish their recent incidents (resolved ones included) at
+    /api/v2/incidents.json; import the last 7 days so the panel is not empty on day one."""
+    last = await jobstate.get_time(session, "service_history_at")
+    if last and now - last < INCIDENT_HISTORY_EVERY:
+        return 0
+    impact = {"critical": MAJOR, "major": MAJOR, "minor": DEGRADED}
+    added = 0
+    for svc in (s for s in SERVICES if s.kind == "statuspage"):
+        try:
+            r = await client.get(svc.source.replace("/summary.json", "/incidents.json"))
+            r.raise_for_status()
+            incidents = r.json().get("incidents") or []
+        except Exception as e:  # one bad page is that service's problem only
+            log.info("services: %s history failed: %s", svc.slug, type(e).__name__)
+            continue
+        for i in incidents:
+            started = _ts(i.get("created_at"))
+            if not started or now - started > INCIDENT_KEEP or i.get("impact") not in impact:
+                continue
+            ended = _ts(i.get("resolved_at")) if i.get("status") in ("resolved", "postmortem") else None
+            url = i.get("shortlink") or svc.page
+            existing = await session.scalar(
+                select(ServiceIncident).where(ServiceIncident.slug == svc.slug, ServiceIncident.key == url)
+            )
+            if existing is None:
+                session.add(ServiceIncident(
+                    slug=svc.slug, key=url, title=i.get("name"), state=impact[i["impact"]], url=url,
+                    started_at=started, ended_at=ended, last_seen_at=now,
+                ))
+                added += 1
+            else:
+                existing.title = i.get("name")
+                existing.started_at = started
+                if ended:
+                    existing.ended_at = ended
+            await session.flush()
+    await jobstate.put(session, "service_history_at", now.isoformat())
+    return added
+
+
 REPAIR_STATE = "service_hours_stale_v1"
 
 
@@ -447,14 +527,23 @@ async def poll() -> None:
 
         results = await asyncio.gather(*(one(s) for s in SERVICES))
 
-    async with SessionLocal() as session:
-        for svc, readings, error in results:
-            if error:
-                log.info("services: %s failed: %s", svc.slug, error)
-            await store(session, svc, readings, error, now)
-        await session.execute(delete(ServiceHour).where(ServiceHour.hour < _hour(now) - HISTORY))
-        await session.commit()
-        await repair_hours_once(session)
+        async with SessionLocal() as session:
+            for svc, readings, error in results:
+                if error:
+                    log.info("services: %s failed: %s", svc.slug, error)
+                await store(session, svc, readings, error, now)
+                await record_incidents(session, svc, readings, now)
+            await session.execute(delete(ServiceHour).where(ServiceHour.hour < _hour(now) - HISTORY))
+            await session.execute(delete(ServiceIncident).where(ServiceIncident.last_seen_at < now - INCIDENT_KEEP))
+            await session.commit()
+            try:
+                if added := await backfill_statuspage_history(client, session, now):
+                    log.info("services: backfilled %d incidents from Statuspage history", added)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                log.exception("services: incident history backfill failed")
+            await repair_hours_once(session)
     impacted = [f"{s.slug}={split(r, now)[0].state}" for s, r, _ in results if r and split(r, now)[0].state != OPERATIONAL]
     log.info("services: polled %d, %s", len(results), ", ".join(impacted) or "all operational")
 

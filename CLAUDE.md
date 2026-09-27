@@ -70,6 +70,8 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
                    [source · source · source · category · KEV]
 ```
 
+- Rows with no CVE ID, score, bar or badge drop those empty columns: the headline runs to the age column. Rows with data keep the aligned columns.
+- Headlines are one line (ellipsis) only on wide landscape screens (over 1600px wide, landscape); narrower and portrait screens (1200-1600px wide, 1080x1920, 1440x2560) wrap them to at most two lines, and the row grows from 64px.
 - Vendor mark: `/public/vendors/{slug}.svg`, monochrome, currentColor at `--muted`, 20px, no circle. Fallback: Lucide category icon (shield-alert for breach, bug for vuln, file-text for advisory, flask for research).
 - Headline links to the primary source, `target="_blank" rel="noopener noreferrer"`.
 - Meta line: every source name is a link to that outlet's article, same 12px, `--fg-2`. One name per outlet: an outlet with several articles in the cluster links to its newest. Cap 4 visible, then `+N`. Then category, then `KEV` in `--critical` if listed, else `EXPLOITED` in `--critical` when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator is `·`.
@@ -130,6 +132,8 @@ Three layouts by viewport width:
 - 2200px and wider: three columns in one centered block, 64px apart. Left rail 300px: Last 7 days, Added to KEV, Most active this week, Sources line. Feed flexible, max 1100px. Right rail 300px: Services, Elsewhere.
 - 1200 to 2199px: feed plus one 340px right rail, 48px apart: Services, Added to KEV, Last 7 days, Elsewhere, Most active this week, Sources line.
 - Under 1200px: the rail stacks below the feed: Elsewhere, Most active, Added to KEV, Last 7 days, Sources line (Services sits above the feed).
+
+Rails are `position: sticky` in the two- and three-column layouts: a rail shorter than the window pins 24px from the top; a taller one scrolls with the page until its bottom is 24px above the window's bottom, then holds (`web/lib/sticky.ts`). The nav is not sticky, so rails pin to the window top.
 
 Sections:
 

@@ -2,6 +2,10 @@
 /* data-open / data-closed / data-checked variants used by the shadcn primitives. */
 @import "shadcn/tailwind.css";
 
+/* Feed headlines stay on one line only on wide landscape screens; narrower and portrait
+   screens (1200-1600px wide, 1080x1920, 1440x2560) wrap them to at most two. */
+@custom-variant one-line-rows (@media (min-width: 1601px) and (orientation: landscape));
+
 /* Palette from CLAUDE.md. Components use these through the Tailwind tokens below
    (bg-bg, text-fg-2, border-hairline, ...). Never hardcode colors in components. */
 :root {

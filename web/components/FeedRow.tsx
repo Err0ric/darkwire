@@ -67,6 +67,7 @@ export function FeedRow({
     initialDetail ? { state: "ready", item: initialDetail } : { state: "idle" },
   )
   const detailId = `row-${item.id}-detail`
+  const hasData = item.cve_id !== null || item.cvss !== null || hasBadge(item)
 
   function toggle() {
     const next = !expanded
@@ -95,7 +96,7 @@ export function FeedRow({
     >
       <div
         onClick={onRowClick}
-        className="flex cursor-pointer items-start py-3 md:h-16 md:items-center md:py-0"
+        className="flex cursor-pointer items-start py-3 md:min-h-16 md:items-center md:py-2.5 one-line-rows:h-16 one-line-rows:py-0"
       >
         <VendorMark item={item} inStack={inStack} />
 
@@ -104,7 +105,7 @@ export function FeedRow({
           <a
             href={item.primary_url}
             {...EXTERNAL}
-            className="line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] text-fg outline-none focus-visible:underline md:block md:truncate"
+            className="line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] text-fg outline-none focus-visible:underline one-line-rows:block one-line-rows:truncate"
           >
             {item.headline}
           </a>
@@ -120,10 +121,15 @@ export function FeedRow({
         <div className="hidden shrink-0 items-center md:flex">
           {/* Dropped when the feed column is narrow (rail beside it at ~1000-1300px), so the
               headline keeps room. Needs an @container ancestor; without one it always shows. */}
-          <span className="w-[128px] font-mono text-xs text-muted @max-[760px]:hidden">{item.cve_id}</span>
-          <Score item={item} className="w-[47px] text-right" />
-          <Bar item={item} className="ml-[21px]" />
-          <Badge item={item} className="ml-5" />
+          {/* No CVE, score, bar or badge: the empty columns go, and the headline runs to the age. */}
+          {hasData && (
+            <>
+              <span className="w-[128px] font-mono text-xs text-muted @max-[760px]:hidden">{item.cve_id}</span>
+              <Score item={item} className="w-[47px] text-right" />
+              <Bar item={item} className="ml-[21px]" />
+              <Badge item={item} className="ml-5" />
+            </>
+          )}
           <Age iso={item.last_event_at} clock={clockAge} className="w-[51px] text-right" />
         </div>
 
@@ -280,6 +286,11 @@ const BADGE: Record<string, string> = {
   medium: "border-outline-medium text-fg-2",
   low: "border-outline-muted text-muted",
   muted: "border-outline-muted text-muted",
+}
+
+function hasBadge(item: FeedItem): boolean {
+  const severity = item.severity && item.severity !== "none" ? item.severity : null
+  return severity !== null || item.category === "breach" || item.category === "ransomware"
 }
 
 function Badge({ item, className }: { item: FeedItem; className?: string }) {

@@ -200,7 +200,8 @@ In `api/app/throttle.py` and `api/app/main.py`:
 - Optional `SSR_TOKEN` (Railway) / `API_SERVER_TOKEN` (Vercel, server-only): server-rendered page requests carry it as `X-SSR-Token` and skip the per-IP bucket, since Vercel's servers share IPs across visitors.
 - `/docs`, `/redoc`, `/openapi.json` exist only locally (off when `RAILWAY_ENVIRONMENT_NAME` is set).
 - CORS: GET only, from `https://darkwire.tech`, `https://www.darkwire.tech` and localhost:3000. Fixed in code.
-- Every response: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`; uvicorn runs with `--no-server-header`.
+- Every response: `Strict-Transport-Security: max-age=63072000; includeSubDomains` (no preload on the API host), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`; uvicorn runs with `--no-server-header`.
+- Every 5 minutes the API logs how many read requests were server renders (SSR bucket) vs per-IP; counts only.
 - Never commit a token value. Tokens are compared in constant time.
 
 Web (`web/proxy.ts`, `web/next.config.ts`): a Content-Security-Policy with a per-request nonce (`script-src 'self' 'nonce-…' 'strict-dynamic'`; `connect-src 'self'` plus the API origin; `img-src 'self' data:` for the favicon dot; `style-src 'self' 'unsafe-inline'`; `font-src 'self'`; `object-src 'none'`; `frame-ancestors 'none'`; `base-uri` and `form-action 'self'`). Next.js puts the nonce on its scripts; the root layout on the theme script. Every page renders per request anyway, so nonces cost nothing. Plus HSTS (2 years, subdomains, preload), `nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a `Permissions-Policy` denying camera, microphone, geolocation and interest-cohort, `X-Frame-Options: DENY`, and no `X-Powered-By`. The web app asks the API for at most 100 rows a request (`/cves` pages through up to 500).

@@ -121,7 +121,26 @@ def require_audit(request: Request, what: str) -> None:
 limiter = Limiter(key_func=client_ip)
 
 # Decorators for read routes (the route needs a `request: Request` parameter).
-read_limit = limiter.shared_limit(READ, scope="read", exempt_when=is_server_render)
+# Debug-safe counter: how many read requests came from server renders (SSR bucket) vs the
+# per-IP bucket, logged every LOG_EVERY seconds. Counts only; no addresses, no tokens.
+LOG_EVERY = 300
+_counts = {"ssr": 0, "per_ip": 0, "since": time.time()}
+
+
+def _ssr_exempt(request: Request) -> bool:
+    ssr = is_server_render(request)
+    _counts["ssr" if ssr else "per_ip"] += 1
+    now = time.time()
+    if now - _counts["since"] >= LOG_EVERY:
+        log.info(
+            "throttle: last %ds: %d server-render requests (SSR bucket), %d per-IP requests",
+            round(now - _counts["since"]), _counts["ssr"], _counts["per_ip"],
+        )
+        _counts.update(ssr=0, per_ip=0, since=now)
+    return ssr
+
+
+read_limit = limiter.shared_limit(READ, scope="read", exempt_when=_ssr_exempt)
 heavy_limit = limiter.limit(HEAVY, exempt_when=lambda request: not is_heavy(request))
 
 

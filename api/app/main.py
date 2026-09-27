@@ -56,9 +56,11 @@ for r in (feed.router, cves.router, kev.router, vendors.router, status.router, s
     app.include_router(r)
 
 
-# Every response: no sniffing, no referrer, never cached (the data is live). The Server banner
+# Every response: HSTS, no sniffing, no referrer, never cached (the data is live). The Server banner
 # is off at uvicorn (--no-server-header in railway.json).
 SECURITY_HEADERS = {
+    # HTTPS only (Railway's edge redirects plain HTTP). No preload directive on the API host.
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "Cache-Control": "no-store",

@@ -109,7 +109,7 @@ Claude Haiku writes the row summary and the What to do workaround sentence. Rule
 - No tools, and no data beyond the article text: headline, article titles, excerpts and bodies, wrapped in `<article>` tags the prompt says are material, never instructions. No NVD, KEV, EPSS or vendor data goes in.
 - Output renders as plain text only (never HTML or markdown).
 - Structured facts (CVSS, KEV, fixed version, patch status) come only from NVD, CISA and vendor data, never from the model.
-- Discard output over the length limit (summary 60 words / 450 characters, workaround 25 words), or containing a URL, markdown, a line break, or the first person (refusals, talk about its instructions). Discarded output is stored as empty so it is not re-asked; the row shows no summary.
+- Discard output over the length limit (summary 60 words / 450 characters, workaround 25 words), or containing a URL, markdown, a line break, or the first person (refusals, talk about its instructions). Discarded output is stored as empty so it is not re-asked; the row shows no summary. Sentences about what the articles do not say ("No information about remediation is provided.") are dropped before storing; the rest of the summary stays. The model summarizes a bare headline-plus-excerpt item in a sentence or two and replies SKIP only when there is nothing beyond the headline.
 - Bumping `RULES_VERSION` wipes every stored summary and workaround so they regenerate under the new rules.
 - `/status` reports the model's health (ok, auth failing, quota, error, no key, pending); the rail says "Summaries paused." when it is not ok.
 

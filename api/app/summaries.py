@@ -37,7 +37,7 @@ PER_RUN = 40
 CONCURRENCY = 4
 HEALTH = "summaries_health"
 # Bump to wipe every stored summary and workaround so they regenerate under current rules.
-RULES_VERSION = "2"
+RULES_VERSION = "3"
 
 SUMMARY_MAX_WORDS = 60
 SUMMARY_MAX_CHARS = 450
@@ -58,7 +58,7 @@ Use only facts stated in the articles. If they do not say whether a fix exists, 
 Start directly with the first sentence. Do not repeat the headline as a title.
 No adjectives of emphasis (critical, severe, major, alarming), no marketing language, no advice, no source names, no links, no first person.
 Plain text only: no markdown, no line breaks, no bullet points, no preamble.
-If the material is too thin to summarize, reply with exactly: SKIP"""
+Many items have only a headline and a short excerpt. Summarize what they do state, in one or two sentences if that is all there is. Reply with exactly SKIP only when there is nothing beyond the headline itself."""
 
 ACTION_SYSTEM = """You read security articles about a vulnerability and report the workaround they describe, if any.
 
@@ -93,13 +93,28 @@ def _plain(text: str) -> str:
     return " ".join(text.split())
 
 
+# A sentence about what the articles do not say ("No information about remediation is
+# provided.", "The articles do not specify whether a fix is available.") is dropped: the row
+# shows only what is known. "No patches are available" is a fact and stays.
+_UNKNOWN = re.compile(
+    r"\b(no|not|nor|without)\b[^.]*\b(information|details?|info|mentioned|provided|disclosed|specif(y|ied)|stated|given|clear)\b"
+    r"|\b(the|available) (articles?|sources?|information|material|reports?)\b",
+    re.I,
+)
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _drop_unknowns(text: str) -> str:
+    return " ".join(s for s in _SENTENCE.split(text) if s and not _UNKNOWN.search(s)).strip()
+
+
 def check_summary(raw: str | None) -> str | None:
     """The summary to store, or None when the output breaks a rule."""
     if not raw or raw.strip() == "SKIP":
         return None
     if "\n" in raw.strip() or _MARKDOWN.search(raw) or _URL.search(raw) or _FIRST_PERSON.search(raw):
         return None
-    text = _plain(raw)
+    text = _drop_unknowns(_plain(raw))
     if not text or len(text) > SUMMARY_MAX_CHARS or len(text.split()) > SUMMARY_MAX_WORDS:
         return None
     return text

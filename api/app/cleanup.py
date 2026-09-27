@@ -6,11 +6,12 @@ import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, exists, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app import jobstate
-from app.models import Category, Item, ItemCve, ItemSource, Stream
+from app.models import Category, Cve, Item, ItemCve, ItemSource, Stream
 from app.tagging import VendorMatcher, cluster_cves, guess_category, is_ad
 
 log = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ async def retag_once(session: AsyncSession, matcher: VendorMatcher) -> dict | No
     return counts
 
 
-RELINK_STATE = "cve_links_v4"
+RELINK_STATE = "cve_links_v5"
 
 
 async def relink_cves_once(session: AsyncSession) -> dict | None:
@@ -80,7 +81,7 @@ async def relink_cves_once(session: AsyncSession) -> dict | None:
     from feed text that is not stored). Enrichment re-points cve_id and patch status after."""
     if await jobstate.get(session, RELINK_STATE):
         return None
-    counts = {"items": 0, "links_removed": 0, "items_changed": 0}
+    counts = {"items": 0, "links_removed": 0, "links_added": 0, "items_changed": 0}
     items = (
         await session.scalars(
             select(Item).where(Item.stream == Stream.main, Item.sources.any()).options(selectinload(Item.sources))
@@ -94,12 +95,22 @@ async def relink_cves_once(session: AsyncSession) -> dict | None:
             continue
         linked = (await session.scalars(select(ItemCve.cve_id).where(ItemCve.item_id == item.id))).all()
         extra = [c for c in linked if c not in allowed]
-        if not extra:
+        # Only rows that are already about CVEs gain IDs; a news row does not become a CVE row here.
+        missing = [c for c in allowed if c not in linked] if linked else []
+        if not extra and not missing:
             continue
-        await session.execute(delete(ItemCve).where(ItemCve.item_id == item.id, ItemCve.cve_id.in_(extra)))
-        if item.cve_id in extra:
-            item.cve_id = next((c for c in linked if c in allowed), None)
+        if extra:
+            await session.execute(delete(ItemCve).where(ItemCve.item_id == item.id, ItemCve.cve_id.in_(extra)))
+        if missing:
+            # Placeholder rows so the FKs hold; enrichment fills them in.
+            await session.execute(pg_insert(Cve).values([{"id": c} for c in missing]).on_conflict_do_nothing())
+            await session.execute(
+                pg_insert(ItemCve).values([{"item_id": item.id, "cve_id": c} for c in missing]).on_conflict_do_nothing()
+            )
+        if item.cve_id in extra or item.cve_id is None:
+            item.cve_id = allowed[0]
         counts["links_removed"] += len(extra)
+        counts["links_added"] += len(missing)
         counts["items_changed"] += 1
         changed_ids.append(item.id)
     await jobstate.put(session, RELINK_STATE, json.dumps({"at": datetime.now(UTC).isoformat(), **counts, "item_ids": changed_ids}))

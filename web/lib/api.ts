@@ -209,8 +209,9 @@ export interface FeedQuery {
   vendors?: string
   /** Only Critical or KEV rows, old CVEs left out. */
   critical?: boolean
-  /** Only this severity over the last 7 days, old CVEs left out (the rail's Last 7 days). */
+  /** Only this severity, old CVEs left out: over the last 7 days (rail) or 24h (header counts). */
   severity?: Severity
+  window?: "24h" | "7d"
 }
 
 export const getFeed = (query: FeedQuery = {}, init?: RequestInit) =>
@@ -260,6 +261,8 @@ export interface ServiceOut {
   checked_at: string | null
   changed_at: string | null
   hours: ServiceState[] // 24 UTC hours, oldest first; unknown = no data
+  /** Open events with no vendor update in 72h. Listed on /outages, never counted. */
+  stale: { state: ServiceState; title: string | null; url: string | null; started_at: string | null; updated_at: string | null }[]
 }
 
 export interface ServicesOut {

@@ -100,7 +100,8 @@ async def feed(
     pinned: bool = Query(False, description="only Critical or KEV rows with an event in the last 48h"),
     critical: bool = Query(False, description="only Critical or KEV rows (old CVEs excluded)"),
     all_sources: bool = Query(False, description="every article, not one per outlet (feed audit)"),
-    severity: Severity | None = Query(None, description="only this severity in the last 7 days, old CVEs excluded"),
+    severity: Severity | None = Query(None, description="only this severity (window below), old CVEs excluded"),
+    window: str = Query("7d", pattern="^(24h|7d)$", description="window for severity: 24h (header counts) or 7d (rail)"),
     session: AsyncSession = Depends(get_session),
 ) -> FeedPage:
     where = [Item.stream == Stream.main]
@@ -125,9 +126,10 @@ async def feed(
     if since:
         where.append(Item.last_event_at > since)
     if severity is not None:
-        # Matches the rail's "Last 7 days" counts exactly.
+        # Matches the header's 24h counts or the rail's "Last 7 days" counts exactly.
         where.append(Item.severity == severity)
-        where.append(Item.last_event_at >= datetime.now(UTC) - timedelta(days=7))
+        span = timedelta(hours=24) if window == "24h" else timedelta(days=7)
+        where.append(Item.last_event_at >= datetime.now(UTC) - span)
         where.append(not_stale(datetime.now(UTC)))
     if critical:
         where.append(or_(Item.severity == Severity.critical, Item.kev.is_(True)))

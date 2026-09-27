@@ -298,6 +298,8 @@ class ServiceStatus(Base):
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
+    # Open events with no vendor update in 72h: [{state, title, url, started_at, updated_at}].
+    stale: Mapped[list | None] = mapped_column(JSONB)
 
 
 class ServiceHour(Base):

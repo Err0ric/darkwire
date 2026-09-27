@@ -12,6 +12,8 @@ export interface Filters {
   q: string
   /** ?severity=: this severity over the last 7 days; "" for none. Combines with tab/vendor/stack. */
   severity: Severity | ""
+  /** Severity window: "24h" from the header counts, "" = 7 days from the rail. */
+  window: "24h" | ""
 }
 
 export const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"]
@@ -39,7 +41,12 @@ export const DAY_MS = 24 * 3600 * 1000
 
 /** API query for the wire's filters. My stack is the All tab narrowed to the stack's vendors. */
 export function feedQuery(f: Filters, stack: string[]): FeedQuery {
-  const base = { vendor: f.vendor || undefined, q: f.q || undefined, severity: f.severity || undefined }
+  const base = {
+    vendor: f.vendor || undefined,
+    q: f.q || undefined,
+    severity: f.severity || undefined,
+    window: f.severity && f.window ? f.window : undefined,
+  }
   if (f.tab === "stack") return { ...base, tab: "all", vendors: stack.join(",") || undefined }
   return { ...base, tab: f.tab }
 }

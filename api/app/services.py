@@ -5,6 +5,10 @@ operational, degraded (amber), major (red), or unknown (the source failed or was
 plus the current incident's title, link and start. The worst state per UTC hour is kept for
 24 hours for the /outages strip.
 
+An open event the vendor has not updated in 72 hours is stale: it is stored and listed on
+/outages under "Stale", but never counts toward the state, the rail, the unseen indicator or
+the home status line (AWS's long-running Middle East region events, for one).
+
 Sources, all public and official:
 - Statuspage (/api/v2/summary.json): Cloudflare, GitHub, DigitalOcean, Akamai, Duo, 1Password,
   Ping Identity, Zoom, Atlassian, Dropbox, npm, Docker, PyPI, Vercel.
@@ -22,6 +26,7 @@ Sources, all public and official:
   -> degraded.
 """
 
+import ast
 import asyncio
 import json
 import logging
@@ -43,6 +48,8 @@ log = logging.getLogger(__name__)
 JOB_ID = "services"
 POLL_MINUTES = 3
 HISTORY = timedelta(hours=24)
+# An open event the vendor has not updated in this long is stale: listed, never counted.
+STALE_AFTER = timedelta(hours=72)
 TIMEOUT = 20.0
 USER_AGENT = "darkwire/0.1 (+https://darkwire.tech)"
 
@@ -52,10 +59,14 @@ RANK = {UNKNOWN: 0, OPERATIONAL: 1, DEGRADED: 2, MAJOR: 3}
 
 @dataclass
 class Reading:
+    """One open event (or a page-level rollup) on a status source."""
+
     state: str
     title: str | None = None
     url: str | None = None
     started_at: datetime | None = None
+    # Last time the vendor updated it. None for page-level rollups: always current.
+    updated_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -125,30 +136,40 @@ def _worst(readings: list[Reading]) -> Reading:
                default=Reading(OPERATIONAL))
 
 
+def split(readings: list[Reading], now: datetime) -> tuple[Reading, list[Reading]]:
+    """(the service's current reading, stale events). An event the vendor has not updated in
+    STALE_AFTER is set aside: it does not count toward the state, the rail, the unseen
+    indicator or the home status line, and /outages lists it under Stale."""
+    current = [r for r in readings if r.updated_at is None or now - r.updated_at <= STALE_AFTER]
+    stale = [r for r in readings if r.updated_at is not None and now - r.updated_at > STALE_AFTER]
+    return _worst(current), sorted(stale, key=lambda r: r.updated_at or now, reverse=True)
+
+
 # ---------------------------------------------------------------- parsers (one per kind)
+# Each returns every open event with its last update; split() decides what counts.
 
 
-def parse_statuspage(data: dict, svc: Service) -> Reading:
-    """The page's own rollup (status.indicator) decides the state; the worst open incident
-    only supplies the title and link. An incident the vendor rates impact "none", or one open
-    while the page still says All Systems Operational, is not an outage here."""
+def parse_statuspage(data: dict, svc: Service) -> list[Reading]:
+    """Operational when the page's own rollup (status.indicator) says so, whatever incidents
+    are open; an incident the vendor rates impact "none" is never an outage. Otherwise one
+    reading per open incident, or the rollup itself when no incident explains it."""
     status = data.get("status") or {}
-    indicator = status.get("indicator")
-    state = {"major": MAJOR, "critical": MAJOR, "minor": DEGRADED}.get(indicator)
-    if state is None:
-        return Reading(OPERATIONAL)
-    rank = {"critical": 3, "major": 2, "minor": 1}
-    open_ = [
-        i for i in data.get("incidents") or []
-        if i.get("status") not in ("resolved", "postmortem") and i.get("impact") in rank
+    rollup = {"major": MAJOR, "critical": MAJOR, "minor": DEGRADED}.get(status.get("indicator"))
+    if rollup is None:
+        return []
+    impact = {"critical": MAJOR, "major": MAJOR, "minor": DEGRADED}
+    readings = [
+        Reading(
+            impact[i["impact"]], i.get("name"), i.get("shortlink") or svc.page,
+            _ts(i.get("created_at")), _ts(i.get("updated_at")) or _ts(i.get("created_at")),
+        )
+        for i in data.get("incidents") or []
+        if i.get("status") not in ("resolved", "postmortem") and i.get("impact") in impact
     ]
-    if not open_:
-        return Reading(state, status.get("description"), svc.page)
-    inc = max(open_, key=lambda i: (rank[i["impact"]], i.get("created_at") or ""))
-    return Reading(state, inc.get("name"), inc.get("shortlink") or svc.page, _ts(inc.get("created_at")))
+    return readings or [Reading(rollup, status.get("description"), svc.page)]
 
 
-def parse_aws(raw: bytes, svc: Service) -> Reading:
+def parse_aws(raw: bytes, svc: Service) -> list[Reading]:
     text = raw.decode("utf-16") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("utf-8-sig")
     # One reading per (service, summary), naming every region it covers:
     # "Multiple services · Region Availability · UAE, Bahrain".
@@ -158,7 +179,8 @@ def parse_aws(raw: bytes, svc: Service) -> Reading:
         if state is None:
             continue  # 0 resolved, 1 informational
         g = groups.setdefault(
-            (e.get("service_name") or "", e.get("summary") or ""), {"state": state, "regions": [], "started": None}
+            (e.get("service_name") or "", e.get("summary") or ""),
+            {"state": state, "regions": [], "started": None, "updated": None},
         )
         if RANK[state] > RANK[g["state"]]:
             g["state"] = state
@@ -167,31 +189,45 @@ def parse_aws(raw: bytes, svc: Service) -> Reading:
         started = _ts(e.get("date"))
         if started and (g["started"] is None or started < g["started"]):
             g["started"] = started
-    readings = [
-        Reading(g["state"], " · ".join(p for p in (name, summary, ", ".join(g["regions"])) if p), svc.page, g["started"])
+        log_ = e.get("event_log") or []
+        if isinstance(log_, str):
+            try:
+                log_ = ast.literal_eval(log_)
+            except (ValueError, SyntaxError):
+                log_ = []
+        stamps = [t for t in (_ts(x.get("timestamp")) for x in log_ if isinstance(x, dict)) if t] or [started]
+        latest = max((t for t in stamps if t), default=None)
+        if latest and (g["updated"] is None or latest > g["updated"]):
+            g["updated"] = latest
+    return [
+        Reading(
+            g["state"], " · ".join(p for p in (name, summary, ", ".join(g["regions"])) if p),
+            svc.page, g["started"], g["updated"],
+        )
         for (name, summary), g in groups.items()
     ]
-    return _worst(readings)
 
 
 _OUTAGE_WORDS = re.compile(r"\b(outage|unavailable|down)\b", re.I)
 
 
-def parse_rss_incidents(raw: bytes, svc: Service) -> Reading:
+def parse_rss_incidents(raw: bytes, svc: Service) -> list[Reading]:
     readings = []
     for entry in feedparser.parse(raw).entries:
         title = (entry.get("title") or "").strip()
         # The M365 admin center feed keeps one standing item marked <status>Available</status>.
         if not title or (entry.get("status") or "").strip().lower() in ("available", "operational", "resolved"):
             continue
-        t = entry.get("published_parsed") or entry.get("updated_parsed")
-        started = datetime(*t[:6], tzinfo=UTC) if t else None
+        p = entry.get("published_parsed")
+        u = entry.get("updated_parsed") or p
+        started = datetime(*p[:6], tzinfo=UTC) if p else None
+        updated = datetime(*u[:6], tzinfo=UTC) if u else None
         state = MAJOR if _OUTAGE_WORDS.search(title) else DEGRADED
-        readings.append(Reading(state, title, entry.get("link") or svc.page, started))
-    return _worst(readings)
+        readings.append(Reading(state, title, entry.get("link") or svc.page, started, updated))
+    return readings
 
 
-def parse_m365(data: list, svc: Service) -> Reading:
+def parse_m365(data: list, svc: Service) -> list[Reading]:
     readings = []
     for post in data or []:
         status = (post.get("Status") or "").lower()
@@ -199,11 +235,12 @@ def parse_m365(data: list, svc: Service) -> Reading:
             continue
         state = MAJOR if "interruption" in status or "outage" in status else DEGRADED
         title = post.get("Title") or f"{post.get('ServiceDisplayName')}: {post.get('Status')}"
-        readings.append(Reading(state, title, svc.page, _ts(post.get("LastUpdatedTime"))))
-    return _worst(readings)
+        updated = _ts(post.get("LastUpdatedTime"))
+        readings.append(Reading(state, title, svc.page, updated, updated))
+    return readings
 
 
-def parse_google(data: list, svc: Service, base: str) -> Reading:
+def parse_google(data: list, svc: Service, base: str) -> list[Reading]:
     readings = []
     for inc in data or []:
         if inc.get("end"):
@@ -217,38 +254,40 @@ def parse_google(data: list, svc: Service, base: str) -> Reading:
             continue
         title = (inc.get("external_desc") or inc.get("service_name") or "").strip()
         url = f"{base}/{inc['uri']}" if inc.get("uri") else svc.page
-        readings.append(Reading(state, title, url, _ts(inc.get("begin"))))
-    return _worst(readings)
+        readings.append(Reading(state, title, url, _ts(inc.get("begin")), _ts(inc.get("modified")) or _ts(inc.get("begin"))))
+    return readings
 
 
-def parse_slack(data: dict, svc: Service) -> Reading:
+def parse_slack(data: dict, svc: Service) -> list[Reading]:
     readings = []
     for inc in data.get("active_incidents") or []:
         kind = inc.get("type")
         if kind == "notice":
             continue
         state = MAJOR if kind == "outage" else DEGRADED
-        readings.append(Reading(state, inc.get("title"), inc.get("url") or svc.page, _ts(inc.get("date_created"))))
-    return _worst(readings)
+        readings.append(Reading(
+            state, inc.get("title"), inc.get("url") or svc.page,
+            _ts(inc.get("date_created")), _ts(inc.get("date_updated")) or _ts(inc.get("date_created")),
+        ))
+    return readings
 
 
-def parse_statusio(data: dict, svc: Service) -> Reading:
+def parse_statusio(data: dict, svc: Service) -> list[Reading]:
     result = data.get("result") or {}
-    code = int((result.get("status_overall") or {}).get("status_code") or 100)
+    overall = result.get("status_overall") or {}
+    code = int(overall.get("status_code") or 100)
+    if code < 300:
+        return []
     incidents = result.get("incidents") or []
-    title = incidents[0].get("name") if incidents else (result.get("status_overall") or {}).get("status")
+    title = incidents[0].get("name") if incidents else overall.get("status")
     started = _ts(incidents[0].get("datetime_open")) if incidents else None
-    if code >= 400:
-        return Reading(MAJOR, title, svc.page, started)
-    if code >= 300:
-        return Reading(DEGRADED, title, svc.page, started)
-    return Reading(OPERATIONAL)
+    return [Reading(MAJOR if code >= 400 else DEGRADED, title, svc.page, started, _ts(overall.get("updated")))]
 
 
 _OKTA_RECORD = re.compile(r'\{"attributes":\{"type":"Incident__c"')
 
 
-def parse_okta(html: str, svc: Service) -> Reading:
+def parse_okta(html: str, svc: Service) -> list[Reading]:
     readings = []
     for m in _OKTA_RECORD.finditer(html):
         record = _balanced_json(html, m.start())
@@ -256,8 +295,10 @@ def parse_okta(html: str, svc: Service) -> Reading:
             continue
         category = record.get("Category__c") or ""
         state = MAJOR if "Service Disruption" in category and "Minor" not in category else DEGRADED
-        readings.append(Reading(state, record.get("Incident_Title__c"), svc.page, _ts(record.get("Start_Time__c"))))
-    return _worst(readings)
+        started = _ts(record.get("Start_Time__c"))
+        readings.append(Reading(state, record.get("Incident_Title__c"), svc.page, started,
+                                _ts(record.get("Last_Updated__c")) or started))
+    return readings
 
 
 def _balanced_json(text: str, start: int) -> dict | None:
@@ -288,7 +329,7 @@ def _balanced_json(text: str, start: int) -> dict | None:
 # ---------------------------------------------------------------- fetching
 
 
-async def read(client: httpx.AsyncClient, svc: Service) -> Reading:
+async def read(client: httpx.AsyncClient, svc: Service) -> list[Reading]:
     r = await client.get(svc.source)
     r.raise_for_status()
     match svc.kind:
@@ -303,7 +344,7 @@ async def read(client: httpx.AsyncClient, svc: Service) -> Reading:
             try:
                 admin = await client.get(M365_ADMIN_RSS)
                 admin.raise_for_status()
-                return _worst([posts, parse_rss_incidents(admin.content, svc)])
+                return posts + parse_rss_incidents(admin.content, svc)
             except httpx.HTTPError:
                 return posts
         case "google":
@@ -321,11 +362,14 @@ def _hour(t: datetime) -> datetime:
     return t.replace(minute=0, second=0, microsecond=0)
 
 
-async def store(session: AsyncSession, svc: Service, reading: Reading | None, error: str | None, now: datetime) -> None:
+async def store(
+    session: AsyncSession, svc: Service, readings: list[Reading] | None, error: str | None, now: datetime
+) -> None:
     row = await session.get(ServiceStatus, svc.slug)
     if row is None:
         row = ServiceStatus(slug=svc.slug)
         session.add(row)
+    reading, stale = split(readings, now) if readings is not None else (None, [])
     state = reading.state if reading else UNKNOWN
     # A failed read keeps the last known state for up to 15 minutes before turning unknown.
     if reading is None and row.checked_at and now - row.checked_at < timedelta(minutes=15):
@@ -340,6 +384,14 @@ async def store(session: AsyncSession, svc: Service, reading: Reading | None, er
     row.error = error
     if reading is not None:
         row.checked_at = now
+        row.stale = [
+            {
+                "state": r.state, "title": r.title, "url": r.url,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            }
+            for r in stale
+        ]
 
     hour = _hour(now)
     existing = await session.get(ServiceHour, (svc.slug, hour))
@@ -355,7 +407,7 @@ async def poll() -> None:
         timeout=TIMEOUT, follow_redirects=True, headers={"User-Agent": USER_AGENT}
     ) as client:
 
-        async def one(svc: Service) -> tuple[Service, Reading | None, str | None]:
+        async def one(svc: Service) -> tuple[Service, list[Reading] | None, str | None]:
             try:
                 return svc, await read(client, svc), None
             except Exception as e:  # any bad page is that service's problem only
@@ -364,13 +416,13 @@ async def poll() -> None:
         results = await asyncio.gather(*(one(s) for s in SERVICES))
 
     async with SessionLocal() as session:
-        for svc, reading, error in results:
+        for svc, readings, error in results:
             if error:
                 log.info("services: %s failed: %s", svc.slug, error)
-            await store(session, svc, reading, error, now)
+            await store(session, svc, readings, error, now)
         await session.execute(delete(ServiceHour).where(ServiceHour.hour < _hour(now) - HISTORY))
         await session.commit()
-    impacted = [f"{s.slug}={r.state}" for s, r, _ in results if r and r.state != OPERATIONAL]
+    impacted = [f"{s.slug}={split(r, now)[0].state}" for s, r, _ in results if r and split(r, now)[0].state != OPERATIONAL]
     log.info("services: polled %d, %s", len(results), ", ".join(impacted) or "all operational")
 
 

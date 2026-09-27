@@ -18,6 +18,7 @@ export default async function Wire({ searchParams }: PageProps<"/wire">) {
     vendor: one(params.vendor),
     q: one(params.q),
     severity: parseSeverity(one(params.severity)),
+    window: one(params.window) === "24h" ? "24h" : "",
   }
 
   const [feed, status, vendors, elsewhere, kev, critical, services] = await Promise.allSettled([

@@ -40,6 +40,7 @@ function syncUrl(f: Filters) {
   set("vendor", f.vendor)
   set("q", f.q)
   set("severity", f.severity)
+  set("window", f.severity ? f.window : "")
   window.history.replaceState(null, "", url.pathname + url.search.replace(/%2C/gi, ",") + url.hash)
 }
 
@@ -218,6 +219,11 @@ export function WireBoard({ initial }: { initial: WireData }) {
       .catch(() => undefined)
   }, [fit, items.length, total])
 
+  // Header counts are 24h numbers, so their filter uses a 24h window; again clears it.
+  const toggle24h = (s: "critical" | "high"): Partial<Filters> =>
+    filters.severity === s && filters.window === "24h" ? { severity: "", window: "" } : { severity: s, window: "24h" }
+  const windowText = filters.severity ? (filters.window === "24h" ? "24 hours" : "7 days") : "14 days"
+
   const byName = [...vendors].sort((a, b) => a.name.localeCompare(b.name))
   const active = vendors.filter((v) => v.items_7d > 0).slice(0, 5)
   const counts = status?.counts
@@ -238,16 +244,16 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 <>
                   <Count
                     n={counts.critical_24h}
-                    active={filters.severity === "critical"}
-                    onClick={() => apply({ severity: filters.severity === "critical" ? "" : "critical" })}
+                    active={filters.severity === "critical" && filters.window === "24h"}
+                    onClick={() => apply(toggle24h("critical"))}
                   >
                     critical
                   </Count>
                   <Count
                     n={counts.high_24h}
                     slash
-                    active={filters.severity === "high"}
-                    onClick={() => apply({ severity: filters.severity === "high" ? "" : "high" })}
+                    active={filters.severity === "high" && filters.window === "24h"}
+                    onClick={() => apply(toggle24h("high"))}
                   >
                     high
                   </Count>
@@ -349,11 +355,11 @@ export function WireBoard({ initial }: { initial: WireData }) {
           {failed && items.length === 0 ? (
             <p className="py-10 text-[15px] text-muted">The feed is unreachable right now. It retries on the next refresh.</p>
           ) : items.length === 0 && !loading ? (
-            <p className="py-10 text-[15px] text-muted">Nothing here in the last {filters.severity ? 7 : 14} days.</p>
+            <p className="py-10 text-[15px] text-muted">Nothing here in the last {windowText}.</p>
           ) : (
             <div className="flex items-baseline justify-between pt-6 text-[15px]">
               <span className="text-muted">
-                {items.length} of {total} in the last {filters.severity ? 7 : 14} days
+                {items.length} of {total} in the last {windowText}
               </span>
               {items.length < total && (
                 <button type="button" onClick={showMore} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
@@ -384,8 +390,10 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 kev={kev}
                 status={status}
                 onVendor={(slug) => apply({ vendor: slug })}
-                severity={filters.severity}
-                onSeverity={(s) => apply({ severity: filters.severity === s ? "" : s })}
+                severity={filters.window === "24h" ? "" : filters.severity}
+                onSeverity={(s) =>
+                  apply(filters.severity === s && !filters.window ? { severity: "", window: "" } : { severity: s, window: "" })
+                }
               />
             </div>
           </div>

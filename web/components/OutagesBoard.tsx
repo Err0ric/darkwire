@@ -69,6 +69,7 @@ export function OutagesBoard({ initial }: { initial: ServicesOut | null }) {
             </section>
           )
         })}
+        <Stale services={all} now={now} />
         <SiteFooter className="mt-16" />
       </div>
     </main>
@@ -105,5 +106,37 @@ function ServiceRow({ s, now }: { s: ServiceOut; now: number | null }) {
         )}
       </span>
     </li>
+  )
+}
+
+/** Events the vendor has not touched in 72h+: kept visible, collapsed, and never counted. */
+function Stale({ services, now }: { services: ServiceOut[]; now: number | null }) {
+  const events = services.flatMap((s) => s.stale.map((e) => ({ service: s, e })))
+  if (!events.length) return null
+  return (
+    <details className="group mt-10 text-dim md:mt-12">
+      <summary className="flex cursor-pointer list-none items-baseline gap-2 border-b border-rule pb-2.5 text-[13px] font-medium outline-none hover:text-muted focus-visible:text-muted">
+        <span aria-hidden className="inline-block transition-none group-open:rotate-90">›</span>
+        Stale (no update in 72h+)
+        <span className="font-mono text-xs font-normal">{events.length}</span>
+      </summary>
+      <ul>
+        {events.map(({ service, e }, i) => (
+          <li key={i} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-hairline py-3 text-[13px]">
+            <span className="w-full text-[15px] md:w-[228px] md:shrink-0">{service.name}</span>
+            <a
+              href={e.url ?? service.page}
+              {...EXTERNAL}
+              className="min-w-0 flex-1 truncate outline-none hover:text-muted focus-visible:text-muted"
+            >
+              {e.title ?? "Status page"}
+            </a>
+            {e.updated_at && now !== null && (
+              <span className="shrink-0 font-mono text-xs">last update {age(e.updated_at, now)} ago</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
   )
 }

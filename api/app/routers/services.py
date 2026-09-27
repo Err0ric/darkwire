@@ -18,6 +18,14 @@ class Incident(BaseModel):
     started_at: datetime | None
 
 
+class StaleEvent(BaseModel):
+    state: str
+    title: str | None
+    url: str | None
+    started_at: datetime | None
+    updated_at: datetime | None
+
+
 class ServiceOut(BaseModel):
     slug: str
     name: str
@@ -28,6 +36,7 @@ class ServiceOut(BaseModel):
     checked_at: datetime | None
     changed_at: datetime | None
     hours: list[str]  # 24 UTC hours, oldest first, ending with the current hour; unknown = no data
+    stale: list[StaleEvent]  # open events with no vendor update in 72h; never counted in state
 
 
 class ServicesOut(BaseModel):
@@ -67,6 +76,7 @@ async def services(
                 checked_at=row.checked_at if row else None,
                 changed_at=row.changed_at if row else None,
                 hours=[history.get(slug, {}).get(h, UNKNOWN) for h in hours],
+                stale=[StaleEvent(**e) for e in (row.stale or [])] if row else [],
             )
         )
     return ServicesOut(services=out, defaults=DEFAULTS, groups=GROUPS)

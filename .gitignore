@@ -2,14 +2,23 @@
 __pycache__/
 *.pyc
 .venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
 .env
 .env.*
 !.env.example
+*.log
 
 # Node
 node_modules/
 .next/
 out/
+next-env.d.ts
+.vercel/
+npm-debug.log*
+*.tsbuildinfo
 
 # OS / editor
 .DS_Store

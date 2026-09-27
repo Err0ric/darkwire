@@ -6,6 +6,7 @@ overwrite it in the database. Add rows freely. Change existing ones with a migra
 
 import logging
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,12 +15,18 @@ from app.models import Source, Stream, Vendor
 log = logging.getLogger(__name__)
 
 SOURCES: list[dict] = [
-    # main: security news that becomes rows on the board
+    # main: security news that becomes rows on the board.
+    # vendor_slug marks a vendor's own feed, which wins primary-source selection.
     {"name": "BleepingComputer", "feed_url": "https://www.bleepingcomputer.com/feed/", "site_url": "https://www.bleepingcomputer.com", "stream": Stream.main},
     {"name": "The Record", "feed_url": "https://therecord.media/feed", "site_url": "https://therecord.media", "stream": Stream.main},
     {"name": "SecurityWeek", "feed_url": "https://www.securityweek.com/feed/", "site_url": "https://www.securityweek.com", "stream": Stream.main},
     {"name": "Dark Reading", "feed_url": "https://www.darkreading.com/rss.xml", "site_url": "https://www.darkreading.com", "stream": Stream.main},
     {"name": "Krebs on Security", "feed_url": "https://krebsonsecurity.com/feed/", "site_url": "https://krebsonsecurity.com", "stream": Stream.main},
+    {"name": "CISA", "feed_url": "https://www.cisa.gov/cybersecurity-advisories/all.xml", "site_url": "https://www.cisa.gov/news-events/cybersecurity-advisories", "stream": Stream.main},
+    {"name": "The Hacker News", "feed_url": "https://feeds.feedburner.com/TheHackersNews", "site_url": "https://thehackernews.com", "stream": Stream.main},
+    {"name": "MSRC", "feed_url": "https://api.msrc.microsoft.com/update-guide/rss", "site_url": "https://msrc.microsoft.com/update-guide", "stream": Stream.main, "vendor_slug": "microsoft"},
+    {"name": "Rapid7", "feed_url": "https://www.rapid7.com/blog/rss/", "site_url": "https://www.rapid7.com/blog/", "stream": Stream.main},
+    {"name": "Unit 42", "feed_url": "https://unit42.paloaltonetworks.com/feed/", "site_url": "https://unit42.paloaltonetworks.com", "stream": Stream.main, "vendor_slug": "palo-alto-networks"},
     # elsewhere: policy, privacy, culture. Shown in the right rail only.
     {"name": "EFF", "feed_url": "https://www.eff.org/rss/updates.xml", "site_url": "https://www.eff.org", "stream": Stream.elsewhere},
     {"name": "404 Media", "feed_url": "https://www.404media.co/rss/", "site_url": "https://www.404media.co", "stream": Stream.elsewhere},
@@ -82,8 +89,13 @@ async def seed(session: AsyncSession) -> None:
         .values([{**v, "logo_path": f"/vendors/{v['slug']}.svg"} for v in VENDORS])
         .on_conflict_do_nothing(index_elements=["slug"])
     )
+    vendor_ids = dict((await session.execute(select(Vendor.slug, Vendor.id))).all())
+    sources = [
+        {**{k: v for k, v in s.items() if k != "vendor_slug"}, "vendor_id": vendor_ids.get(s.get("vendor_slug"))}
+        for s in SOURCES
+    ]
     await session.execute(
-        insert(Source).values(SOURCES).on_conflict_do_nothing(index_elements=["feed_url"])
+        insert(Source).values(sources).on_conflict_do_nothing(index_elements=["feed_url"])
     )
     await session.commit()
     log.info("seed: %d sources, %d vendors ensured", len(SOURCES), len(VENDORS))

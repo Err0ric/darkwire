@@ -94,6 +94,32 @@ Click anywhere on the row except a link. Background `--surface`, extends 24px pa
 - Elsewhere is assigned per feed, not per article.
 - Timezone: viewer's local, fall back to UTC. Never hardcode PT.
 
+## Sources
+
+Seeded from `api/app/seed.py`. Keep this table and that file in sync. Main feeds become rows. Elsewhere feeds only appear in the rail. A vendor feed is linked to its vendor and wins primary-source selection.
+
+| Name | Stream | Vendor | Feed URL |
+|---|---|---|---|
+| BleepingComputer | main | | https://www.bleepingcomputer.com/feed/ |
+| The Record | main | | https://therecord.media/feed |
+| SecurityWeek | main | | https://www.securityweek.com/feed/ |
+| Dark Reading | main | | https://www.darkreading.com/rss.xml |
+| Krebs on Security | main | | https://krebsonsecurity.com/feed/ |
+| CISA | main | | https://www.cisa.gov/cybersecurity-advisories/all.xml |
+| The Hacker News | main | | https://feeds.feedburner.com/TheHackersNews |
+| MSRC | main | microsoft | https://api.msrc.microsoft.com/update-guide/rss |
+| Rapid7 | main | | https://www.rapid7.com/blog/rss/ |
+| Unit 42 | main | palo-alto-networks | https://unit42.paloaltonetworks.com/feed/ |
+| EFF | elsewhere | | https://www.eff.org/rss/updates.xml |
+| 404 Media | elsewhere | | https://www.404media.co/rss/ |
+| Citizen Lab | elsewhere | | https://citizenlab.ca/feed/ |
+| Lawfare | elsewhere | | https://www.lawfaremedia.org/feeds/articles |
+| Wired | elsewhere | | https://www.wired.com/feed/category/security/latest/rss |
+| TechCrunch | elsewhere | | https://techcrunch.com/category/security/feed/ |
+| Ars Technica | elsewhere | | https://arstechnica.com/security/feed/ |
+
+NVD, FIRST.org EPSS and the CISA KEV JSON are enrichment APIs, not feeds, and are not in this table.
+
 ## Motion (all respect prefers-reduced-motion)
 
 - Wordmark dot pulses 2.4s while live. Solid if last sync > 30 min. Gray if fetch failing.

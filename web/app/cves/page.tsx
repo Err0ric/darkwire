@@ -27,7 +27,7 @@ export default async function Cves() {
   const rows = await allCves().catch(() => null)
 
   return (
-    <main className="flex-1 px-4 pb-24 md:px-12">
+    <main className="flex-1 page-frame pb-24">
       <header className="pt-6 md:pt-[33px]">
         <h1 className="text-[36px] leading-[44px] font-bold tracking-[-0.02em] text-fg">CVEs</h1>
         <p className="mt-[3px] text-[15px] leading-5 text-muted">

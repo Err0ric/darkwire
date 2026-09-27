@@ -27,7 +27,7 @@ export default async function Item({ params }: { params: Promise<{ id: string }>
   await connection()
   const item = await load((await params).id)
   return (
-    <main className="flex-1 px-4 pb-24 md:px-12">
+    <main className="flex-1 page-frame pb-24">
       <div className="@container pt-6 min-[1200px]:max-w-[1200px] md:pt-[33px]">
         <QLink href="/wire" className="text-[13px] text-muted outline-none hover:text-fg-2 focus-visible:text-fg-2">
           ← The wire

@@ -33,7 +33,7 @@ export function OutagesBoard({ initial }: { initial: ServicesOut | null }) {
   const checked = all.map((s) => s.checked_at).filter(Boolean).sort().at(-1) ?? null
 
   return (
-    <main className="flex-1 px-4 pb-16 md:px-12">
+    <main className="flex-1 page-frame pb-16">
       <header className="pt-6 md:pt-[33px]">
         <h1 className="text-[36px] leading-[44px] font-bold tracking-[-0.02em] text-fg">Outages</h1>
         <p className="mt-[3px] text-[15px] leading-5 text-muted">

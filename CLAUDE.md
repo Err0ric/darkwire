@@ -55,7 +55,7 @@ Layout: no boxes, no cards, no panel borders. Separate regions with background t
 
 Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x1440 landscape; secondary: 1080x1920 and 1440x2560 portrait; plus 390px phones. Wider screens (3440) just work and are not tuned for.
 
-- One container on every page: nav and content share the same gutters (16px mobile, 48px from 768px) and left edge.
+- One container on every page (`page-frame`): nav and content share the same gutters (16px mobile, 48px from 768px) and left edge. From 2200px wide it is a centered block 1828px wide (the wire's 300 + 64 + 1100 + 64 + 300); extra width goes to equal outer margins. The nav's wordmark lines up with the left rail's left edge and its right end (Synced, theme dot) with the right rail's right edge; pages without rails left-align to the same block.
 - The feed column fills what the rail leaves from 1200 to 2199px, and is capped at 1100px and centered from 2200px, so the data columns (CVE ID, score, bar, badge, age, chevron) stay near the headline instead of across dead space. Inside it the headline absorbs width; the data columns stay fixed. Under a 760px feed the CVE ID column drops out; under 940px the wire's tabs and filters split onto two lines (container queries on the feed column).
 - Wire rail: see "Wire rails". Under 1200px (so 1080px portrait) it stacks below the feed, at most 640px wide, and the Services block moves to the top of the feed, under the counts, so an outage is seen without scrolling.
 - Home has no rail and no feed: one centered block, max 880px; the clock scales with the width and the gaps with the height, so it scales smoothly instead of jumping at breakpoints.
@@ -125,10 +125,10 @@ Third-party status for the rail and `/outages`, from each vendor's official sour
 
 ## Wire rails
 
-Three layouts by viewport width, 48px between columns:
+Three layouts by viewport width:
 
-- 2200px and wider: three columns. Left rail 320px: Last 7 days, Added to KEV, Most active this week, Sources line. Feed centered and flexible, max 1100px. Right rail 320px: Services, Elsewhere.
-- 1200 to 2199px: feed plus one 340px right rail: Services, Added to KEV, Last 7 days, Elsewhere, Most active this week, Sources line.
+- 2200px and wider: three columns in one centered block, 64px apart. Left rail 300px: Last 7 days, Added to KEV, Most active this week, Sources line. Feed flexible, max 1100px. Right rail 300px: Services, Elsewhere.
+- 1200 to 2199px: feed plus one 340px right rail, 48px apart: Services, Added to KEV, Last 7 days, Elsewhere, Most active this week, Sources line.
 - Under 1200px: the rail stacks below the feed: Elsewhere, Most active, Added to KEV, Last 7 days, Sources line (Services sits above the feed).
 
 Sections:

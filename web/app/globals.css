@@ -228,6 +228,21 @@ html[data-theme="high-contrast"] {
   animation: dot-solid 300ms ease-out both;
 }
 
+/* One frame for the nav and every page: 16px gutters, 48px from 768px, and from 2200px wide a
+   centered block as wide as the wire's three columns (300 + 64 + 1100 + 64 + 300 = 1828px).
+   Extra width goes to equal outer margins. */
+@utility page-frame {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: 1rem;
+  @media (min-width: 768px) {
+    padding-inline: 3rem;
+  }
+  @media (min-width: 2200px) {
+    max-width: calc(1828px + 6rem);
+  }
+}
+
 /* Page chrome that full-height layouts (home) subtract. Kiosk hides the nav and zooms. */
 :root {
   --nav-h: 60px;

@@ -110,7 +110,7 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
 
   return (
     // One screen tall: the block centers in whatever the nav and footer leave.
-    <main className="flex min-h-[calc(100dvh/var(--zoom)-var(--nav-h))] flex-col px-4 md:px-12">
+    <main className="flex min-h-[calc(100dvh/var(--zoom)-var(--nav-h))] flex-col page-frame">
       <div className="mx-auto my-auto flex w-full max-w-[880px] flex-col items-center py-[clamp(24px,5vh,72px)] text-center">
         <Wordmark state={syncState(status, statusFailed || status?.sync.last_ok === false, minute?.getTime() ?? null)} />
         <p className="mt-[clamp(14px,2vh,24px)] text-base leading-6 text-muted">Security news and CVEs on one live board.</p>

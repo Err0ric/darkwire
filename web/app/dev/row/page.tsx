@@ -38,7 +38,7 @@ export default async function RowReview() {
   ].filter((r) => r !== null)
 
   return (
-    <main className="flex-1 px-4 pb-24 md:px-12">
+    <main className="flex-1 page-frame pb-24">
       <div className="@container">
         <h1 className="mt-10 text-[13px] font-medium text-fg">Row review</h1>
         <p className="mt-1 text-xs text-muted">

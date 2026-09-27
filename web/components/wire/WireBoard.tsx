@@ -289,17 +289,18 @@ export function WireBoard({ initial }: { initial: WireData }) {
   const tabs: [WireTab, string][] = stack.length ? [["stack", "My stack"], ...TABS] : TABS
 
   return (
-    <main className="flex-1 px-4 pb-24 md:px-12">
+    <main className="flex-1 page-frame pb-24">
       {/* Rail beside the feed from 1000px, stacked below it under that; three columns
           (feed | Elsewhere | stats) from 2200px. The feed is fluid; no page cap. */}
       {/* Under 1200px: feed, then the rail stacked below it. 1200-2199px: feed plus one 340px
-          rail on the right. 2200px+: three columns, stats rail 320 | feed (max 1100, centered) |
-          Services and Elsewhere 320. The rail sections are placed with CSS order per range. */}
-      <div className="min-[1200px]:flex min-[1200px]:gap-12 min-[2200px]:justify-between">
+          rail on the right, 48px apart. 2200px+: one centered block (page-frame), stats rail 300
+          | 64 | feed (max 1100) | 64 | Services and Elsewhere 300. Rails start level with the tabs
+          row. The rail sections are placed with CSS order per range. */}
+      <div className="min-[1200px]:flex min-[1200px]:gap-12 min-[2200px]:gap-16">
         <aside
           data-chrome
           aria-label="This week"
-          className="hidden w-[320px] shrink-0 pt-[133px] text-[13px] min-[2200px]:block"
+          className="hidden w-[300px] shrink-0 pt-[133px] text-[13px] min-[2200px]:block"
         >
           <div className="flex flex-col gap-10">
             <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
@@ -496,7 +497,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
         <aside
           data-chrome
           aria-label="Context"
-          className="mt-16 text-[13px] min-[1200px]:mt-0 min-[1200px]:w-[340px] min-[1200px]:shrink-0 min-[1200px]:pt-[133px] min-[2200px]:w-[320px]"
+          className="mt-16 text-[13px] min-[1200px]:mt-0 min-[1200px]:w-[340px] min-[1200px]:shrink-0 min-[1200px]:pt-[133px] min-[2200px]:w-[300px]"
         >
           {/* Orders: under 1200 Elsewhere, Most active, Added to KEV, Last 7 days, Sources (Services
               sits above the feed). 1200-2199 Services, Added to KEV, Last 7 days, Elsewhere, Most

@@ -69,7 +69,7 @@ export function Nav() {
   const label = sync.failing ? "Sync unavailable" : minutes !== null ? syncedLabel(minutes) : ""
 
   return (
-    <header data-chrome className="flex h-15 items-center px-4 md:px-12">
+    <header data-chrome className="flex h-15 items-center page-frame">
       {!home && (
         <Link href={`/${query()}`} className="mr-4 flex items-center gap-2 outline-none focus-visible:outline-1 focus-visible:outline-rule sm:mr-6 md:mr-10">
           <SyncDot state={dot} className="size-1.5" />

@@ -354,6 +354,12 @@ async def run_ingest() -> None:
                     await cleanup.retag_once(once, matcher)
             except Exception:
                 log.exception("ingest: cleanup failed, retried next run")
+            try:
+                async with SessionLocal() as once:
+                    # v2: vendorless stories that share distinctive words (Kiteworks-style pairs).
+                    await dedupe.merge_once(once, matcher, "merge_v2")
+            except Exception:
+                log.exception("ingest: merge failed, retried next run")
             await dedupe.refresh_exploited(session)
             dropped = await prune(session, now)
             failing = [by_id[r.source_id].name for r in results if r.error]

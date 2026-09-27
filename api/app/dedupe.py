@@ -10,10 +10,11 @@ import re
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app import jobstate
 from app.models import Item, ItemSource, Stream
 from app.tagging import ZERO_DAY, VendorMatcher
 
@@ -32,26 +33,95 @@ def similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, normalize(a), normalize(b)).ratio()
 
 
-def titles_match(a: str, b: str, vendor_id: int | None, matcher: VendorMatcher) -> bool:
-    if similarity(a, b) > SIMILARITY:
-        return True
-    return bool(
-        ZERO_DAY.search(a) and ZERO_DAY.search(b) and matcher.products(vendor_id, a) & matcher.products(vendor_id, b)
-    )
+# ---------------------------------------------------------------- distinctive words
+
+STOPWORDS = set("""
+a an the and or but nor of in on at to for from by with without into onto over under after before about against
+between through during as is are was were be been being has have had do does did it its this that these those
+their there here who whom whose which what when where why how than then so not no yes can could may might will
+would should must shall up down out off new now more most less least very just still also all any some each
+every both few many much such via per vs amid says said say says report reports reported warns warned
+""".split())
+GENERIC = set("""
+attack attacker hack hacker hacked hacking flaw bug issue vulnerability vulnerabilities vuln exploit exploited
+exploiting exploitation zero day zeroday cyber cyberattack cybersecurity security secure breach leak leaked data
+patch patched update fix fixed critical severe active actively ransomware malware threat actor campaign researcher
+research user customer company firm government agency warning alert advisory possible potential million billion
+""".split())
+_TOKEN = re.compile(r"[A-Za-z0-9]+(?:['.&][A-Za-z0-9]+)*")
+_MIXED = re.compile(r"[a-z][A-Z]|[A-Za-z]\d|\d[A-Za-z]")
+
+
+def _stem(word: str) -> str:
+    w = word.lower().removesuffix("'s")
+    if len(w) > 4 and w.endswith("ies"):
+        return w[:-3] + "y"
+    if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+        return w[:-1]
+    return w
+
+
+def _tokens(title: str) -> list[str]:
+    return _TOKEN.findall(title)
+
+
+def _sentence_case(tokens: list[str]) -> bool:
+    words = [t for t in tokens[1:] if t[:1].isalpha() and len(t) > 3]
+    return bool(words) and sum(t[:1].isupper() for t in words) / len(words) < 0.5
+
+
+def distinctive(title: str) -> dict[str, list[str]]:
+    """Stem -> the original spellings, for words that say something about this story."""
+    out: dict[str, list[str]] = {}
+    for t in _tokens(title):
+        stem = _stem(t)
+        if len(stem) < 3 or stem.isdigit() or stem in STOPWORDS or stem in GENERIC or t.lower() in GENERIC:
+            continue
+        out.setdefault(stem, []).append(t)
+    return out
+
+
+def _proper(stem: str, a: str, b: str, da: dict, db: dict) -> bool:
+    spellings = da[stem] + db[stem]
+    if any(_MIXED.search(s) or (s.isupper() and len(s) > 1) for s in spellings):
+        return True  # NetScaler, x47.c, CISA
+    if not all(s[:1].isupper() for s in spellings):
+        return False
+    # Capitalized everywhere, and at least one title is sentence case, where capitals mean something.
+    return _sentence_case(_tokens(a)) or _sentence_case(_tokens(b))
+
+
+def shared_story(a: str, b: str) -> bool:
+    """At least 3 distinctive words in common, one of them a proper noun or product name."""
+    da, db = distinctive(a), distinctive(b)
+    shared = da.keys() & db.keys()
+    return len(shared) >= 3 and any(_proper(s, a, b, da, db) for s in shared)
+
+
+def titles_match(a: str, b: str, vendor_a: int | None, vendor_b: int | None, matcher: VendorMatcher) -> bool:
+    if vendor_a is not None and vendor_b is not None and vendor_a != vendor_b:
+        return False
+    if vendor_a is not None and vendor_a == vendor_b:
+        if similarity(a, b) > SIMILARITY:
+            return True
+        if ZERO_DAY.search(a) and ZERO_DAY.search(b) and matcher.products(vendor_a, a) & matcher.products(vendor_a, b):
+            return True
+        return False
+    # At least one side has no vendor: fall back to shared distinctive words.
+    return shared_story(a, b)
 
 
 async def find_title_cluster(
     session: AsyncSession, title: str, vendor_id: int | None, published: datetime, matcher: VendorMatcher
 ) -> Item | None:
-    """Same vendor, within 48h, and a headline of the cluster matches this title."""
-    if vendor_id is None:
-        return None
+    """Within 48h, vendor-compatible, and a headline of the cluster matches this title."""
+    compatible = [] if vendor_id is None else [or_(Item.vendor_id == vendor_id, Item.vendor_id.is_(None))]
     candidates = (
         await session.scalars(
             select(Item)
             .where(
                 Item.stream == Stream.main,
-                Item.vendor_id == vendor_id,
+                *compatible,
                 Item.last_event_at.between(published - WINDOW, published + WINDOW),
             )
             .options(selectinload(Item.sources).selectinload(ItemSource.source))
@@ -59,7 +129,8 @@ async def find_title_cluster(
         )
     ).all()
     for item in candidates:
-        if any(titles_match(title, t, vendor_id, matcher) for t in {item.headline, *(s.title for s in item.sources)}):
+        titles = {item.headline, *(s.title for s in item.sources)}
+        if any(titles_match(title, t, vendor_id, item.vendor_id, matcher) for t in titles):
             return item
     return None
 
@@ -114,10 +185,10 @@ async def merge_existing(session: AsyncSession, matcher: VendorMatcher) -> int:
                 return False
             if cves.get(o["id"], set()) & cves.get(n["id"], set()):
                 return True
-            return (
-                o["vendor_id"] is not None
-                and o["vendor_id"] == n["vendor_id"]
-                and any(titles_match(a, b, o["vendor_id"], matcher) for a in titles.get(n["id"], ()) for b in titles.get(o["id"], ()))
+            return any(
+                titles_match(a, b, n["vendor_id"], o["vendor_id"], matcher)
+                for a in titles.get(n["id"], ())
+                for b in titles.get(o["id"], ())
             )
 
         candidates = [o for o in survivors if joins(o)]
@@ -188,3 +259,14 @@ async def _merge(session: AsyncSession, o: dict, n: dict, n_pub: datetime) -> No
     )
     await session.execute(text("DELETE FROM items WHERE id = :n"), {"n": nid})
     o.update(values)
+
+
+async def merge_once(session: AsyncSession, matcher: VendorMatcher, key: str) -> int | None:
+    """merge_existing once per rules version (job_state key). None when already done."""
+    if await jobstate.get(session, key):
+        return None
+    merged = await merge_existing(session, matcher)
+    await jobstate.put(session, key, str(merged))
+    await session.commit()
+    log.info("dedupe: %s merged %d rows", key, merged)
+    return merged

@@ -188,6 +188,7 @@ function MetaLine({ item }: { item: FeedItem }) {
     parts.push(CATEGORY_LABEL[item.category])
   }
   if (item.kev) parts.push(<span key="kev" className="text-critical">KEV</span>)
+  else if (item.exploited) parts.push(<span key="exploited" className="text-critical">EXPLOITED</span>)
 
   return (
     <p className="mt-0.5 truncate text-xs leading-4 text-muted">
@@ -218,10 +219,12 @@ const BAR_FILL: Partial<Record<Severity, string>> = {
 }
 
 function Bar({ item, className }: { item: FeedItem; className?: string }) {
-  const filled = item.cvss === null ? 0 : Math.round(item.cvss)
+  // Only scored rows get a bar. Unscored rows keep the 68px slot so columns stay aligned.
+  if (item.cvss === null) return <span aria-hidden className={cn("w-[68px] shrink-0", className)} />
+  const filled = Math.round(item.cvss)
   const fill = (item.severity && BAR_FILL[item.severity]) || "bg-medium"
   return (
-    <span className={cn("flex shrink-0 gap-0.5", className)} aria-label={item.cvss === null ? undefined : `CVSS ${item.cvss}`}>
+    <span className={cn("flex shrink-0 gap-0.5", className)} aria-label={`CVSS ${item.cvss}`}>
       {Array.from({ length: 10 }, (_, i) => (
         <span
           key={i}
@@ -242,9 +245,12 @@ const BADGE: Record<string, string> = {
 }
 
 function Badge({ item, className }: { item: FeedItem; className?: string }) {
-  // Scored rows show severity. Unscored rows show what they are, never a guessed score.
+  // Scored rows show severity; breach and ransomware rows a gray BREACH; everything else no
+  // badge, just the 64px slot so columns stay aligned. Never a guessed score.
   const severity = item.severity && item.severity !== "none" ? item.severity : null
-  const label = severity ?? (item.category === "breach" || item.category === "ransomware" ? "breach" : "info")
+  const breach = item.category === "breach" || item.category === "ransomware"
+  if (!severity && !breach) return <span aria-hidden className={cn("w-16 shrink-0", className)} />
+  const label = severity ?? "breach"
   return (
     <span
       className={cn(

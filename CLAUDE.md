@@ -59,10 +59,10 @@ Layout: no boxes, no cards, no panel borders. Separate regions with background t
 
 - Vendor mark: `/public/vendors/{slug}.svg`, monochrome, currentColor at `--muted`, 20px, no circle. Fallback: Lucide category icon (shield-alert for breach, bug for vuln, file-text for advisory, flask for research).
 - Headline links to the primary source, `target="_blank" rel="noopener noreferrer"`.
-- Meta line: every source name is a link to that outlet's article, same 12px, `--fg-2`. Cap 4 visible, then `+N`. Then category, then `KEV` in `--critical` if listed. Separator is `·`.
+- Meta line: every source name is a link to that outlet's article, same 12px, `--fg-2`. Cap 4 visible, then `+N`. Then category, then `KEV` in `--critical` if listed, else `EXPLOITED` in `--critical` when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator is `·`.
 - Score: Geist Mono 14px/500. `--fg` for 7.0+, `--fg-2` below. Empty for non-CVE rows.
-- Bar: 10 cells, 5x10px, 2px gap. Filled = round(CVSS). Fill color by severity: Critical `--critical`, High `--accent`, Medium #6b6b6b. Empty cells `--rule`. Always render all 10 cells so rows align.
-- Badge: Geist Mono 10px/500, letterspacing 0.04em, 64px wide. CRITICAL = white on `--critical`. HIGH = `--fg` with `--accent` outline. MEDIUM = `--fg-2` with #333 outline. BREACH/INFO = `--muted` with #262626 outline.
+- Bar: 10 cells, 5x10px, 2px gap. Filled = round(CVSS). Fill color by severity: Critical `--critical`, High `--accent`, Medium #6b6b6b. Empty cells `--rule`. Only rendered when the row has a score; unscored rows keep the empty 68px slot so columns align.
+- Badge: Geist Mono 10px/500, letterspacing 0.04em, 64px wide. CRITICAL = white on `--critical`. HIGH = `--fg` with `--accent` outline. MEDIUM = `--fg-2` with #333 outline. BREACH (breach and ransomware rows) = `--muted` with #262626 outline. Unscored news, advisory and research rows get no badge, just the empty 64px slot.
 - Age: relative, Geist Mono 12px `--muted`. Updates on a timer without reload.
 - Chevron: Lucide chevron-down 12px at #404040. Expanded: rotate 180, color `--critical`.
 
@@ -87,7 +87,7 @@ Click anywhere on the row except a link. Background `--surface`, extends 24px pa
 ## Data rules
 
 - Merged stream. A CVE with no article is a row with headline = CVE description, meta = `NVD · CVE published · no coverage yet`. When an article arrives, the row updates in place.
-- Dedupe: cluster by CVE ID first; else normalized-title similarity > 0.85 within 48h, same vendor. One row per cluster. Primary source = vendor PSIRT if present, else earliest.
+- Dedupe: cluster by any shared CVE ID first; else normalized-title similarity > 0.85 within 48h, same vendor; or same vendor, a shared product alias and "zero-day" in both titles within 48h. One row per cluster. Primary source = vendor PSIRT if present, else earliest.
 - Sort by last significant event (published, KEV added, PoC published, CVSS changed), not first-seen.
 - Vendor tagging: `vendors(slug, name, aliases[], domain, logo_path)`. Match aliases, case-insensitive, word boundaries. A title match wins (earliest, then longest alias). With no title match, the first paragraph must mention the vendor 2+ times or the article stays untagged. The vendor name is not an alias unless listed, so ambiguous names use qualified aliases ("Intel CPU", "Arm Cortex", never bare "Intel" or "Arm"). A vendor feed tags its own vendor. 56 vendors, list in `api/app/seed.py`. Nightly job lists untagged articles.
 - Category: classify from the title first; the first paragraph only if the title matches nothing. A CVE with no keyword is vulnerability. Otherwise default to news, never guess breach.

@@ -156,6 +156,8 @@ class Item(Base):
     cvss: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
     severity: Mapped[Severity | None] = mapped_column(_enum(Severity, "severity"))
     kev: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # A headline says zero-day / actively exploited / in the wild, and no CVE is known yet.
+    exploited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     epss: Mapped[float | None] = mapped_column(Float)
     patch_status: Mapped[PatchStatus] = mapped_column(
         _enum(PatchStatus, "patch_status"),
@@ -200,6 +202,8 @@ class ItemSource(Base):
     guid: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text)
     excerpt: Mapped[str | None] = mapped_column(Text)
+    # Plain text of the feed's full content (content:encoded), when the feed carries it.
+    body: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

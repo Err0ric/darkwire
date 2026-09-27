@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import msrc
+from app import dedupe, jobstate, msrc
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Category, Cve, Health, Item, ItemCve, ItemSource, Source, Stream, SyncRun, Vendor
@@ -69,14 +69,15 @@ class Article:
     title: str
     excerpt: str
     text: str
+    body: str  # full content (content:encoded), plain text; empty when the feed has none
     published_at: datetime
 
 
-async def fetch(client: httpx.AsyncClient, source: Source) -> FetchResult:
+async def fetch(client: httpx.AsyncClient, source: Source, conditional: bool = True) -> FetchResult:
     headers = {}
-    if source.etag:
+    if conditional and source.etag:
         headers["If-None-Match"] = source.etag
-    if source.last_modified:
+    if conditional and source.last_modified:
         headers["If-Modified-Since"] = source.last_modified
     try:
         r = await client.get(source.feed_url, headers=headers)
@@ -112,6 +113,7 @@ def to_article(entry, now: datetime) -> Article | None:
         title=title,
         excerpt=first_paragraph(raw),
         text=clean_text(raw),
+        body=clean_text(" ".join(c.get("value", "") for c in entry.get("content") or []))[:50_000],
         published_at=published,
     )
 
@@ -184,7 +186,7 @@ async def ingest_source(
         seen.add(a.url)
         link = ItemSource(
             source=source, url=a.url, guid=a.guid, title=a.title,
-            excerpt=a.excerpt or None, published_at=a.published_at,
+            excerpt=a.excerpt or None, body=a.body or None, published_at=a.published_at,
         )
 
         if source.stream == Stream.elsewhere:
@@ -196,14 +198,16 @@ async def ingest_source(
             stored.added += 1
             continue
 
-        cves = extract_cves(a.title, a.text)
+        cves = extract_cves(a.title, a.text, a.body)
         if cves:
             # Placeholder rows so the FKs hold. Enrichment fills them in.
             await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
         vendor_id = source.vendor_id or matcher.match(a.title, a.excerpt)
         category = guess_category(a.title, a.excerpt, bool(cves))
 
-        cluster = await find_cve_cluster(session, cves, a.published_at)
+        cluster = await find_cve_cluster(session, cves, a.published_at) or await dedupe.find_title_cluster(
+            session, a.title, vendor_id, a.published_at, matcher
+        )
         if cluster is not None:
             current = next((s for s in cluster.sources if s.url == cluster.primary_url), None)
             if _is_better_primary(link, source, current):
@@ -243,6 +247,43 @@ def _mark(source: Source, result: FetchResult, now: datetime) -> None:
     source.consecutive_failures = 0
     if not result.not_modified:
         source.etag, source.last_modified = result.etag, result.last_modified
+
+
+REEXTRACT_STATE = "reextract_v1"
+
+
+async def reextract_once(
+    session: AsyncSession, client: httpx.AsyncClient, sources: list[Source], matcher: VendorMatcher, now: datetime
+) -> int | None:
+    """One time: re-read every main feed in full, store article bodies and link any CVEs found
+    in them to rows we already hold, then merge rows under both clustering rules. Only articles
+    still present in a feed can be re-read. None when already done."""
+    if await jobstate.get(session, REEXTRACT_STATE):
+        return None
+    main = [s for s in sources if s.stream == Stream.main]
+    results = await asyncio.gather(*(fetch(client, s, conditional=False) for s in main))
+    touched = 0
+    for result in results:
+        for entry in result.entries:
+            a = to_article(entry, now)
+            if a is None:
+                continue
+            link = await session.scalar(select(ItemSource).where(ItemSource.url == a.url))
+            if link is None:
+                continue
+            link.body = a.body or link.body
+            cves = extract_cves(a.title, a.text, a.body)
+            if cves:
+                await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
+                item = await session.get(Item, link.item_id)
+                await link_cves(session, item, cves)
+            touched += 1
+    await session.commit()
+    merged = await dedupe.merge_existing(session, matcher)
+    await jobstate.put(session, REEXTRACT_STATE, now)
+    await session.commit()
+    log.info("ingest: re-extracted %d articles, merged %d rows", touched, merged)
+    return touched
 
 
 async def prune(session: AsyncSession, now: datetime) -> int:
@@ -299,6 +340,15 @@ async def run_ingest() -> None:
                 details = await msrc.fetch_details(session, client)
                 await session.commit()
 
+            # Own session: a failure here must not roll back (and expire) this run's objects.
+            try:
+                async with SessionLocal() as once, httpx.AsyncClient(
+                    timeout=FETCH_TIMEOUT, follow_redirects=True, headers={"User-Agent": USER_AGENT}
+                ) as client:
+                    await reextract_once(once, client, sources, matcher, now)
+            except Exception:
+                log.exception("ingest: re-extraction failed, retried next run")
+            await dedupe.refresh_exploited(session)
             dropped = await prune(session, now)
             failing = [by_id[r.source_id].name for r in results if r.error]
             run.ok = True

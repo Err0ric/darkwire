@@ -79,6 +79,16 @@ AD_TEXT = _keywords(r"sponsored", r"sponsored by", r"partner content", r"webinar
 AD_URL = re.compile(r"/(?:sponsored|partner-content|webinars?|events)(?:/|-|$)", re.IGNORECASE)
 
 
+# Headline wording that means exploitation is already happening. Used to flag rows that
+# have no CVE yet, so the row can still say so.
+EXPLOITED = _keywords(r"zero-day", r"zero day", r"0-day", r"actively exploited", r"exploited in the wild", r"in the wild")
+ZERO_DAY = _keywords(r"zero-day", r"zero day", r"0-day")
+
+
+def says_exploited(title: str) -> bool:
+    return bool(EXPLOITED.search(title))
+
+
 def is_ad(title: str, url: str, excerpt: str) -> bool:
     """Sponsored posts, partner content, webinars and event promos."""
     return bool(AD_TEXT.search(title) or AD_URL.search(url) or AD_TEXT.search(excerpt))
@@ -103,10 +113,22 @@ class VendorMatcher:
 
     def __init__(self, vendors: list[Vendor]):
         self._patterns = []
+        # Per vendor: its product aliases (anything that is not just the vendor's name),
+        # each matching a plain plural too ("NetScalers").
+        self._products: dict[int, list[tuple[str, re.Pattern[str]]]] = {}
         for v in vendors:
             aliases = sorted({a for a in v.aliases if a}, key=len, reverse=True)
             if aliases:
                 self._patterns.append(_VendorPattern(v.id, _words(*map(re.escape, aliases))))
+            self._products[v.id] = [
+                (a.lower(), _keywords(re.escape(a)))
+                for a in aliases
+                if a.lower() != v.name.lower() and not a.lower().startswith(v.name.lower() + " ")
+            ]
+
+    def products(self, vendor_id: int | None, title: str) -> set[str]:
+        """Which of the vendor's product aliases the title mentions."""
+        return {name for name, p in self._products.get(vendor_id or -1, []) if p.search(title)}
 
     def match(self, title: str, excerpt: str) -> int | None:
         best: tuple[int, int] | None = None

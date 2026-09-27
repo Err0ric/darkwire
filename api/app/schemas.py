@@ -38,6 +38,7 @@ class FeedItem(BaseModel):
     cvss: float | None
     severity: Severity | None
     kev: bool
+    exploited: bool  # headline says exploited / zero-day and no CVE is known yet
     epss: float | None
     sources: list[SourceLink]
     last_event_at: datetime

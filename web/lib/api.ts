@@ -39,6 +39,7 @@ export interface FeedItem {
   cvss: number | null
   severity: Severity | null
   kev: boolean
+  exploited: boolean // headline says exploited / zero-day and no CVE is known yet
   epss: number | null
   sources: SourceLink[]
   last_event_at: string

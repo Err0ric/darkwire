@@ -61,6 +61,7 @@ def _feed_fields(item: Item) -> dict:
         "cvss": _num(item.cvss),
         "severity": item.severity,
         "kev": item.kev,
+        "exploited": item.exploited,
         "epss": item.epss,
         "sources": [
             SourceLink(name=s.source.name, url=s.url, published_at=s.published_at)

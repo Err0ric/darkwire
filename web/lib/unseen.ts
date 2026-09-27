@@ -7,7 +7,12 @@ import { useCallback, useEffect, useRef } from "react"
 // and the favicon gets a static red dot. Both clear when the tab is visible again.
 // Nothing is stored between visits.
 
-const DOT_COLOR = "#dc2626" // --critical; canvas cannot read CSS variables from a data URL
+// Canvas cannot read CSS variables, so the two tokens are repeated here.
+const DOT_COLOR = "#dc2626" // --critical
+const RING_COLOR = "#0a0a0a" // --bg
+// On the icon's 32-unit grid: a dot in the top-right corner with a 2-unit ring, so the
+// unseen state still reads at 16px next to the centered wordmark dot.
+const DOT = { cx: 25, cy: 7, r: 5, ring: 2 }
 
 function iconLinks(): HTMLLinkElement[] {
   return [...document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')]
@@ -27,9 +32,14 @@ async function dottedIcon(src: string): Promise<string | null> {
   const ctx = canvas.getContext("2d")
   if (!ctx) return null
   ctx.drawImage(img, 0, 0, size, size)
+  const u = size / 32
+  ctx.fillStyle = RING_COLOR
+  ctx.beginPath()
+  ctx.arc(DOT.cx * u, DOT.cy * u, (DOT.r + DOT.ring) * u, 0, Math.PI * 2)
+  ctx.fill()
   ctx.fillStyle = DOT_COLOR
   ctx.beginPath()
-  ctx.arc(size - 14, 14, 13, 0, Math.PI * 2)
+  ctx.arc(DOT.cx * u, DOT.cy * u, DOT.r * u, 0, Math.PI * 2)
   ctx.fill()
   return canvas.toDataURL("image/png")
 }

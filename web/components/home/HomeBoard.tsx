@@ -112,9 +112,11 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
     // One screen tall: the block centers in whatever the nav and footer leave.
     <main className="flex min-h-[calc(100dvh/var(--zoom)-var(--nav-h))] flex-col page-frame">
       <div className="mx-auto my-auto flex w-full max-w-[880px] flex-col items-center py-[clamp(24px,5vh,72px)] text-center">
-        <Wordmark state={syncState(status, statusFailed || status?.sync.last_ok === false, minute?.getTime() ?? null)} />
-        <p className="mt-[clamp(14px,2vh,24px)] text-base leading-6 text-muted">Security news and CVEs on one live board.</p>
-        <DateLine now={minute} />
+        {/* One block on the page's center axis: the lockup (as in og.png), then the date line. */}
+        <div className="flex flex-col items-center">
+          <Lockup state={syncState(status, statusFailed || status?.sync.last_ok === false, minute?.getTime() ?? null)} />
+          <DateLine now={minute} />
+        </div>
         <RightNow items={rightNow.slice(0, RIGHT_NOW_ROWS)} dots={dots} failed={initial.failed && !rightNow.length} />
         <Ticker items={latest} />
 
@@ -158,31 +160,48 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
   )
 }
 
-/** The landing's centerpiece: the nav wordmark, scaled up, with the same live/stale/down dot. */
-function Wordmark({ state }: { state: SyncState }) {
+/** The landing's centerpiece, the og.png lockup: the nav wordmark scaled up with the same
+ * live/stale/down dot, and "live security news + CVEs" under it, its right edge on the
+ * wordmark's right edge. */
+function Lockup({ state }: { state: SyncState }) {
   return (
-    <h1
-      className="flex items-center gap-[0.32em] leading-none font-bold tracking-[-0.02em] text-fg"
-      style={{ fontSize: "clamp(40px, 3.2vw, 64px)" }}
-    >
-      <SyncDot state={state} className="size-[0.3em]" />
-      darkwire
-    </h1>
+    <div className="inline-flex flex-col items-end">
+      <h1
+        className="flex items-center gap-[0.32em] leading-none font-bold tracking-[-0.02em] text-fg"
+        style={{ fontSize: "clamp(40px, 3.2vw, 64px)" }}
+      >
+        <SyncDot state={state} className="size-[0.3em]" />
+        darkwire
+      </h1>
+      <p className="mt-2 font-mono text-[13px] leading-4 text-muted">live security news + CVEs</p>
+    </div>
   )
 }
 
-/** "Sunday, Sep 27 · 12:20 PDT · 19:20 UTC" (just "… · 19:20 UTC" for UTC viewers). */
+/** "Sunday, Sep 27 · 14:09 PDT · 21:09 UTC": date in sans, times in mono, dots dim. UTC viewers
+ * see only UTC. Each minute. */
 function DateLine({ now }: { now: Date | null }) {
-  const text = now
-    ? [
-        now.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }),
-        zoneName(now) === "UTC" ? null : `${pad(now.getHours())}:${pad(now.getMinutes())} ${zoneName(now)}`,
-        `${utcHHMM(now)} UTC`,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : ""
-  return <p className="mt-2.5 h-4 font-mono text-[13px] leading-4 text-dim">{text}</p>
+  const dot = <span className="text-dim"> · </span>
+  const utcOnly = now !== null && zoneName(now) === "UTC"
+  return (
+    <p className="mt-5 h-5 text-[15px] leading-5 text-fg-2">
+      {now && (
+        <>
+          {now.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}
+          {!utcOnly && (
+            <>
+              {dot}
+              <span className="font-mono">
+                {pad(now.getHours())}:{pad(now.getMinutes())} {zoneName(now)}
+              </span>
+            </>
+          )}
+          {dot}
+          <span className="font-mono">{utcHHMM(now)} UTC</span>
+        </>
+      )}
+    </p>
+  )
 }
 
 // ---------------------------------------------------------------- Right now

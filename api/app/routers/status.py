@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import get_session
 from app.ingest import next_run_at
+from app.staleness import not_stale
 from app.models import Health, Item, ItemSource, KevEntry, Severity, Source, Stream, SyncRun
 from app.schemas import Counts, SourceStatus, Status, SyncStatus
 
@@ -26,7 +27,7 @@ async def status(session: AsyncSession = Depends(get_session)) -> Status:
         (
             await session.execute(
                 select(Item.severity, func.count())
-                .where(Item.stream == Stream.main, Item.last_event_at >= day_ago)
+                .where(Item.stream == Stream.main, Item.last_event_at >= day_ago, not_stale(now))
                 .group_by(Item.severity)
             )
         ).all()
@@ -36,7 +37,7 @@ async def status(session: AsyncSession = Depends(get_session)) -> Status:
         (
             await session.execute(
                 select(Item.severity, func.count())
-                .where(Item.stream == Stream.main, Item.last_event_at >= now - timedelta(days=7))
+                .where(Item.stream == Stream.main, Item.last_event_at >= now - timedelta(days=7), not_stale(now))
                 .group_by(Item.severity)
             )
         ).all()

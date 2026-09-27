@@ -57,7 +57,8 @@ CATEGORY_RULES: list[tuple[Category, re.Pattern[str]]] = [
     )),
     # Kept narrow: "exposed" or "compromised" in ordinary prose is not a breach.
     (Category.breach, _keywords(r"breach", r"data leak", r"leaked data", r"stolen data", r"hacked")),
-    (Category.ransomware, _keywords(r"ransomware", r"extortion", r"LockBit", r"Akira", r"Cl0p", r"Black Basta")),
+    # "extortion" alone is not ransomware (sextortion, extortion rings, ...).
+    (Category.ransomware, _keywords(r"ransomware", r"LockBit", r"Akira", r"Cl0p", r"Black Basta")),
     (Category.advisory, _keywords(r"advisory", r"advisories", r"guidance", r"bulletin", r"alert", r"ICS")),
     (Category.research, _keywords(
         r"research", r"researcher", r"analysis", r"campaign", r"malware", r"threat actor", r"APT\d*",

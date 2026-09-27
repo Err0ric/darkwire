@@ -198,10 +198,17 @@ function MetaLine({ item, pinned = false }: { item: FeedItem; pinned?: boolean }
   )
 }
 
+// An old CVE (published >90 days ago, not newly in KEV) keeps its score but reads quieter.
+const STALE = "opacity-40"
+const STALE_TITLE = "Older CVE: published over 90 days ago and not newly added to KEV"
+
 function Score({ item, className }: { item: FeedItem; className?: string }) {
   if (item.cvss === null) return <span className={className} />
   return (
-    <span className={cn("font-mono text-sm font-medium", item.cvss >= 7 ? "text-fg" : "text-fg-2", className)}>
+    <span
+      title={item.stale ? STALE_TITLE : undefined}
+      className={cn("font-mono text-sm font-medium", item.cvss >= 7 ? "text-fg" : "text-fg-2", item.stale && STALE, className)}
+    >
       {item.cvss.toFixed(1)}
     </span>
   )
@@ -220,7 +227,7 @@ function Bar({ item, className }: { item: FeedItem; className?: string }) {
   const filled = Math.round(item.cvss)
   const fill = (item.severity && BAR_FILL[item.severity]) || "bg-medium"
   return (
-    <span className={cn("flex shrink-0 gap-0.5", className)} aria-label={`CVSS ${item.cvss}`}>
+    <span className={cn("flex shrink-0 gap-0.5", item.stale && STALE, className)} aria-label={`CVSS ${item.cvss}`}>
       {Array.from({ length: 10 }, (_, i) => (
         <span
           key={i}
@@ -252,6 +259,7 @@ function Badge({ item, className }: { item: FeedItem; className?: string }) {
       className={cn(
         "flex h-[18px] w-16 shrink-0 items-center justify-center rounded-badge border font-mono text-[10px] leading-none font-medium tracking-[0.04em] uppercase",
         BADGE[severity ?? "muted"],
+        item.stale && STALE,
         className,
       )}
     >

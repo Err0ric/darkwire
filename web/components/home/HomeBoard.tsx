@@ -124,7 +124,7 @@ export function HomeBoard({
         setItems(page.items)
         setPinned(pins.items)
         setFresh(new Set(incoming.map((i) => i.id)))
-        void addUnseen(incoming.length, incoming.some((i) => i.severity === "critical" || i.kev))
+        void addUnseen(incoming.length, incoming.some((i) => !i.stale && (i.severity === "critical" || i.kev)))
       } catch {
         setFailed(true)
       }

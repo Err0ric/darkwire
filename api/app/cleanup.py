@@ -15,7 +15,8 @@ from app.tagging import VendorMatcher, guess_category, is_ad
 
 log = logging.getLogger(__name__)
 
-STATE = "retag_v1"
+# v2: "extortion" no longer means ransomware.
+STATE = "retag_v2"
 
 
 def _primary(item: Item) -> ItemSource:

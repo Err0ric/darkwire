@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db import get_session
+from app.staleness import is_stale, not_stale
 from app.models import Category, Item, ItemCve, ItemSource, MsrcUpdate, Severity, Stream, Vendor
 from app.schemas import (
     CveDetail,
@@ -42,6 +43,7 @@ TAB_CATEGORY = {
 
 _load = (
     selectinload(Item.vendor),
+    selectinload(Item.cve),
     selectinload(Item.sources).selectinload(ItemSource.source),
 )
 
@@ -62,6 +64,7 @@ def _feed_fields(item: Item) -> dict:
         "severity": item.severity,
         "kev": item.kev,
         "exploited": item.exploited,
+        "stale": is_stale(item.cve, datetime.now(UTC)),
         "epss": item.epss,
         "sources": [
             SourceLink(name=s.source.name, url=s.url, published_at=s.published_at)
@@ -103,6 +106,7 @@ async def feed(
         where.append(Item.last_event_at > since)
     if pinned:
         where.append(or_(Item.severity == Severity.critical, Item.kev.is_(True)))
+        where.append(not_stale(datetime.now(UTC)))
         where.append(Item.last_event_at >= datetime.now(UTC) - timedelta(hours=48))
 
     total = await session.scalar(select(func.count()).select_from(Item).where(*where))
@@ -120,7 +124,7 @@ async def feed(
 @router.get("/items/{item_id}", response_model=ItemDetail)
 async def item_detail(item_id: int, session: AsyncSession = Depends(get_session)) -> ItemDetail:
     item = await session.scalar(
-        select(Item).where(Item.id == item_id).options(*_load, selectinload(Item.cve))
+        select(Item).where(Item.id == item_id).options(*_load)
     )
     if item is None:
         raise HTTPException(404, "item not found")

@@ -141,7 +141,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
       setItems((prev) => mergeNewest(prev, incoming))
       setTotal((t) => t + incoming.filter((i) => !known.has(i.id)).length)
       setFresh(new Set(incoming.map((i) => i.id)))
-      void addUnseen(incoming.length, incoming.some((i) => i.severity === "critical" || i.kev))
+      void addUnseen(incoming.length, incoming.some((i) => !i.stale && (i.severity === "critical" || i.kev)))
     }
     const timer = setInterval(poll, POLL_MS)
     return () => clearInterval(timer)

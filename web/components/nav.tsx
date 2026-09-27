@@ -72,26 +72,33 @@ export function Nav() {
   return (
     <header data-chrome className="flex h-15 items-center page-frame">
       {!home && (
-        <Link href={`/${query()}`} className="mr-3 flex items-center gap-2 outline-none focus-visible:outline-1 focus-visible:outline-rule sm:mr-6 md:mr-10">
+        <Link href={`/${query()}`} className="mr-2.5 flex items-center gap-1.5 outline-none focus-visible:outline-1 focus-visible:outline-rule sm:mr-6 md:mr-10">
           <SyncDot state={dot} className="size-1.5" />
           <span className="text-base leading-none font-bold tracking-[-0.01em] text-fg sm:text-lg">darkwire</span>
         </Link>
       )}
 
-      <nav aria-label="Main" className="flex min-w-0 items-center gap-3 sm:gap-6">
+      <nav aria-label="Main" className="flex min-w-0 items-center gap-2.5 sm:gap-6">
         {LINKS.map(({ href, label }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`)
+          // Wire is the primary link: a small outlined button in OPEN WIRE's style.
+          const wire = href === "/wire"
           return (
             <Link
               key={href}
               href={`${href}${query()}`}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "text-[14px] leading-none outline-none focus-visible:text-fg sm:text-[15px]",
-                active ? "text-fg" : "text-muted hover:text-fg-2",
+                "leading-none outline-none",
+                wire
+                  ? cn(
+                      "rounded-control border px-1.5 py-1 font-mono text-xs font-medium tracking-[0.06em] focus-visible:border-critical sm:px-2.5",
+                      active ? "border-critical text-fg" : "border-accent/60 text-fg-2 hover:border-critical",
+                    )
+                  : cn("text-[14px] focus-visible:text-fg sm:text-[15px]", active ? "text-fg" : "text-muted hover:text-fg-2"),
               )}
             >
-              {label}
+              {wire ? label.toUpperCase() : label}
             </Link>
           )
         })}

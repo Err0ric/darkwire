@@ -74,6 +74,9 @@ export interface CveDetail {
   affected: string | null // "PAN-OS 10.2.0 before 10.2.9-h1, ..."
   patch_status: PatchStatus | null
   patch_url: string | null
+  fixed_versions: { product: string; version: string }[] | null
+  workaround_url: string | null // NVD reference tagged Mitigation
+  kev_due_date: string | null // CISA remediation deadline, midnight UTC
 }
 
 export interface MsrcDetail {
@@ -92,6 +95,8 @@ export interface MsrcDetail {
 
 export interface ItemDetail extends FeedItem {
   summary: string | null
+  /** Read from the articles by the summary model, CVE rows only. */
+  action: { fixed: string[]; workaround: string | null } | null
   patch_status: PatchStatus
   patch_url: string | null
   first_seen_at: string

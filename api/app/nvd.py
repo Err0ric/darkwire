@@ -30,7 +30,7 @@ CHANGES_STATE = "nvd_changes_until"
 ANALYZED = {"Analyzed", "Modified"}
 # Bump when parse() output changes; the next enrichment pass re-derives every stored CVE
 # from its cached NVD record (no API calls).
-PARSER_VERSION = "2"
+PARSER_VERSION = "3"
 
 
 class Nvd:
@@ -181,6 +181,33 @@ def affected_summary(cve: dict, cpes: list[dict]) -> str | None:
     return None
 
 
+def fixed_versions(cve: dict, cpes: list[dict], limit: int = 6) -> list[dict]:
+    """First fixed version per affected range: CPE versionEndExcluding, else the CNA's
+    lessThan / "unaffected at" versions. versionEndIncluding names the last bad version,
+    not a fix, so it never counts."""
+    names = {_norm(p): p for p, _ in _cna_versions(cve) if p}
+    out: list[dict] = []
+
+    def add(product: str, version: str | None) -> None:
+        if version and version not in ("*", "-", "n/a"):
+            entry = {"product": product, "version": version}
+            if entry not in out:
+                out.append(entry)
+
+    for m in cpes:
+        slug = _cpe_product(m["criteria"])
+        add(names.get(_norm(slug), display_name(slug)), m.get("versionEndExcluding"))
+    if not out:
+        for product, v in _cna_versions(cve):
+            if v.get("status") != "affected":
+                continue
+            add(product, v.get("lessThan"))
+            for c in v.get("changes") or []:
+                if c.get("status") == "unaffected":
+                    add(product, c.get("at"))
+    return out[:limit]
+
+
 def patch_status(cve: dict, cpes: list[dict], refs: list[dict]) -> tuple[PatchStatus, str | None]:
     """Per CLAUDE.md: patched / no fix / no fix + workaround / unverified.
 
@@ -233,6 +260,8 @@ def parse(cve: dict, now: datetime) -> dict:
         "affected": affected_summary(cve, cpes),
         "patch_status": status,
         "patch_url": url,
+        "fixed_versions": fixed_versions(cve, cpes) or None,
+        "workaround_url": next((r["url"] for r in refs if "Mitigation" in r["tags"]), None),
         "nvd_raw": cve,
         "fetched_at": now,
     }
@@ -318,7 +347,10 @@ async def reparse_if_changed(session: AsyncSession) -> int | None:
     cves = (await session.scalars(select(Cve).where(Cve.nvd_raw.is_not(None)))).all()
     for c in cves:
         values = parse(c.nvd_raw, c.fetched_at or datetime.now(UTC))
-        for key in ("affected", "patch_status", "patch_url", "base_score", "base_severity", "cvss_vector", "cvss_version"):
+        for key in (
+            "affected", "patch_status", "patch_url", "fixed_versions", "workaround_url",
+            "base_score", "base_severity", "cvss_vector", "cvss_version",
+        ):
             setattr(c, key, values[key])
     await jobstate.put(session, "nvd_parser_version", PARSER_VERSION)
     await session.commit()

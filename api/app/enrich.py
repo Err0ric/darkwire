@@ -24,13 +24,14 @@ async def apply_kev(session: AsyncSession) -> None:
     """cves.kev from the catalog. KEV overrides MSRC's exploited flag."""
     if not await session.scalar(select(KevEntry.cve_id).limit(1)):
         return  # catalog never loaded: leave kev untouched rather than clear it
-    rows = dict((await session.execute(select(KevEntry.cve_id, KevEntry.date_added))).all())
+    rows = {r.cve_id: r for r in (await session.execute(select(KevEntry.cve_id, KevEntry.date_added, KevEntry.due_date))).all()}
+    at = lambda d: datetime.combine(d, time.min, tzinfo=UTC) if d else None  # noqa: E731
     cves = (await session.scalars(select(Cve))).all()
     for c in cves:
-        added = rows.get(c.id)
-        kev_at = datetime.combine(added, time.min, tzinfo=UTC) if added else None
-        if c.kev != bool(added) or c.kev_added_at != kev_at:
-            c.kev, c.kev_added_at = bool(added), kev_at
+        row = rows.get(c.id)
+        kev_at, due_at = (at(row.date_added), at(row.due_date)) if row else (None, None)
+        if c.kev != bool(row) or c.kev_added_at != kev_at or c.kev_due_date != due_at:
+            c.kev, c.kev_added_at, c.kev_due_date = bool(row), kev_at, due_at
     await session.execute(
         update(MsrcUpdate)
         .where(MsrcUpdate.cve_id.in_(select(KevEntry.cve_id)), MsrcUpdate.exploited.is_not(True))
@@ -130,6 +131,7 @@ async def run_enrich() -> None:
             await session.rollback()
         try:
             counts["summaries"] = await summaries.summarize_pending(session)
+            counts["actions"] = await summaries.actions_pending(session)
         except Exception:
             log.exception("enrich: summaries failed")
             await session.rollback()

@@ -133,6 +133,10 @@ class Cve(Base):
     affected: Mapped[str | None] = mapped_column(Text)
     patch_status: Mapped[PatchStatus | None] = mapped_column(_enum(PatchStatus, "patch_status"))
     patch_url: Mapped[str | None] = mapped_column(Text)
+    # "What to do": first fixed version per affected range, [{"product", "version"}],
+    # and an NVD reference tagged Mitigation.
+    fixed_versions: Mapped[list | None] = mapped_column(JSONB)
+    workaround_url: Mapped[str | None] = mapped_column(Text)
 
 
 class Item(Base):
@@ -166,6 +170,9 @@ class Item(Base):
     )
     patch_url: Mapped[str | None] = mapped_column(Text)
     summary: Mapped[str | None] = mapped_column(Text)
+    # Model-read "what to do" from the articles, CVE rows only: {"fixed": [...], "workaround": str | None}.
+    # Null until asked; {"fixed": [], "workaround": null} when the material says nothing.
+    action: Mapped[dict | None] = mapped_column(JSONB)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # Sort key: last significant event (published, kev_added, poc, cvss_changed), not first-seen.
     last_event_at: Mapped[datetime] = mapped_column(

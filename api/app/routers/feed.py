@@ -140,6 +140,7 @@ async def item_detail(item_id: int, session: AsyncSession = Depends(get_session)
     return ItemDetail(
         **_feed_fields(item),
         summary=item.summary,
+        action=item.action,
         patch_status=item.patch_status,
         patch_url=item.patch_url,
         first_seen_at=item.first_seen_at,

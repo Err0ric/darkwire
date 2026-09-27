@@ -7,6 +7,7 @@ import { Bug, ChevronDown, FileText, FlaskConical, Newspaper, ShieldAlert, type 
 import { VendorGlyph } from "@/components/VendorGlyph"
 import { getItem, type Category, type FeedItem, type ItemDetail, type PatchStatus, type Severity } from "@/lib/api"
 import { IMPACT_METRICS, parseVector } from "@/lib/cvss"
+import { kevDate, ticketText, whatToDo, type Todo } from "@/lib/todo"
 import { age, useNow } from "@/lib/time"
 
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const
@@ -282,78 +283,155 @@ function Age({ iso, className }: { iso: string; className?: string }) {
 }
 
 // ---------------------------------------------------------------- expanded
+// Every section renders only when it has data: no dashes, blanks, "unknown" or placeholders.
+// Plain news expands to its summary (when there is one) and its source link, nothing else.
 
-function Unknown() {
-  return <span className="text-dim">—</span>
-}
+const LINK = "outline-none hover:text-fg focus-visible:text-fg"
 
 function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
   const d = detail.state === "ready" ? detail.item : null
   const cve = d?.cve ?? null
   const advisory = d?.patch_url ?? d?.msrc?.url ?? null
+  const todo = d && item.cve_id ? whatToDo(d) : null
+  const chips = parseVector(cve?.cvss_vector ?? null).filter((c) => c.value)
+  const metrics = d && item.cve_id ? metricPairs(d) : []
+  const affectedText = d && item.cve_id ? (cve?.affected ?? d.msrc?.product ?? null) : null
+  const patch = d && item.cve_id && d.patch_status !== "unverified" ? d.patch_status : null
 
   return (
-    <>
-      <p className="line-clamp-3 max-w-[720px] text-sm leading-[1.6] text-summary">
-        {detail.state === "ready" ? (
-          (d?.summary ?? <span className="text-dim">No summary yet.</span>)
-        ) : detail.state === "error" ? (
-          <span className="text-dim">Details unavailable.</span>
-        ) : (
-          <span className="text-dim">Loading…</span>
-        )}
-      </p>
+    <div className="flex flex-col gap-4">
+      {d?.summary && <p className="line-clamp-3 max-w-[720px] text-sm leading-[1.6] text-summary">{d.summary}</p>}
 
-      {item.cve_id && (
-        <>
-          <p className="mt-[21px] text-[13px] leading-4 text-muted">
-            {cve?.cvss_version ? `CVSS ${cve.cvss_version} vector` : "CVSS vector"}
-          </p>
-          <div className="mt-2 flex flex-wrap items-start gap-y-5">
-            <VectorChips vector={cve?.cvss_vector ?? null} />
-            <Metrics detail={d} />
-          </div>
-        </>
+      {todo && <WhatToDo todo={todo} />}
+
+      {(chips.length > 0 || metrics.length > 0) && (
+        <div className="flex flex-wrap items-end gap-x-12 gap-y-5">
+          {chips.length > 0 && (
+            <div>
+              <p className="text-[13px] leading-4 text-muted">{cve?.cvss_version ? `CVSS ${cve.cvss_version} vector` : "CVSS vector"}</p>
+              <VectorChips chips={chips} />
+            </div>
+          )}
+          {metrics.length > 0 && <Metrics pairs={metrics} />}
+        </div>
       )}
 
-      <div className="mt-4 flex flex-col gap-3 text-sm leading-5 md:flex-row md:items-baseline md:justify-between">
-        {item.cve_id ? (
+      <div className="flex flex-col gap-3 text-sm leading-5 md:flex-row md:items-baseline md:justify-between">
+        {affectedText || patch ? (
           <p className="min-w-0 text-muted">
-            Affected <span className="text-fg-2">{d ? (affected(d) ?? <Unknown />) : <Unknown />}</span>
-            <Sep wide />
-            <Patch status={d?.patch_status ?? null} url={d?.patch_url ?? null} />
+            {affectedText && (
+              <>
+                Affected <span className="text-fg-2">{affectedText}</span>
+              </>
+            )}
+            {affectedText && patch && <Sep wide />}
+            {patch && <Patch status={patch} url={d?.patch_url ?? null} />}
           </p>
         ) : (
           <span />
         )}
-        <p className="flex shrink-0 gap-5 text-fg-2">
-          <a href={item.primary_url} {...EXTERNAL} className="outline-none hover:text-fg focus-visible:text-fg">
+        <p className="flex shrink-0 flex-wrap gap-x-5 gap-y-1 text-fg-2">
+          <a href={item.primary_url} {...EXTERNAL} className={LINK}>
             Source
           </a>
           {advisory && (
-            <a href={advisory} {...EXTERNAL} className="outline-none hover:text-fg focus-visible:text-fg">
+            <a href={advisory} {...EXTERNAL} className={LINK}>
               Vendor advisory
             </a>
           )}
           {item.cve_id && (
-            <a
-              href={`https://nvd.nist.gov/vuln/detail/${item.cve_id}`}
-              {...EXTERNAL}
-              className="outline-none hover:text-fg focus-visible:text-fg"
-            >
+            <a href={`https://nvd.nist.gov/vuln/detail/${item.cve_id}`} {...EXTERNAL} className={LINK}>
               NVD
             </a>
           )}
+          {d && item.cve_id && <CopyButton text={ticketText(d)} />}
         </p>
       </div>
-    </>
+    </div>
   )
 }
 
-function VectorChips({ vector }: { vector: string | null }) {
+function WhatToDo({ todo }: { todo: Todo }) {
   return (
-    <ul className="flex flex-wrap gap-0.5" aria-label="CVSS vector">
-      {parseVector(vector).map((c) => (
+    <section aria-label="What to do" className="max-w-[720px]">
+      <h3 className="text-[13px] leading-4 font-normal text-muted">What to do</h3>
+      <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5 text-sm leading-5">
+        {todo.fixed.length > 0 && (
+          <>
+            <dt className="text-muted">Update to</dt>
+            <dd className="min-w-0">
+              {todo.fixed.map((f, i) => (
+                <span key={i} className="block">
+                  {f.product && <span className="text-fg-2">{f.product} </span>}
+                  <span className="font-mono text-[13px] text-fg">{f.versions.join(", ")}</span>
+                  {i === 0 && todo.fixedUrl && (
+                    <a href={todo.fixedUrl} {...EXTERNAL} className={cn(LINK, "ml-3 text-fg-2")}>
+                      advisory <span aria-hidden className="text-[10px] text-critical">↗</span>
+                    </a>
+                  )}
+                </span>
+              ))}
+            </dd>
+          </>
+        )}
+        {(todo.workaround || todo.workaroundUrl) && (
+          <>
+            <dt className="text-muted">Workaround</dt>
+            <dd className="min-w-0 text-summary">
+              {todo.workaround}
+              {todo.workaroundUrl && (
+                <a href={todo.workaroundUrl} {...EXTERNAL} className={cn(LINK, "text-fg-2", todo.workaround && "ml-3")}>
+                  {todo.workaround ? "details" : "vendor mitigation"}{" "}
+                  <span aria-hidden className="text-[10px] text-critical">↗</span>
+                </a>
+              )}
+            </dd>
+          </>
+        )}
+        {todo.kevDue && (
+          <>
+            <dt className="text-muted">KEV due</dt>
+            <dd className="font-mono text-[13px] text-fg">
+              <time dateTime={todo.kevDue.toISOString().slice(0, 10)}>{kevDate(todo.kevDue)}</time>
+              <span className="ml-3 font-sans text-sm text-muted">CISA deadline for federal agencies</span>
+            </dd>
+          </>
+        )}
+      </dl>
+    </section>
+  )
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      // Clipboard API blocked (plain http, older browsers): the textarea route still works.
+      const area = document.createElement("textarea")
+      area.value = text
+      area.style.position = "fixed"
+      area.style.opacity = "0"
+      document.body.appendChild(area)
+      area.select()
+      document.execCommand("copy")
+      area.remove()
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <button type="button" onClick={copy} className={LINK} title="Copy headline, CVE, fix and links as plain text">
+      <span aria-live="polite">{copied ? "Copied" : "Copy"}</span>
+    </button>
+  )
+}
+
+function VectorChips({ chips }: { chips: ReturnType<typeof parseVector> }) {
+  return (
+    <ul className="mt-2 flex flex-wrap gap-0.5" aria-label="CVSS vector">
+      {chips.map((c) => (
         <li
           key={c.metric}
           className={cn(
@@ -361,31 +439,32 @@ function VectorChips({ vector }: { vector: string | null }) {
             IMPACT_METRICS.has(c.metric) && c.value === "H" ? "bg-chip-impact" : "bg-chip",
           )}
         >
-          <span className={cn("block font-mono text-xs leading-4", c.value ? "text-fg" : "text-dim")}>
-            {c.metric}:{c.value ?? "—"}
+          <span className="block font-mono text-xs leading-4 text-fg">
+            {c.metric}:{c.value}
           </span>
-          <span className="block text-[10px] leading-[14px] text-muted">{c.label ?? " "}</span>
+          {c.label && <span className="block text-[10px] leading-[14px] text-muted">{c.label}</span>}
         </li>
       ))}
     </ul>
   )
 }
 
-function Metrics({ detail }: { detail: ItemDetail | null }) {
-  const cve = detail?.cve ?? null
-  const num = (v: number | null | undefined, digits: number) =>
-    v === null || v === undefined ? <Unknown /> : v.toFixed(digits)
+function metricPairs(d: ItemDetail): [string, ReactNode][] {
+  const cve = d.cve
+  const pairs: [string, ReactNode][] = []
+  if (cve?.impact_score != null) pairs.push(["Impact", cve.impact_score.toFixed(1)])
+  if (cve?.exploitability_score != null) pairs.push(["Exploitability", cve.exploitability_score.toFixed(1)])
+  const epss = cve?.epss ?? d.epss
+  if (epss != null) pairs.push(["EPSS", epss.toFixed(2)])
   // kev=false is only a fact once enrichment has run; before that it is a default.
-  const kev = cve?.kev || detail?.kev ? "yes" : cve?.fetched_at ? "no" : null
+  if (cve?.kev || d.kev) pairs.push(["KEV", <span key="kev" className="text-critical">yes</span>])
+  else if (cve?.fetched_at) pairs.push(["KEV", <span key="kev" className="text-muted">no</span>])
+  return pairs
+}
 
-  const pairs: [string, ReactNode][] = [
-    ["Impact", num(cve?.impact_score, 1)],
-    ["Exploitability", num(cve?.exploitability_score, 1)],
-    ["EPSS", num(cve?.epss ?? detail?.epss, 2)],
-    ["KEV", kev === null ? <Unknown /> : <span className={kev === "yes" ? "text-critical" : "text-muted"}>{kev}</span>],
-  ]
+function Metrics({ pairs }: { pairs: [string, ReactNode][] }) {
   return (
-    <dl className="flex basis-full gap-8 md:-mt-px md:ml-12 md:basis-auto">
+    <dl className="flex gap-8">
       {pairs.map(([label, value]) => (
         <div key={label}>
           <dt className="text-[13px] leading-4 text-muted">{label}</dt>
@@ -396,20 +475,21 @@ function Metrics({ detail }: { detail: ItemDetail | null }) {
   )
 }
 
-const PATCH: Record<PatchStatus, { mark: string; text: string; tone: string }> = {
+type KnownPatch = Exclude<PatchStatus, "unverified">
+
+const PATCH: Record<KnownPatch, { mark: string; text: string; tone: string }> = {
   patched: { mark: "●", text: "patched", tone: "text-fg" },
   no_fix: { mark: "○", text: "no fix", tone: "text-muted" },
   workaround: { mark: "○", text: "no fix · workaround", tone: "text-muted" },
-  unverified: { mark: "○", text: "unverified", tone: "text-muted" },
 }
 
-function Patch({ status, url }: { status: PatchStatus | null; url: string | null }) {
-  if (status === null) return <Unknown />
+function Patch({ status, url }: { status: KnownPatch; url: string | null }) {
   const p = PATCH[status]
+  const linked = url && status !== "no_fix" ? url : null
   const body = (
     <>
       {p.mark} {p.text}
-      {url && (status === "patched" || status === "workaround") && (
+      {linked && (
         <span aria-hidden className="ml-1 text-[10px] text-critical">
           ↗
         </span>
@@ -417,16 +497,11 @@ function Patch({ status, url }: { status: PatchStatus | null; url: string | null
     </>
   )
   const cls = cn("font-mono text-xs whitespace-nowrap", p.tone)
-  return url && (status === "patched" || status === "workaround") ? (
-    <a href={url} {...EXTERNAL} className={cn(cls, "outline-none hover:text-fg focus-visible:text-fg")}>
+  return linked ? (
+    <a href={linked} {...EXTERNAL} className={cn(cls, LINK)}>
       {body}
     </a>
   ) : (
     <span className={cls}>{body}</span>
   )
-}
-
-/** Affected ranges as computed by the API from NVD, else the MSRC product. Null when unknown. */
-function affected(d: ItemDetail): string | null {
-  return d.cve?.affected ?? d.msrc?.product ?? null
 }

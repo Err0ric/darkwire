@@ -51,6 +51,11 @@ class FeedPage(BaseModel):
     total: int
 
 
+class FixedVersion(BaseModel):
+    product: str
+    version: str
+
+
 class CveDetail(ORM):
     id: str
     description: str | None
@@ -73,6 +78,9 @@ class CveDetail(ORM):
     affected: str | None  # "PAN-OS 10.2.0 before 10.2.9-h1, ..." from CPE, else the CNA's ranges
     patch_status: PatchStatus | None
     patch_url: str | None
+    fixed_versions: list["FixedVersion"] | None
+    workaround_url: str | None
+    kev_due_date: datetime | None  # CISA's remediation deadline for federal agencies
 
 
 class MsrcDetail(ORM):
@@ -89,8 +97,14 @@ class MsrcDetail(ORM):
     fixed_builds: list | None
 
 
+class Action(BaseModel):
+    fixed: list[str] = []
+    workaround: str | None = None
+
+
 class ItemDetail(FeedItem):
     summary: str | None
+    action: Action | None  # model-read from the articles, CVE rows only
     patch_status: PatchStatus
     patch_url: str | None
     first_seen_at: datetime

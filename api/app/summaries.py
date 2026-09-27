@@ -2,10 +2,12 @@
 
 Runs at the end of each enrichment pass so CVE rows are summarized with their NVD facts
 (affected versions, fix status). Never regenerated. Without ANTHROPIC_API_KEY it does nothing
-and the row keeps showing "No summary yet."
+and the expanded row simply has no summary. actions_pending() reads fixed versions and
+workarounds out of the articles for the "What to do" block, same model, same rules.
 """
 
 import asyncio
+import json
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -15,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
-from app.models import Cve, Item, ItemSource, PatchStatus, Stream
+from app.models import Cve, Item, ItemCve, ItemSource, PatchStatus, Stream
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +34,7 @@ Write at most three short sentences, under 60 words in total, covering in order:
 2. Who is affected: products and versions, organizations, or users.
 3. Whether there is a fix: patched versions, a workaround, or no fix yet.
 
-Use only facts from the material provided. If the material does not say whether a fix exists, write "Fix status not stated." Do not speculate.
+Use only facts from the material provided. If the material does not say whether a fix exists, leave the third point out entirely; never write that something is unknown or not stated. Do not speculate.
 No adjectives of emphasis (critical, severe, major, alarming), no marketing language, no advice, no headline restatement, no source names.
 Plain text only: no markdown, no bullet points, no preamble."""
 
@@ -57,6 +59,48 @@ def _material(item: Item, cve: Cve | None) -> str:
         if cve.patch_status:
             lines.append(f"Fix status: {PATCH_TEXT[cve.patch_status]}")
     return "\n".join(lines)
+
+
+ACTION_SYSTEM = """You read security articles about a vulnerability and extract what a defender can do about it.
+
+Return one JSON object and nothing else:
+{"fixed": ["<product> <first fixed version or update/KB ID>", ...], "workaround": "<one sentence>" or null}
+
+Rules:
+- Only facts stated in the material. Never infer a version, never guess.
+- "fixed": at most 4 entries, product name then the version, build or KB that fixes it. Empty list if none is stated.
+- "workaround": one plain imperative sentence under 25 words (e.g. "Disable the WebDAV service on exposed hosts.") only if the material names a concrete mitigation other than patching. Otherwise null.
+- No adjectives of emphasis, no markdown, no commentary."""
+
+BODY_CHARS = 4000
+
+
+def _action_material(item: Item, cve: Cve | None) -> str:
+    lines = [f"Headline: {item.headline}"]
+    if cve is not None:
+        if cve.description:
+            lines.append(f"{cve.id} (NVD): {cve.description}")
+        if cve.affected:
+            lines.append(f"Affected versions: {cve.affected}")
+    for s in item.sources:
+        text = (s.body or s.excerpt or "")[:BODY_CHARS]
+        if text:
+            lines.append("Article:\n" + text)
+    return "\n\n".join(lines)
+
+
+def _parse_action(text: str) -> dict | None:
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end < start:
+        return None
+    try:
+        raw = json.loads(text[start : end + 1])
+    except ValueError:
+        return None
+    fixed = [f.strip() for f in raw.get("fixed") or [] if isinstance(f, str) and f.strip()][:4]
+    workaround = raw.get("workaround")
+    workaround = workaround.strip() if isinstance(workaround, str) and workaround.strip() else None
+    return {"fixed": fixed, "workaround": workaround}
 
 
 def _ready(item: Item, cve: Cve | None, now: datetime) -> bool:
@@ -128,6 +172,67 @@ async def summarize_pending(session: AsyncSession) -> int | None:
     for item, text in zip(todo, results, strict=True):
         if text:
             item.summary = text
+            written += 1
+    await session.commit()
+    return written
+
+
+async def actions_pending(session: AsyncSession) -> int | None:
+    """Read fixed versions and workarounds out of the articles for CVE rows, once each.
+    None when skipped (no key). Stored even when empty so an item is asked only once."""
+    key = get_settings().anthropic_api_key
+    if not key:
+        return None
+    now = datetime.now(UTC)
+    items = (
+        await session.scalars(
+            select(Item)
+            .where(Item.stream == Stream.main, Item.action.is_(None), Item.id.in_(select(ItemCve.item_id)))
+            .options(selectinload(Item.sources), selectinload(Item.cve))
+            .order_by(Item.last_event_at.desc())
+            .limit(PER_RUN * 3)
+        )
+    ).all()
+    todo = [i for i in items if i.sources and _ready(i, i.cve, now)][:PER_RUN]
+    if not todo:
+        return 0
+
+    sem = asyncio.Semaphore(CONCURRENCY)
+    stop = asyncio.Event()
+
+    async with anthropic.AsyncAnthropic(api_key=key, max_retries=3) as client:
+
+        async def one(item: Item) -> dict | None:
+            if stop.is_set():
+                return None
+            async with sem:
+                if stop.is_set():
+                    return None
+                try:
+                    msg = await client.messages.create(
+                        model=MODEL,
+                        max_tokens=400,
+                        system=ACTION_SYSTEM,
+                        messages=[{"role": "user", "content": _action_material(item, item.cve)}],
+                    )
+                except (anthropic.RateLimitError, anthropic.AuthenticationError, anthropic.PermissionDeniedError,
+                        anthropic.NotFoundError, anthropic.APIConnectionError) as e:
+                    log.info("actions: %s, the rest wait for the next pass", type(e).__name__)
+                    stop.set()
+                    return None
+                except anthropic.APIStatusError as e:
+                    log.warning("actions: item %d failed: HTTP %d", item.id, e.status_code)
+                    return None
+            if msg.stop_reason != "end_turn":
+                return None
+            return _parse_action(" ".join(b.text for b in msg.content if b.type == "text"))
+
+        results = await asyncio.gather(*(one(i) for i in todo))
+
+    written = 0
+    for item, action in zip(todo, results, strict=True):
+        if action is not None:
+            item.action = action
             written += 1
     await session.commit()
     return written

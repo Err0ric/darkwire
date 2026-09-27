@@ -83,10 +83,21 @@ Built for wall displays as much as laptops: portrait and landscape, 390px to 344
 Click anywhere on the row except a link. Background `--surface`, extends 24px past the row edges. Contents in order:
 
 1. Summary, 3 lines max, 14px, `#b5b5b5`, max-width 720px. Generated once on ingest, cached. Prompt: what it is, who is affected, is there a fix. No adjectives.
-2. `CVSS 3.1 vector` label, then 8 chips: `AV:N / Network` etc. Chip = Geist Mono 12px value over 10px sans label, background `#161616`. Impact-side chips (C, I, A) at High get background `#1c1010`.
-3. Impact, Exploitability, EPSS, KEV as label-over-number pairs, Geist Mono 18px.
-4. Affected line: version ranges from CPE. Then patch status: `● patched ↗` (link to vendor advisory, or NVD reference tagged Patch), `○ no fix`, `○ no fix · workaround ↗`, or `○ unverified`.
-5. Links right-aligned: Source, Vendor advisory, NVD. All new tab.
+2. What to do (CVE rows only), label then label/value lines:
+   - `Update to`: first fixed version per affected range, product once then versions in Geist Mono. Source order: NVD CPE `versionEndExcluding`, then the CNA's `lessThan` / unaffected-at versions, then MSRC KBs, then what the summary model read in the articles. `advisory ↗` after the first line.
+   - `Workaround`: one sentence from the summary model (only a concrete mitigation the articles name), plus a link to the NVD reference tagged Mitigation when there is one.
+   - `KEV due`: CISA's due date, shown as a UTC calendar date, when the CVE is in KEV.
+3. `CVSS 3.1 vector` label, then 8 chips: `AV:N / Network` etc. Chip = Geist Mono 12px value over 10px sans label, background `#161616`. Impact-side chips (C, I, A) at High get background `#1c1010`.
+4. Impact, Exploitability, EPSS, KEV as label-over-number pairs, Geist Mono 18px.
+5. Affected line: version ranges from CPE. Then patch status: `● patched ↗` (link to vendor advisory, or NVD reference tagged Patch), `○ no fix`, or `○ no fix · workaround ↗`.
+6. Links right-aligned: Source, Vendor advisory, NVD, then `Copy`. All new tab.
+
+Rules:
+
+- Every section, line and pair renders only when it has data. No dashes, blanks, "unknown", "null", "No summary yet" or loading text anywhere in the expanded row. Unverified patch status is not shown. KEV `no` shows only once enrichment has checked.
+- Plain news (no CVE) expands to its summary, when there is one, and the Source link. Nothing else.
+- `Copy` (CVE rows) puts a Teams/ticket-ready plain-text block on the clipboard, one fact per line, only lines with data: headline; `CVE · CVSS n.n Severity · CISA KEV`; `Affected:`; `Fixed in:`; `Workaround:`; `KEV due date: YYYY-MM-DD`; blank line; `Source:`, `Vendor advisory:`, `Mitigation:` (only if different from the advisory), `NVD:`.
+- The summary model (`ANTHROPIC_API_KEY`) is optional. Without it, What to do comes from NVD, MSRC and KEV alone.
 
 ## Right rail (wire only), in this order
 

@@ -4,9 +4,10 @@
 
 Writes:
 - app/favicon.ico (16 + 32), app/icon.svg, app/apple-icon.png (180), public/icon-192.png,
-  public/icon-512.png: a dotless "ı" stem in --fg with the red square above it, on black,
-  drawn on a pixel grid so 16 and 32 are crisp (no scaling, no antialiasing). The larger
-  icons keep the mark inside the maskable safe zone.
+  public/icon-512.png: a lowercase "d" in --fg and a block cursor (#5a5a5a) on black, drawn
+  cell by cell on a 16 grid so 16 and 32 are crisp (no scaling, no antialiasing). The larger
+  icons keep the mark inside the maskable safe zone. The unseen state (lib/unseen.ts) paints
+  the cursor --critical on a canvas copy.
 - public/og.png: the static lockup ("darkwire" with the red square, faint ".tech", the mono
   tagline right-aligned to the end of ".tech"), 1200x630.
 - public/og.gif: frame 1 is that same static lockup (platforms that show one frame get the
@@ -68,34 +69,51 @@ TAG_GAP = 34
 
 # --------------------------------------------------------------------------- icons
 
-# The mark on a 32 grid: (x0, y0, x1, y1) inclusive cells. Square 6 wide over a 4-wide stem.
-ICON32 = {"square": (13, 4, 18, 9), "stem": (14, 13, 17, 28)}
-# Hand-set 16 grid (crisp at 1x): square 4 over a 2-wide stem.
-ICON16 = {"square": (6, 2, 9, 5), "stem": (7, 8, 8, 14)}
+# The favicon: a lowercase "d" and a block cursor, drawn cell by cell on a 16 grid so it is
+# crisp at 16 and 32 (32 = each cell 2x2). Inclusive cell ranges (x0, y0, x1, y1).
+D_STEM = (6, 2, 7, 14)
+D_BOWL = (1, 5, 6, 14)  # 2-cell stroke, rounded by leaving its two left corners open
+CURSOR_BLOCK = (10, 8, 13, 13)
+ICON_CURSOR = (0x5A, 0x5A, 0x5A)  # normal; the unseen state paints it --critical (lib/unseen.ts)
 
 
-def grid_icon(size: int, cells: dict, grid: int) -> Image.Image:
-    im = Image.new("RGB", (size, size), BLACK)
+def d_cells() -> set[tuple[int, int]]:
+    cells = set()
+    x0, y0, x1, y1 = D_STEM
+    cells |= {(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)}
+    x0, y0, x1, y1 = D_BOWL
+    for x in range(x0, x1 + 1):
+        for y in range(y0, y1 + 1):
+            if x <= x0 + 1 or y <= y0 + 1 or y >= y1 - 1:  # left stroke, top and bottom strokes
+                cells.add((x, y))
+    cells -= {(x0, y0), (x0, y1)}  # round the bowl's left corners
+    return cells
+
+
+def draw_mark(im: Image.Image, ox: float, oy: float, u: float, cursor=ICON_CURSOR) -> None:
+    """The mark with each 16-grid cell u pixels wide, its grid origin at (ox, oy)."""
     d = ImageDraw.Draw(im)
-    u = size / grid
-    for name, color in (("stem", FG), ("square", RED)):
-        x0, y0, x1, y1 = cells[name]
-        d.rectangle([round(x0 * u), round(y0 * u), round((x1 + 1) * u) - 1, round((y1 + 1) * u) - 1], fill=color)
+    box = lambda x0, y0, x1, y1: [round(ox + x0 * u), round(oy + y0 * u), round(ox + (x1 + 1) * u) - 1, round(oy + (y1 + 1) * u) - 1]
+    for x, y in d_cells():
+        d.rectangle(box(x, y, x, y), fill=FG)
+    d.rectangle(box(*CURSOR_BLOCK), fill=cursor)
+
+
+def grid_icon(size: int, cursor=ICON_CURSOR) -> Image.Image:
+    """16 and 32: the grid at 1 or 2 pixels per cell, filling the icon."""
+    im = Image.new("RGB", (size, size), BLACK)
+    draw_mark(im, 0, 0, size / 16, cursor)
     return im
 
 
 def safe_icon(size: int) -> Image.Image:
-    """Larger icons: the 32-grid mark scaled so it sits inside the central 60% (maskable safe
-    zone), centered, edges on whole pixels."""
+    """Larger icons: the mark (cells x 1-13, y 2-14) scaled into the central 60% (the maskable
+    safe zone), centered, on whole pixels."""
     im = Image.new("RGB", (size, size), BLACK)
-    d = ImageDraw.Draw(im)
-    top, bottom = ICON32["square"][1], ICON32["stem"][3] + 1  # mark spans these rows
-    u = size * 0.6 / (bottom - top)
-    ox = size / 2 - 16 * u
-    oy = size / 2 - (top + bottom) / 2 * u
-    for name, color in (("stem", FG), ("square", RED)):
-        x0, y0, x1, y1 = ICON32[name]
-        d.rectangle([round(ox + x0 * u), round(oy + y0 * u), round(ox + (x1 + 1) * u) - 1, round(oy + (y1 + 1) * u) - 1], fill=color)
+    u = round(size * 0.6 / 13)
+    ox = round(size / 2 - 7.5 * u)  # mark center x = (1 + 14) / 2 = 7.5 cells
+    oy = round(size / 2 - 8.5 * u)  # mark center y = (2 + 15) / 2 = 8.5 cells
+    draw_mark(im, ox, oy, u)
     return im
 
 
@@ -119,13 +137,14 @@ def write_ico(path: Path, images: list[Image.Image]) -> None:
 
 
 def icon_svg() -> str:
-    x0, y0, x1, y1 = ICON32["square"]
-    sx0, sy0, sx1, sy1 = ICON32["stem"]
+    """The 16 grid as SVG rects (crispEdges); browsers use it where they prefer SVG."""
+    rects = "".join(f'<rect x="{x}" y="{y}" width="1" height="1" fill="#f5f5f5"/>' for x, y in sorted(d_cells()))
+    x0, y0, x1, y1 = CURSOR_BLOCK
     return (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">'
-        '<rect width="32" height="32" fill="#000"/>'
-        f'<rect x="{sx0}" y="{sy0}" width="{sx1 - sx0 + 1}" height="{sy1 - sy0 + 1}" fill="#f5f5f5"/>'
-        f'<rect x="{x0}" y="{y0}" width="{x1 - x0 + 1}" height="{y1 - y0 + 1}" fill="#dc2626"/>'
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">'
+        '<rect width="16" height="16" fill="#000"/>'
+        + rects
+        + f'<rect x="{x0}" y="{y0}" width="{x1 - x0 + 1}" height="{y1 - y0 + 1}" fill="#5a5a5a"/>'
         "</svg>\n"
     )
 
@@ -270,7 +289,7 @@ def gif_frames(lock: Lockup):
 
 def main():
     # Icons
-    write_ico(APP / "favicon.ico", [grid_icon(16, ICON16, 16), grid_icon(32, ICON32, 32)])
+    write_ico(APP / "favicon.ico", [grid_icon(16), grid_icon(32)])
     (APP / "icon.svg").write_text(icon_svg(), encoding="utf-8")
     safe_icon(180).save(APP / "apple-icon.png", optimize=True)
     safe_icon(192).save(PUBLIC / "icon-192.png", optimize=True)

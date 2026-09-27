@@ -134,18 +134,18 @@ export function Nav() {
         >
           CVEs
         </Link>
-        <span aria-hidden className={cn("-mx-1.5 hidden text-dim min-[1200px]:block", ownClock && "invisible")}>
+        <span aria-hidden className={cn("-mx-1.5 hidden text-dim-text min-[1200px]:block", ownClock && "invisible")}>
           ·
         </span>
         <time
           dateTime={now !== null ? new Date(now).toISOString() : undefined}
           title="Coordinated Universal Time"
           aria-hidden={ownClock || undefined}
-          className={cn("hidden w-[70px] font-mono text-xs leading-none text-dim min-[1200px]:block", ownClock && "invisible")}
+          className={cn("hidden w-[70px] font-mono text-xs leading-none text-dim-text min-[1200px]:block", ownClock && "invisible")}
         >
           {now !== null ? `${utcHHMM(new Date(now))} UTC` : ""}
         </time>
-        <p className={cn("hidden text-[15px] leading-none sm:block", sync.unreachable ? "text-critical" : "text-muted")} aria-live="polite">
+        <p className={cn("hidden text-[15px] leading-none sm:block", sync.unreachable ? "text-critical-text" : "text-muted")} aria-live="polite">
           {label}
         </p>
         <ThemePicker />

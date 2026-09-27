@@ -41,12 +41,14 @@ Palette. Use CSS variables, never hardcode in components.
 | `--rule` | #1f1f1f | section dividers, empty bar cells |
 | `--fg` | #f5f5f5 | headlines, primary text |
 | `--fg-2` | #a3a3a3 | source links, secondary |
-| `--muted` | #737373 | meta text, labels |
-| `--dim` | #525252 | tertiary, timestamps in rail |
+| `--muted` | #8b8b8b | meta text, labels (5.6:1; was #737373, which fails 4.5:1) |
+| `--dim` | #525252 | lines, borders and non-text marks only, never text |
+| `--dim-text` | #7d7d7d | tertiary text: timestamps in rail, separators, pinned (4.66:1 on `--bg` and `--surface`) |
 | `--accent` | #b91c1c | outlines, HIGH, wordmark dot |
-| `--critical` | #dc2626 | CRITICAL fill, KEV text, arrows |
+| `--critical` | #dc2626 | CRITICAL fill, outlines, focus ring |
+| `--critical-text` | #e14343 | red text: KEV, EXPLOITED, arrows, errors (4.6:1) |
 
-Red is a signal, not a paint job. If more than ~5% of a screen is red, it is wrong.
+Every text color clears 4.5:1 on `--bg` and `--surface` (axe-checked); fade with a color token, never with opacity on text. Red is a signal, not a paint job. If more than ~5% of a screen is red, it is wrong.
 
 Type: Geist Sans for words, Geist Mono for data (CVE IDs, scores, timestamps, vector chips, badges, status line). Headline 15px/500 tracking -0.01em. Meta 12px. Section labels 13px/500 in sans, never mono-caps.
 
@@ -79,7 +81,7 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 - Headline links to the primary source, `target="_blank" rel="noopener noreferrer"`.
 - Meta line: every source name is a link to that outlet's article, same 12px, `--fg-2`. One name per outlet: an outlet with several articles in the cluster links to its newest. Cap 4 visible, then `+N`. Then category, then `KEV` in `--critical` if listed, else `EXPLOITED` in `--critical` when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator is `·`.
 - KEV due: within 7 days of CISA's due date the marker reads `KEV due in Nd` (`KEV` red, the rest `--fg-2`; all red at 2 days or less, `KEV due today` on the day), and `KEV overdue` in red for 7 days after it. Days count in UTC. These rows count toward the unseen `!`.
-- Old CVEs: a CVE published more than 90 days ago, not in KEV, and in a row where no headline is about exploitation (exploit, exploited, zero-day, in the wild, under attack) keeps its score but the score, bar and badge dim to 40%. Such rows are left out of severity totals, pinning and the unseen `!`.
+- Old CVEs: a CVE published more than 90 days ago, not in KEV, and in a row where no headline is about exploitation (exploit, exploited, zero-day, in the wild, under attack) keeps its score but dims: the score and badge text take `--dim-text` (the badge a quiet `#333` outline) and the bar cells 40%. Such rows are left out of severity totals, pinning and the unseen `!`.
 - Score: Geist Mono 14px/500. `--fg` for 7.0+, `--fg-2` below. Empty for non-CVE rows.
 - Bar: 10 cells, 5x10px, 2px gap. Filled = round(CVSS). Fill color by severity: Critical `--critical`, High `--accent`, Medium #6b6b6b. Empty cells `--rule`. Only rendered when the row has a score; unscored rows keep the empty 68px slot so columns align.
 - Badge: Geist Mono 10px/500, letterspacing 0.04em, 64px wide. CRITICAL = white on `--critical`. HIGH = `--fg` with `--accent` outline. MEDIUM = `--fg-2` with #333 outline. BREACH (breach and ransomware rows) = `--muted` with #262626 outline. Unscored news, advisory and research rows get no badge, just the empty 64px slot.

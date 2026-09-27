@@ -204,7 +204,7 @@ export function CveTable({ rows, initial }: { rows: CveRow[]; initial: CveFilter
                       aria-hidden
                       className={cn(
                         "size-3",
-                        sort?.key === c.key ? "text-critical" : "invisible",
+                        sort?.key === c.key ? "text-critical-text" : "invisible",
                         sort?.key === c.key && sort.order === "asc" && "rotate-180",
                       )}
                     />
@@ -300,12 +300,12 @@ function Row({ row: r, expanded, onToggle }: { row: CveRow; expanded: boolean; o
       </td>
       <td className={cn(CELL, "font-mono text-xs")}>
         {r.epss !== null && (
-          <span className={r.epss < 0.01 ? "text-dim" : r.epss > 0.1 ? "text-fg" : "text-fg-2"}>
+          <span className={r.epss < 0.01 ? "text-dim-text" : r.epss > 0.1 ? "text-fg" : "text-fg-2"}>
             {(r.epss * 100).toFixed(1)}%
           </span>
         )}
       </td>
-      <td className={cn(CELL, "font-mono text-xs")}>{r.kev && <span className="text-critical">KEV</span>}</td>
+      <td className={cn(CELL, "font-mono text-xs")}>{r.kev && <span className="text-critical-text">KEV</span>}</td>
       <td className={cn(CELL, "font-mono text-xs whitespace-nowrap")}>
         <PatchCell status={r.patch_status} />
       </td>
@@ -332,7 +332,7 @@ function CvssBar({ row: r }: { row: CveRow }) {
 /** As in the expanded row: ● patched, ○ no fix, ○ no fix · workaround; plus ○ unverified. */
 function PatchCell({ status }: { status: CveRow["patch_status"] }) {
   if (!status) return null
-  if (status === "unverified") return <span className="text-dim">○ unverified</span>
+  if (status === "unverified") return <span className="text-dim-text">○ unverified</span>
   const p = PATCH[status]
   return (
     <span className={p.tone}>

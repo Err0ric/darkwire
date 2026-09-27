@@ -34,7 +34,7 @@ function paint(el: HTMLElement, segments: Segment[]) {
     .filter((s) => s.text)
     .map((s) => {
       const span = document.createElement("span")
-      if (s.glyph) span.className = "font-mono text-critical"
+      if (s.glyph) span.className = "font-mono text-critical-text"
       span.textContent = s.text
       return span
     })
@@ -159,7 +159,7 @@ export function Ticker({ items }: { items: FeedItem[] }) {
   return (
     <div className="relative mt-[clamp(20px,3vh,36px)] flex h-5 w-full justify-center">
       <p className="flex max-w-full min-w-0 items-baseline gap-2.5 text-[13px] leading-5">
-        <span aria-hidden className="text-critical">
+        <span aria-hidden className="text-critical-text">
           ›
         </span>
         <a
@@ -173,7 +173,7 @@ export function Ticker({ items }: { items: FeedItem[] }) {
         </a>
         <span
           ref={meta}
-          className="ticker-fade hidden shrink-0 font-mono text-[11px] text-dim transition-opacity duration-200 sm:inline"
+          className="ticker-fade hidden shrink-0 font-mono text-[11px] text-dim-text transition-opacity duration-200 sm:inline"
         >
           {current.sources[0]?.name}
           {now !== null && <> · {age(current.last_event_at, now)}</>}

@@ -10,7 +10,7 @@ export function WireClock() {
   const now = useClock()
   const [hm, s] = now ? hms(now) : ["", ""]
   const zone = now ? zoneName(now) : ""
-  const dot = <span className="text-dim"> · </span>
+  const dot = <span className="text-dim-text"> · </span>
   return (
     <div className="flex flex-wrap items-baseline gap-x-4">
       <h1 className="sr-only">The wire</h1>
@@ -18,7 +18,7 @@ export function WireClock() {
         {now && (
           <time dateTime={now.toISOString()}>
             {hm}
-            <span className="text-dim">{s}</span>
+            <span className="text-dim-text">{s}</span>
           </time>
         )}
       </p>
@@ -29,11 +29,11 @@ export function WireClock() {
             {dot}
             {zone !== "UTC" && (
               <>
-                <span className="font-mono text-dim">{zone}</span>
+                <span className="font-mono text-dim-text">{zone}</span>
                 {dot}
               </>
             )}
-            <span className="font-mono text-dim">{utcHHMM(now)} UTC</span>
+            <span className="font-mono text-dim-text">{utcHHMM(now)} UTC</span>
           </>
         )}
       </p>

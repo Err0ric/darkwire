@@ -123,7 +123,7 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
           href={`/wire${query()}`}
           className="mt-[clamp(24px,3.6vh,48px)] inline-flex h-10 items-center gap-2.5 rounded-control border border-accent px-6 font-mono text-[13px] font-medium tracking-[0.08em] text-fg outline-none hover:border-critical focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
-          OPEN WIRE <span className="text-critical">→</span>
+          OPEN WIRE <span className="text-critical-text">→</span>
         </Link>
         <nav aria-label="More" className="mt-3.5 flex gap-6 text-[13px] text-muted">
           {[
@@ -180,7 +180,7 @@ function Lockup({ state }: { state: SyncState }) {
 /** "Sunday, Sep 27 · 14:09 PDT · 21:09 UTC": date in sans, times in mono, dots dim. UTC viewers
  * see only UTC. Each minute. */
 function DateLine({ now }: { now: Date | null }) {
-  const dot = <span className="text-dim"> · </span>
+  const dot = <span className="text-dim-text"> · </span>
   const utcOnly = now !== null && zoneName(now) === "UTC"
   return (
     <p className="mt-5 h-5 text-[15px] leading-5 text-fg-2">
@@ -232,7 +232,7 @@ const BADGE: Record<string, string> = {
   high: "border-accent text-fg",
   medium: "border-outline-medium text-fg-2",
   low: "border-outline-muted text-muted",
-  exploited: "border-accent text-critical",
+  exploited: "border-accent text-critical-text",
 }
 
 const BAR_FILL: Record<string, string> = { critical: "bg-critical", high: "bg-accent", medium: "bg-medium", low: "bg-dim" }
@@ -247,9 +247,9 @@ function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
   const due = now === null ? null : kevDueIn(item, now)
   const tag =
     due !== null ? (
-      <span className="text-critical">{due < 0 ? "KEV overdue" : due === 0 ? "KEV due today" : `KEV due in ${due}d`}</span>
+      <span className="text-critical-text">{due < 0 ? "KEV overdue" : due === 0 ? "KEV due today" : `KEV due in ${due}d`}</span>
     ) : item.kev ? (
-      <span className="text-critical">KEV</span>
+      <span className="text-critical-text">KEV</span>
     ) : item.patch_status === "no_fix" ? (
       <span className="text-muted">no fix yet</span>
     ) : null

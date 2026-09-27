@@ -89,7 +89,7 @@ function ImpactedNow({ services, total, now }: { services: ServiceOut[]; total: 
           <li key={s.slug} className="flex min-h-11 items-baseline gap-x-3 border-b border-hairline py-3 text-[14px]">
             <StateDot state={s.state} className="relative -top-px self-center" />
             <span className="shrink-0 text-fg">{s.name}</span>
-            <span className={cn("shrink-0", s.state === "major" ? "text-critical" : "text-degraded")}>
+            <span className={cn("shrink-0", s.state === "major" ? "text-critical-text" : "text-degraded")}>
               {s.state === "major" ? STATE_WORD.major : STATE_WORD.degraded}
             </span>
             <a
@@ -97,7 +97,7 @@ function ImpactedNow({ services, total, now }: { services: ServiceOut[]; total: 
               {...EXTERNAL}
               className="min-w-0 flex-1 text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
             >
-              {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[10px] text-critical">↗</span>
+              {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[10px] text-critical-text">↗</span>
             </a>
             {s.incident?.started_at && now !== null && (
               <span className="shrink-0 font-mono text-xs text-muted">{age(s.incident.started_at, now)}</span>
@@ -114,7 +114,7 @@ function Group({ name, services }: { name: string; services: ServiceOut[] }) {
     <section aria-label={name} className="min-w-0">
       <h2 className="border-b border-rule pb-2.5 text-[13px] font-medium text-fg">{name}</h2>
       {/* The strip's axis, once per column. */}
-      <div aria-hidden className="mt-2 flex justify-between text-[11px] leading-4 text-dim">
+      <div aria-hidden className="mt-2 flex justify-between text-[11px] leading-4 text-dim-text">
         <span>24h</span>
         <span>now</span>
       </div>
@@ -127,7 +127,7 @@ function Group({ name, services }: { name: string; services: ServiceOut[] }) {
                 {s.name}
               </a>
               {isImpacted(s) && (
-                <span className={s.state === "major" ? "text-critical" : "text-degraded"}>
+                <span className={s.state === "major" ? "text-critical-text" : "text-degraded"}>
                   {s.state === "major" ? STATE_WORD.major : STATE_WORD.degraded}
                 </span>
               )}
@@ -145,7 +145,7 @@ function Stale({ services, now }: { services: ServiceOut[]; now: number | null }
   const events = services.flatMap((s) => s.stale.map((e) => ({ service: s, e })))
   if (!events.length) return null
   return (
-    <details className="group mt-10 text-dim">
+    <details className="group mt-10 text-dim-text">
       <summary className="flex cursor-pointer list-none items-baseline gap-2 border-b border-rule pb-2.5 text-[13px] font-medium outline-none hover:text-muted focus-visible:text-muted">
         <span aria-hidden className="inline-block group-open:rotate-90">
           ›

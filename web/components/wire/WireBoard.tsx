@@ -348,7 +348,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                   </Count>
                 </>
               ) : (
-                <span className="text-dim">Counts unavailable.</span>
+                <span className="text-dim-text">Counts unavailable.</span>
               )}
             </p>
             {stack.length > 0 && stackCritical === 0 && (
@@ -457,7 +457,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                     )}
                   >
                     <span className="font-semibold text-fg-2">{g.name}</span>
-                    <span className="text-dim">
+                    <span className="text-dim-text">
                       {g.name !== g.date && <>&nbsp;· {g.date}</>}&nbsp;· {g.items.length} {g.items.length === 1 ? "item" : "items"}
                     </span>
                   </div>
@@ -555,7 +555,7 @@ function Count({
   return (
     <span className="whitespace-nowrap">
       {sep && (
-        <span aria-hidden className={cn("hidden md:inline", sep === "slash" ? "mx-[13px] text-outline-medium" : "mx-2 text-dim")}>
+        <span aria-hidden className={cn("hidden md:inline", sep === "slash" ? "mx-[13px] text-outline-medium" : "mx-2 text-dim-text")}>
           {sep === "slash" ? "/" : "·"}
         </span>
       )}

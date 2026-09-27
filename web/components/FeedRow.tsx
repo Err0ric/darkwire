@@ -143,7 +143,7 @@ export function FeedRow({
           className="relative ml-3 flex size-5 shrink-0 items-center justify-center outline-none after:absolute after:-inset-2 after:content-[''] focus-visible:outline-1 focus-visible:outline-rule md:ml-[25px] md:size-3"
         >
           <ChevronDown
-            className={cn("size-3", expanded ? "rotate-180 text-critical" : "text-chevron")}
+            className={cn("size-3", expanded ? "rotate-180 text-critical-text" : "text-chevron")}
             strokeWidth={2}
           />
         </button>
@@ -178,7 +178,7 @@ function VendorMark({ item, inStack }: { item: FeedItem; inStack: boolean }) {
 
 function Sep({ wide = false }: { wide?: boolean }) {
   return (
-    <span aria-hidden className={cn("text-dim", wide ? "mx-1.5 md:mx-4" : "mx-1.5")}>
+    <span aria-hidden className={cn("text-dim-text", wide ? "mx-1.5 md:mx-4" : "mx-1.5")}>
       ·
     </span>
   )
@@ -207,9 +207,9 @@ function MetaLine({ item, pinned = false, inStack = false }: { item: FeedItem; p
     parts.push(CATEGORY_LABEL[item.category])
   }
   if (item.kev) parts.push(<KevMark key="kev" item={item} />)
-  else if (item.exploited) parts.push(<span key="exploited" className="text-critical">EXPLOITED</span>)
-  if (pinned) parts.push(<span key="pinned" className="text-dim">pinned</span>)
-  if (inStack) parts.push(<span key="stack" className="text-dim">your stack</span>)
+  else if (item.exploited) parts.push(<span key="exploited" className="text-critical-text">EXPLOITED</span>)
+  if (pinned) parts.push(<span key="pinned" className="text-dim-text">pinned</span>)
+  if (inStack) parts.push(<span key="stack" className="text-dim-text">your stack</span>)
 
   return (
     <p className="mt-0.5 truncate text-xs leading-4 text-muted">
@@ -228,20 +228,22 @@ function MetaLine({ item, pinned = false, inStack = false }: { item: FeedItem; p
 function KevMark({ item }: { item: FeedItem }) {
   const now = useNow()
   const days = now === null ? null : kevDueIn(item, now)
-  if (days === null) return <span className="text-critical">KEV</span>
-  if (days < 0) return <span className="text-critical">KEV overdue</span>
+  if (days === null) return <span className="text-critical-text">KEV</span>
+  if (days < 0) return <span className="text-critical-text">KEV overdue</span>
   const when = days === 0 ? "due today" : `due in ${days}d`
   return days <= URGENT_DAYS ? (
-    <span className="text-critical">KEV {when}</span>
+    <span className="text-critical-text">KEV {when}</span>
   ) : (
     <span>
-      <span className="text-critical">KEV</span> <span className="text-fg-2">{when}</span>
+      <span className="text-critical-text">KEV</span> <span className="text-fg-2">{when}</span>
     </span>
   )
 }
 
 // An old CVE (over 90 days, not in KEV, nothing about exploitation) keeps its score but reads quieter.
-const STALE = "opacity-40"
+// Old CVEs dim: the score and badge text take --dim-text (still >= 4.5:1), the bar's cells 40%.
+const STALE_TEXT = "text-dim-text"
+const STALE_BAR = "opacity-40"
 const STALE_TITLE = "Older CVE: published over 90 days ago, not in KEV, no reported exploitation"
 
 function Score({ item, className }: { item: FeedItem; className?: string }) {
@@ -249,7 +251,7 @@ function Score({ item, className }: { item: FeedItem; className?: string }) {
   return (
     <span
       title={item.stale ? STALE_TITLE : undefined}
-      className={cn("font-mono text-sm font-medium", item.cvss >= 7 ? "text-fg" : "text-fg-2", item.stale && STALE, className)}
+      className={cn("font-mono text-sm font-medium", item.stale ? STALE_TEXT : item.cvss >= 7 ? "text-fg" : "text-fg-2", className)}
     >
       {item.cvss.toFixed(1)}
     </span>
@@ -269,7 +271,7 @@ function Bar({ item, className }: { item: FeedItem; className?: string }) {
   const filled = Math.round(item.cvss)
   const fill = (item.severity && BAR_FILL[item.severity]) || "bg-medium"
   return (
-    <span className={cn("flex shrink-0 gap-0.5", item.stale && STALE, className)} aria-label={`CVSS ${item.cvss}`}>
+    <span className={cn("flex shrink-0 gap-0.5", item.stale && STALE_BAR, className)} aria-label={`CVSS ${item.cvss}`}>
       {Array.from({ length: 10 }, (_, i) => (
         <span
           key={i}
@@ -305,8 +307,8 @@ function Badge({ item, className }: { item: FeedItem; className?: string }) {
     <span
       className={cn(
         "flex h-[18px] w-16 shrink-0 items-center justify-center rounded-badge border font-mono text-[10px] leading-none font-medium tracking-[0.04em] uppercase",
-        BADGE[severity ?? "muted"],
-        item.stale && STALE,
+        // Stale: a quiet outline and --dim-text instead of the severity colors.
+        item.stale ? "border-outline-medium text-dim-text" : BADGE[severity ?? "muted"],
         className,
       )}
     >
@@ -415,7 +417,7 @@ function WhatToDo({ todo }: { todo: Todo }) {
                   <span className="font-mono text-[13px] text-fg">{f.versions.join(", ")}</span>
                   {i === 0 && todo.fixedUrl && (
                     <a href={todo.fixedUrl} {...EXTERNAL} className={cn(LINK, "ml-3 text-fg-2")}>
-                      advisory <span aria-hidden className="text-[10px] text-critical">↗</span>
+                      advisory <span aria-hidden className="text-[10px] text-critical-text">↗</span>
                     </a>
                   )}
                 </span>
@@ -431,7 +433,7 @@ function WhatToDo({ todo }: { todo: Todo }) {
               {todo.workaroundUrl && (
                 <a href={todo.workaroundUrl} {...EXTERNAL} className={cn(LINK, "text-fg-2", todo.workaround && "ml-3")}>
                   {todo.workaround ? "details" : "vendor mitigation"}{" "}
-                  <span aria-hidden className="text-[10px] text-critical">↗</span>
+                  <span aria-hidden className="text-[10px] text-critical-text">↗</span>
                 </a>
               )}
             </dd>
@@ -506,7 +508,7 @@ function metricPairs(d: ItemDetail): [string, ReactNode][] {
   const epss = cve?.epss ?? d.epss
   if (epss != null) pairs.push(["EPSS", epss.toFixed(2)])
   // kev=false is only a fact once enrichment has run; before that it is a default.
-  if (cve?.kev || d.kev) pairs.push(["KEV", <span key="kev" className="text-critical">yes</span>])
+  if (cve?.kev || d.kev) pairs.push(["KEV", <span key="kev" className="text-critical-text">yes</span>])
   else if (cve?.fetched_at) pairs.push(["KEV", <span key="kev" className="text-muted">no</span>])
   return pairs
 }
@@ -539,7 +541,7 @@ function Patch({ status, url }: { status: KnownPatch; url: string | null }) {
     <>
       {p.mark} {p.text}
       {linked && (
-        <span aria-hidden className="ml-1 text-[10px] text-critical">
+        <span aria-hidden className="ml-1 text-[10px] text-critical-text">
           ↗
         </span>
       )}

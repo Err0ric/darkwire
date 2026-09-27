@@ -35,7 +35,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
           {" · "}
           {silent ? `${ok} operational · ${silent} not reporting` : `all ${ok} operational`}
         </p>
-        <span className="text-[11px] min-[2200px]:text-[12px] text-dim">{outages}</span>
+        <span className="text-[11px] min-[2200px]:text-[12px] text-dim-text">{outages}</span>
       </section>
     )
   }
@@ -44,7 +44,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
     <section aria-label="Services">
       <div className="flex items-baseline justify-between">
         <h2 className="text-[13px] font-medium text-fg">Services</h2>
-        <span className="text-[11px] min-[2200px]:text-[12px] text-dim">{outages}</span>
+        <span className="text-[11px] min-[2200px]:text-[12px] text-dim-text">{outages}</span>
       </div>
       <ul className="mt-3">
         {impacted.map((s) => (
@@ -52,11 +52,11 @@ export function Services({ data }: { data: ServicesOut | null }) {
             <p className="flex items-center gap-2 leading-[18px]">
               <StateDot state={s.state} />
               <span className="text-fg">{s.name}</span>
-              <span className={s.state === "major" ? "text-critical" : "text-degraded"}>
+              <span className={s.state === "major" ? "text-critical-text" : "text-degraded"}>
                 {s.state === "major" ? "major outage" : "degraded"}
               </span>
               {s.incident?.started_at && now !== null && (
-                <span className="ml-auto font-mono text-[11px] min-[2200px]:text-[12px] text-dim">{age(s.incident.started_at, now)}</span>
+                <span className="ml-auto font-mono text-[11px] min-[2200px]:text-[12px] text-dim-text">{age(s.incident.started_at, now)}</span>
               )}
             </p>
             <a
@@ -64,7 +64,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
               {...EXTERNAL}
               className="mt-0.5 ml-3.5 line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
             >
-              {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[10px] text-critical">↗</span>
+              {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[10px] text-critical-text">↗</span>
             </a>
           </li>
         ))}

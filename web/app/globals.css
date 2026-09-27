@@ -15,10 +15,12 @@
   --rule: #1f1f1f;
   --fg: #f5f5f5;
   --fg-2: #a3a3a3;
-  --muted: #737373;
-  --dim: #525252;
+  --muted: #8b8b8b;
+  --dim: #525252; /* lines, borders and non-text marks only */
+  --dim-text: #7d7d7d; /* tertiary text, >= 4.5:1 on --bg and --surface */
   --accent: #b91c1c;
   --critical: #dc2626;
+  --critical-text: #e14343; /* red text (KEV, EXPLOITED, arrows): --critical fails 4.5:1 as small text */
 
   /* Row details. Values from "The row" / "Expanded row" in CLAUDE.md. */
   --medium: #6b6b6b; /* MEDIUM bar fill */
@@ -45,10 +47,12 @@ html[data-theme="amber"] {
   --rule: #271f12;
   --fg: #e8c690;
   --fg-2: #b39463;
-  --muted: #86704c;
+  --muted: #a2885c;
   --dim: #5e4f37;
+  --dim-text: #907954;
   --accent: #c2261d;
   --critical: #ef2d21;
+  --critical-text: #ef2d21;
   --medium: #7a6645;
   --outline-medium: #3d3220;
   --outline-muted: #2c2417;
@@ -68,10 +72,12 @@ html[data-theme="phosphor"] {
   --rule: #15271a;
   --fg: #a9e4b4;
   --fg-2: #74b282;
-  --muted: #548a61;
+  --muted: #5c986b;
   --dim: #3b6345;
+  --dim-text: #51885f;
   --accent: #c62828;
   --critical: #f03030;
+  --critical-text: #f03030;
   --medium: #4b7a56;
   --outline-medium: #22412a;
   --outline-muted: #1a311f;
@@ -95,8 +101,10 @@ html[data-theme="high-contrast"] {
   --fg-2: #e6e6e6;
   --muted: #c4c4c4;
   --dim: #9a9a9a;
+  --dim-text: #9a9a9a;
   --accent: #ff5c5c;
   --critical: #eb0000;
+  --critical-text: #f80000;
   --medium: #a3a3a3;
   --outline-medium: #9a9a9a;
   --outline-muted: #6b6b6b;
@@ -118,8 +126,10 @@ html[data-theme="high-contrast"] {
   --color-fg-2: var(--fg-2);
   --color-muted: var(--muted);
   --color-dim: var(--dim);
+  --color-dim-text: var(--dim-text);
   --color-accent: var(--accent);
   --color-critical: var(--critical);
+  --color-critical-text: var(--critical-text);
   --color-medium: var(--medium);
   --color-outline-medium: var(--outline-medium);
   --color-outline-muted: var(--outline-muted);

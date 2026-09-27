@@ -33,7 +33,7 @@ export function VendorList({ vendors }: { vendors: VendorOut[] }) {
         {vendors.map((v) => {
           const inStack = stack.includes(v.slug)
           return (
-            <li key={v.slug} className="flex h-12 items-center gap-3 border-b border-hairline">
+            <li key={v.slug} className="flex h-12 items-center gap-3 border-b border-hairline hover:bg-surface">
               <Link
                 href={`/vendor/${v.slug}${query()}`}
                 className="group flex min-w-0 flex-1 items-center gap-4 outline-none"

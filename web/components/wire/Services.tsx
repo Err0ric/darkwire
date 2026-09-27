@@ -48,7 +48,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
       </div>
       <ul className="mt-3">
         {impacted.map((s) => (
-          <li key={s.slug} className="mb-3">
+          <li key={s.slug} className="-mx-2 mb-1 px-2 py-1 hover:bg-surface">
             <p className="flex items-center gap-2 leading-[18px]">
               <StateDot state={s.state} />
               <span className="text-fg">{s.name}</span>

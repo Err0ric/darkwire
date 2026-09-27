@@ -30,7 +30,7 @@ export function Elsewhere({ elsewhere }: { elsewhere: ElsewhereItem[] }) {
     <Section title="Elsewhere" aside="policy · privacy · culture">
       <ul className="mt-3">
         {elsewhere.map((e) => (
-          <li key={e.id} className="mb-3.5">
+          <li key={e.id} className="-mx-2 mb-1.5 px-2 py-1 hover:bg-surface">
             <a href={e.url} {...EXTERNAL} className="line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
               {e.headline}
             </a>
@@ -65,7 +65,7 @@ export function MostActive({
         {active.map((v) => {
           const on = vendor === v.slug
           return (
-            <li key={v.slug} className="flex h-6 items-center justify-between">
+            <li key={v.slug} className="-mx-2 flex h-6 items-center justify-between px-2 hover:bg-surface">
               <button
                 type="button"
                 onClick={() => onVendor(v.slug)}
@@ -109,7 +109,7 @@ export function AddedToKev({ kev, query = "" }: { kev: KevRow[]; query?: string 
           const cls = "shrink-0 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
           const itemId = k.item_id
           return (
-            <li key={k.cve_id} className="flex h-6 items-center justify-between gap-3">
+            <li key={k.cve_id} className="-mx-2 flex h-6 items-center justify-between gap-3 px-2 hover:bg-surface">
               {itemId !== null ? (
                 <a
                   href={`/item/${itemId}${query}`}
@@ -184,7 +184,7 @@ export function LastSevenDays({
             </>
           )
           return (
-            <li key={key} className="h-[22px]">
+            <li key={key} className="-mx-2 h-[22px] px-2 hover:bg-surface">
               {n > 0 ? (
                 <button
                   type="button"

@@ -272,7 +272,7 @@ function Row({ row: r, expanded, onToggle }: { row: CveRow; expanded: boolean; o
   return (
     <tr
       onClick={clickable ? onClick : undefined}
-      className={cn("h-12 text-[13px]", clickable && "cursor-pointer", expanded ? "bg-surface" : "border-b border-hairline")}
+      className={cn("h-12 text-[13px] hover:bg-surface", clickable && "cursor-pointer", expanded ? "bg-surface" : "border-b border-hairline")}
     >
       <td className={cn(CELL, "py-2")} title={[r.vendor_name, r.product].filter(Boolean).join(" · ") || undefined}>
         <span className="block truncate leading-4 text-fg">{r.vendor_name}</span>

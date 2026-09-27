@@ -271,7 +271,7 @@ function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
   )
 
   return (
-    <li className="border-b border-hairline">
+    <li className="border-b border-hairline hover:bg-surface">
       <Link
         href={`/item/${item.id}${query()}`}
         className="group block py-3 outline-none focus-visible:bg-surface sm:flex sm:h-11 sm:items-center sm:py-0"

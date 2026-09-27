@@ -97,7 +97,7 @@ export function FeedRow({
     >
       <div
         onClick={onRowClick}
-        className="flex cursor-pointer items-start py-3 md:min-h-16 md:items-center md:py-2.5 one-line-rows:h-16 one-line-rows:py-0"
+        className="flex cursor-pointer items-start py-3 hover:bg-surface md:min-h-16 md:items-center md:py-2.5 one-line-rows:h-16 one-line-rows:py-0"
       >
         <VendorMark item={item} inStack={inStack} />
 

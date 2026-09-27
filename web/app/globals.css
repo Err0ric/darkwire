@@ -181,6 +181,13 @@ html[data-theme="high-contrast"] {
     background: var(--rule);
   }
 
+  /* Keyboard focus: one 1px --critical ring on everything focusable, only for keyboard
+     (:focus-visible), over any outline utility a component sets. */
+  :focus-visible {
+    outline: 1px solid var(--critical) !important;
+    outline-offset: 2px;
+  }
+
   /* Selection: a red-tinted band, text keeps its own color. */
   ::selection {
     background: color-mix(in srgb, var(--critical) 32%, transparent);

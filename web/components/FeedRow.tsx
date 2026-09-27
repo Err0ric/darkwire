@@ -33,7 +33,7 @@ const CATEGORY_ICON: Record<Category, LucideIcon> = {
   news: Newspaper,
 }
 
-type Detail = { state: "idle" | "loading" | "error" } | { state: "ready"; item: ItemDetail }
+export type Detail = { state: "idle" | "loading" | "error" } | { state: "ready"; item: ItemDetail }
 
 export function FeedRow({
   item,
@@ -255,7 +255,7 @@ function Score({ item, className }: { item: FeedItem; className?: string }) {
   )
 }
 
-const BAR_FILL: Partial<Record<Severity, string>> = {
+export const BAR_FILL: Partial<Record<Severity, string>> = {
   critical: "bg-critical",
   high: "bg-accent",
   medium: "bg-medium",
@@ -336,7 +336,7 @@ function Age({ iso, clock = false, className }: { iso: string; clock?: boolean; 
 
 const LINK = "outline-none hover:text-fg focus-visible:text-fg"
 
-function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
+export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
   const d = detail.state === "ready" ? detail.item : null
   const cve = d?.cve ?? null
   const advisory = d?.patch_url ?? d?.msrc?.url ?? null
@@ -523,9 +523,9 @@ function Metrics({ pairs }: { pairs: [string, ReactNode][] }) {
   )
 }
 
-type KnownPatch = Exclude<PatchStatus, "unverified">
+export type KnownPatch = Exclude<PatchStatus, "unverified">
 
-const PATCH: Record<KnownPatch, { mark: string; text: string; tone: string }> = {
+export const PATCH: Record<KnownPatch, { mark: string; text: string; tone: string }> = {
   patched: { mark: "●", text: "patched", tone: "text-fg" },
   no_fix: { mark: "○", text: "no fix", tone: "text-muted" },
   workaround: { mark: "○", text: "no fix · workaround", tone: "text-muted" },

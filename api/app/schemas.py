@@ -117,7 +117,10 @@ class ItemDetail(FeedItem):
 
 class CveRow(BaseModel):
     id: str
+    description: str | None
     vendor: VendorRef | None
+    # The tagged vendor's name, else the vendor from CPE / the CNA's affected list.
+    vendor_name: str | None
     product: str | None
     cvss: float | None
     severity: Severity | None

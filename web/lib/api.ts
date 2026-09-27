@@ -107,7 +107,10 @@ export interface ItemDetail extends FeedItem {
 
 export interface CveRow {
   id: string
+  description: string | null
   vendor: VendorRef | null
+  /** The tagged vendor's name, else the vendor from CPE or the CNA's affected list. */
+  vendor_name: string | null
   product: string | null
   cvss: number | null
   severity: Severity | null

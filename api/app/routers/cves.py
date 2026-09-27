@@ -33,14 +33,27 @@ SORT_COLUMN = {
 }
 
 
-def _product(cpes: list | None) -> str | None:
-    """cpe:2.3:a:vendor:product:version:... -> display name of the product in the first CPE match."""
+def _cna_name(name: str | None) -> str | None:
+    name = (name or "").strip()
+    if not name or name.lower() in ("n/a", "unknown", "*", "-"):
+        return None
+    return display_name(name.replace(" ", "_")) if name.islower() else name
+
+
+def _vendor_product(cpes: list | None, cna: list | None) -> tuple[str | None, str | None]:
+    """Vendor and product for a CVE not tagged to a vendor: the first CPE match
+    (cpe:2.3:a:vendor:product:...), else the CNA's affected list. None when neither says."""
     for match in cpes or []:
         criteria = match.get("criteria", "") if isinstance(match, dict) else str(match)
         parts = criteria.split(":")
         if len(parts) > 4 and parts[4] not in ("*", "-"):
-            return display_name(parts[4])
-    return None
+            return (display_name(parts[3]) if parts[3] not in ("*", "-") else None), display_name(parts[4])
+    for a in cna or []:
+        for d in (a.get("affectedData") or []) if isinstance(a, dict) else []:
+            vendor, product = _cna_name(d.get("vendor")), _cna_name(d.get("product"))
+            if vendor or product:
+                return vendor, product
+    return None, None
 
 
 @router.get("/cves", response_model=list[CveRow])
@@ -67,7 +80,7 @@ async def cves(
         .subquery()
     )
     stmt = (
-        select(Cve, latest.c.id, Vendor)
+        select(Cve, latest.c.id, Vendor, Cve.nvd_raw["affected"].label("cna"))
         .outerjoin(latest, latest.c.cve_id == Cve.id)
         .outerjoin(Vendor, Vendor.id == latest.c.vendor_id)
     )
@@ -85,18 +98,23 @@ async def cves(
     stmt = stmt.limit(limit).offset(offset)
 
     rows = (await session.execute(stmt)).all()
-    return [
-        CveRow(
-            id=cve.id,
-            vendor=VendorRef.model_validate(v) if v else None,
-            product=_product(cve.cpes),
-            cvss=float(cve.base_score) if cve.base_score is not None else None,
-            severity=cve.base_severity,
-            epss=cve.epss,
-            kev=cve.kev,
-            patch_status=cve.patch_status,
-            published_at=cve.published_at,
-            item_id=item_id,
+    out = []
+    for cve, item_id, v, cna in rows:
+        vendor_name, product = _vendor_product(cve.cpes, cna)
+        out.append(
+            CveRow(
+                id=cve.id,
+                description=cve.description,
+                vendor=VendorRef.model_validate(v) if v else None,
+                vendor_name=v.name if v else vendor_name,
+                product=product,
+                cvss=float(cve.base_score) if cve.base_score is not None else None,
+                severity=cve.base_severity,
+                epss=cve.epss,
+                kev=cve.kev,
+                patch_status=cve.patch_status,
+                published_at=cve.published_at,
+                item_id=item_id,
+            )
         )
-        for cve, item_id, v in rows
-    ]
+    return out

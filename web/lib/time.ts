@@ -43,3 +43,15 @@ export function age(iso: string, nowMs: number): string {
   if (hours < 24) return `${hours}h`
   return `${Math.floor(hours / 24)}d`
 }
+
+/** Day separator label in the viewer's zone: "Today", "Yesterday", else "Thu Sep 24". */
+export function dayLabel(iso: string, nowMs: number): string {
+  const d = new Date(iso)
+  const day = (t: Date) => new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime()
+  const days = Math.round((day(new Date(nowMs)) - day(d)) / 86_400_000)
+  if (days <= 0) return "Today"
+  if (days === 1) return "Yesterday"
+  const weekday = d.toLocaleDateString([], { weekday: "short" })
+  const month = d.toLocaleDateString([], { month: "short" })
+  return `${weekday} ${month} ${d.getDate()}`
+}

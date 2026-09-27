@@ -27,6 +27,12 @@ function lastSyncAt(status: Status | null): number | null {
   return at ? Date.parse(at) : null
 }
 
+/** "19:08" in UTC, 24-hour. */
+export function utcHHMM(ms: number): string {
+  const d = new Date(ms)
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`
+}
+
 function syncedLabel(minutes: number): string {
   if (minutes < 1) return "Synced just now"
   if (minutes < 60) return `Synced ${minutes} min ago`
@@ -103,6 +109,15 @@ export function Nav() {
       </nav>
 
       <div className="ml-auto flex shrink-0 items-center gap-4 pl-3">
+        {now !== null && (
+          <time
+            dateTime={new Date(now).toISOString()}
+            title="Coordinated Universal Time"
+            className="hidden font-mono text-xs leading-none text-dim min-[1200px]:block"
+          >
+            {utcHHMM(now)} UTC
+          </time>
+        )}
         <p className="hidden text-[15px] leading-none text-muted sm:block" aria-live="polite">
           {label}
         </p>

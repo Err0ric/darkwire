@@ -1,13 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { cn } from "cn"
 
 import { FeedRow } from "@/components/FeedRow"
 import { Input } from "@/components/ui/input"
 import { SiteFooter } from "@/components/SiteFooter"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Elsewhere, Stats } from "@/components/wire/Rail"
+import { AddedToKev, Elsewhere, LastSevenDays, MostActive, SourcesLine } from "@/components/wire/Rail"
 import { Services } from "@/components/wire/Services"
 import { useFitCount } from "@/lib/fit"
 import {
@@ -18,11 +18,13 @@ import {
   getStatus,
   getVendors,
   type FeedItem,
+  type Severity,
 } from "@/lib/api"
 import { useDots } from "@/lib/dots"
 import { usePrefs } from "@/lib/prefs"
 import { isImportant } from "@/lib/kev"
 import { apply as applyDiff, changedSince, cursorOf, diff, LIVE_POLL_MS } from "@/lib/live"
+import { dayLabel, useNow } from "@/lib/time"
 import { useUnseen } from "@/lib/unseen"
 import { feedQuery, stackCriticalQuery, TABS, type Filters, type WireData, type WireTab } from "@/lib/wire"
 
@@ -75,6 +77,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
   const list = useRef<HTMLDivElement>(null)
   const fit = useFitCount(list)
   const { dots, add: addDots, clear: clearDot } = useDots()
+  const now = useNow()
   // New rows found while scrolled down, waiting for "N new ↑" or a scroll back to the top.
   const [pending, setPending] = useState<FeedItem[]>([])
   const pendingRef = useRef<FeedItem[]>([])
@@ -271,6 +274,10 @@ export function WireBoard({ initial }: { initial: WireData }) {
   }, [fit, items.length, total])
 
   // Header counts are 24h numbers, so their filter uses a 24h window; again clears it.
+  // The rail's Last 7 days rows: 7-day window; clicking the active row clears it.
+  const railSeverity = filters.window === "24h" ? "" : filters.severity
+  const onRailSeverity = (s: Severity) =>
+    apply(filters.severity === s && !filters.window ? { severity: "", window: "" } : { severity: s, window: "" })
   const toggle24h = (s: "critical" | "high"): Partial<Filters> =>
     filters.severity === s && filters.window === "24h" ? { severity: "", window: "" } : { severity: s, window: "24h" }
   const windowText = filters.severity ? (filters.window === "24h" ? "24 hours" : "7 days") : "14 days"
@@ -284,10 +291,24 @@ export function WireBoard({ initial }: { initial: WireData }) {
     <main className="flex-1 px-4 pb-24 md:px-12">
       {/* Rail beside the feed from 1000px, stacked below it under that; three columns
           (feed | Elsewhere | stats) from 2200px. The feed is fluid; no page cap. */}
-      <div className="min-[1200px]:flex min-[1200px]:gap-16">
-        {/* Feed: basis and cap 1200px so the data columns stay near the headline; the rail
-            takes whatever is left (at least 280px). */}
-        <div className="@container min-w-0 flex-1 min-[1200px]:max-w-[1200px] min-[1200px]:flex-[1_1_1200px]">
+      {/* Under 1200px: feed, then the rail stacked below it. 1200-2199px: feed plus one 340px
+          rail on the right. 2200px+: three columns, stats rail 320 | feed (max 1100, centered) |
+          Services and Elsewhere 320. The rail sections are placed with CSS order per range. */}
+      <div className="min-[1200px]:flex min-[1200px]:gap-12 min-[2200px]:justify-between">
+        <aside
+          data-chrome
+          aria-label="This week"
+          className="hidden w-[320px] shrink-0 pt-[133px] text-[13px] min-[2200px]:block"
+        >
+          <div className="flex flex-col gap-10">
+            <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
+            <AddedToKev kev={kev} />
+            <MostActive active={active} onVendor={(slug) => apply({ vendor: slug })} />
+            <SourcesLine status={status} />
+          </div>
+        </aside>
+
+        <div className="@container min-w-0 flex-1 min-[2200px]:max-w-[1100px]">
           <header className="pt-6 md:pt-[33px]">
             <h1 className="text-[36px] leading-[44px] font-bold tracking-[-0.02em] text-fg">Today</h1>
             <p className="mt-[3px] flex flex-wrap gap-x-4 text-[15px] leading-5 text-muted md:gap-x-0">
@@ -409,16 +430,27 @@ export function WireBoard({ initial }: { initial: WireData }) {
           )}
 
           <div ref={list} className={cn(loading && "opacity-60")} aria-busy={loading}>
-            {items.map((item) => (
-              <FeedRow
-                key={item.id}
-                item={item}
-                fresh={fresh.has(item.id)}
-                dot={dots.get(item.id)}
-                onSeen={() => clearDot(item.id)}
-                inStack={filters.tab !== "stack" && !!item.vendor && stack.includes(item.vendor.slug)}
-              />
-            ))}
+            {items.map((item, i) => {
+              // Day separators in the viewer's zone. Not rows: no dot, not counted, not <article>.
+              const label = now !== null ? dayLabel(item.last_event_at, now) : null
+              const prev = i > 0 && now !== null ? dayLabel(items[i - 1].last_event_at, now) : null
+              return (
+                <Fragment key={item.id}>
+                  {label && label !== prev && (
+                    <div role="separator" aria-label={label} className="flex h-9 items-end border-b border-hairline pb-2 text-[13px] text-muted">
+                      {label}
+                    </div>
+                  )}
+                  <FeedRow
+                    item={item}
+                    fresh={fresh.has(item.id)}
+                    dot={dots.get(item.id)}
+                    onSeen={() => clearDot(item.id)}
+                    inStack={filters.tab !== "stack" && !!item.vendor && stack.includes(item.vendor.slug)}
+                  />
+                </Fragment>
+              )
+            })}
           </div>
 
           {failed && items.length === 0 ? (
@@ -442,28 +474,29 @@ export function WireBoard({ initial }: { initial: WireData }) {
         <aside
           data-chrome
           aria-label="Context"
-          className="mt-16 text-[13px] min-[1200px]:mt-0 min-[1200px]:min-w-[280px] min-[1200px]:flex-[1_1_280px] min-[1200px]:pt-[133px]"
+          className="mt-16 text-[13px] min-[1200px]:mt-0 min-[1200px]:w-[340px] min-[1200px]:shrink-0 min-[1200px]:pt-[133px] min-[2200px]:w-[320px]"
         >
-          {/* One column (Services, Elsewhere, then the stats) up to 2200px wide; from there two:
-              Services and Elsewhere | the stats. Stacked under the feed it keeps a readable width. */}
-          <div className="flex max-w-[640px] flex-col gap-10 min-[1200px]:max-w-none min-[2200px]:flex-row min-[2200px]:gap-16">
-            <div className="flex min-w-0 flex-1 flex-col gap-10">
-              <div className="hidden min-[1200px]:block">
-                <Services data={services} />
-              </div>
+          {/* Orders: under 1200 Elsewhere, Most active, Added to KEV, Last 7 days, Sources (Services
+              sits above the feed). 1200-2199 Services, Added to KEV, Last 7 days, Elsewhere, Most
+              active, Sources. 2200+ Services, Elsewhere; the rest is in the left rail. */}
+          <div className="flex max-w-[640px] flex-col gap-10 min-[1200px]:max-w-none">
+            <div className="hidden min-[1200px]:order-1 min-[1200px]:block">
+              <Services data={services} />
+            </div>
+            <div className="order-3 min-[1200px]:order-2 min-[2200px]:hidden">
+              <AddedToKev kev={kev} />
+            </div>
+            <div className="order-4 min-[1200px]:order-3 min-[2200px]:hidden">
+              <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
+            </div>
+            <div className="order-1 min-[1200px]:order-4 min-[2200px]:order-2">
               <Elsewhere elsewhere={elsewhere} />
             </div>
-            <div className="min-w-0 flex-1">
-              <Stats
-                active={active}
-                kev={kev}
-                status={status}
-                onVendor={(slug) => apply({ vendor: slug })}
-                severity={filters.window === "24h" ? "" : filters.severity}
-                onSeverity={(s) =>
-                  apply(filters.severity === s && !filters.window ? { severity: "", window: "" } : { severity: s, window: "" })
-                }
-              />
+            <div className="order-2 min-[1200px]:order-5 min-[2200px]:hidden">
+              <MostActive active={active} onVendor={(slug) => apply({ vendor: slug })} />
+            </div>
+            <div className="order-6 min-[2200px]:hidden">
+              <SourcesLine status={status} />
             </div>
           </div>
         </aside>

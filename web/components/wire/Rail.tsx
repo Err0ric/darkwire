@@ -31,7 +31,7 @@ export function Elsewhere({ elsewhere }: { elsewhere: ElsewhereItem[] }) {
       <ul className="mt-3">
         {elsewhere.map((e) => (
           <li key={e.id} className="mb-3.5">
-            <a href={e.url} {...EXTERNAL} className="block leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
+            <a href={e.url} {...EXTERNAL} className="line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
               {e.headline}
             </a>
             <p className="mt-1 text-[11px] leading-4 text-dim">
@@ -46,18 +46,55 @@ export function Elsewhere({ elsewhere }: { elsewhere: ElsewhereItem[] }) {
   )
 }
 
-export function Stats({
-  active,
-  kev,
+// Rail sections. The wire places them per breakpoint (CLAUDE.md "Right rail").
+
+export function MostActive({ active, onVendor }: { active: VendorOut[]; onVendor: (slug: string) => void }) {
+  return (
+    <Section title="Most active this week">
+      <ul className="mt-2.5">
+        {active.map((v) => (
+          <li key={v.slug} className="flex h-6 items-center justify-between">
+            <button type="button" onClick={() => onVendor(v.slug)} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
+              {v.name}
+            </button>
+            <span className="font-mono text-xs text-muted">{v.items_7d}</span>
+          </li>
+        ))}
+        {active.length === 0 && <li className="text-dim">No tagged rows this week.</li>}
+      </ul>
+    </Section>
+  )
+}
+
+export function AddedToKev({ kev }: { kev: KevRow[] }) {
+  return (
+    <Section title="Added to KEV">
+      <ul className="mt-2.5">
+        {kev.map((k) => (
+          <li key={k.cve_id} className="flex h-6 items-center justify-between gap-3">
+            <a
+              href={`https://nvd.nist.gov/vuln/detail/${k.cve_id}`}
+              {...EXTERNAL}
+              title={`Added ${k.date_added}${k.product ? ` · ${k.product}` : ""}`}
+              className="shrink-0 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+            >
+              {k.cve_id}
+            </a>
+            <span className="truncate text-muted">{k.vendor}</span>
+          </li>
+        ))}
+        {kev.length === 0 && <li className="text-dim">No additions this week.</li>}
+      </ul>
+    </Section>
+  )
+}
+
+export function LastSevenDays({
   status,
-  onVendor,
   severity,
   onSeverity,
 }: {
-  active: VendorOut[]
-  kev: KevRow[]
   status: Status | null
-  onVendor: (slug: string) => void
   /** The wire's ?severity= filter; a row click sets it, clicking the active row clears it. */
   severity: Severity | ""
   onSeverity: (s: Severity) => void
@@ -74,94 +111,60 @@ export function Stats({
   const peak = Math.max(1, ...week.map(([, , n]) => n))
 
   return (
-    <div className="flex flex-col gap-10">
-      <Section title="Most active this week">
-        <ul className="mt-2.5">
-          {active.map((v) => (
-            <li key={v.slug} className="flex h-6 items-center justify-between">
-              <button type="button" onClick={() => onVendor(v.slug)} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
-                {v.name}
-              </button>
-              <span className="font-mono text-xs text-muted">{v.items_7d}</span>
-            </li>
-          ))}
-          {active.length === 0 && <li className="text-dim">No tagged rows this week.</li>}
-        </ul>
-      </Section>
-
-      <Section title="Added to KEV">
-        <ul className="mt-2.5">
-          {kev.map((k) => (
-            <li key={k.cve_id} className="flex h-6 items-center justify-between gap-3">
-              <a
-                href={`https://nvd.nist.gov/vuln/detail/${k.cve_id}`}
-                {...EXTERNAL}
-                title={`Added ${k.date_added}${k.product ? ` · ${k.product}` : ""}`}
-                className="shrink-0 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
-              >
-                {k.cve_id}
-              </a>
-              <span className="truncate text-muted">{k.vendor}</span>
-            </li>
-          ))}
-          {kev.length === 0 && <li className="text-dim">No additions this week.</li>}
-        </ul>
-      </Section>
-
-      <Section title="Last 7 days">
-        <ul className="mt-2.5">
-          {week.map(([key, label, n, fill]) => {
-            const on = severity === key
-            const row = (
-              <>
-                <span className="w-[62px] text-left">
-                  <span
-                    className={cn(
-                      "relative",
-                      on ? "text-fg" : "text-muted",
-                      n > 0 && !on && "group-hover:text-fg-2",
-                      on && "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg",
-                    )}
-                  >
-                    {label}
-                  </span>
+    <Section title="Last 7 days">
+      <ul className="mt-2.5">
+        {week.map(([key, label, n, fill]) => {
+          const on = severity === key
+          const row = (
+            <>
+              <span className="w-[62px] text-left">
+                <span
+                  className={cn(
+                    "relative",
+                    on ? "text-fg" : "text-muted",
+                    n > 0 && !on && "group-hover:text-fg-2",
+                    on && "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg",
+                  )}
+                >
+                  {label}
                 </span>
-                <span className="relative h-[3px] flex-1 bg-rule" aria-hidden>
-                  <span className={cn("absolute inset-y-0 left-0", fill)} style={{ width: `${(n / peak) * 100}%` }} />
-                </span>
-                <span className="w-8 text-right font-mono text-xs text-fg-2">{n}</span>
-              </>
-            )
-            return (
-              <li key={key} className="h-[22px]">
-                {n > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => onSeverity(key)}
-                    aria-pressed={on}
-                    title={on ? "Clear the severity filter" : `Show ${label.toLowerCase()} rows from the last 7 days`}
-                    className="group flex h-full w-full items-center outline-none focus-visible:outline-1 focus-visible:outline-rule"
-                  >
-                    {row}
-                  </button>
-                ) : (
-                  <span className="flex h-full items-center">{row}</span>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      </Section>
+              </span>
+              <span className="relative h-[3px] flex-1 bg-rule" aria-hidden>
+                <span className={cn("absolute inset-y-0 left-0", fill)} style={{ width: `${(n / peak) * 100}%` }} />
+              </span>
+              <span className="w-8 text-right font-mono text-xs text-fg-2">{n}</span>
+            </>
+          )
+          return (
+            <li key={key} className="h-[22px]">
+              {n > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => onSeverity(key)}
+                  aria-pressed={on}
+                  title={on ? "Clear the severity filter" : `Show ${label.toLowerCase()} rows from the last 7 days`}
+                  className="group flex h-full w-full items-center outline-none focus-visible:outline-1 focus-visible:outline-rule"
+                >
+                  {row}
+                </button>
+              ) : (
+                <span className="flex h-full items-center">{row}</span>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </Section>
+  )
+}
 
-      {status && (
-        <p className="leading-[19px] text-muted">
-          Sources: NVD, CISA KEV, vendor PSIRTs, {status.sources_total} feeds.{" "}
-          {status.sources_failing === 0 ? "All healthy." : `${status.sources_failing} failing.`}
-          {SUMMARIES_PAUSED.has(status.summaries.state) && " Summaries paused."}
-          <br />
-          <span className="mt-2 inline-block">Refreshes every {status.sync.interval_minutes} minutes.</span>
-        </p>
-      )}
-    </div>
+export function SourcesLine({ status }: { status: Status | null }) {
+  if (!status) return null
+  return (
+    <p className="leading-[19px] text-muted">
+      Sources: NVD, CISA KEV, vendor PSIRTs, {status.sources_total} feeds.{" "}
+      {status.sources_failing === 0 ? "All healthy." : `${status.sources_failing} failing.`}
+      {SUMMARIES_PAUSED.has(status.summaries.state) && " Summaries paused."} Rows update every minute.
+    </p>
   )
 }

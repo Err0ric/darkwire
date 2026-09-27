@@ -56,8 +56,8 @@ Layout: no boxes, no cards, no panel borders. Separate regions with background t
 Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x1440 landscape; secondary: 1080x1920 and 1440x2560 portrait; plus 390px phones. Wider screens (3440) just work and are not tuned for.
 
 - One container on every page: nav and content share the same gutters (16px mobile, 48px from 768px) and left edge.
-- The feed column is capped at 1200px (its flex basis too), so the data columns (CVE ID, score, bar, badge, age, chevron) stay near the headline instead of across dead space. Inside it the headline absorbs width; the data columns stay fixed. Under a 760px feed the CVE ID column drops out; under 940px the wire's tabs and filters split onto two lines (container queries on the feed column).
-- Wire rail: beside the feed from 1200px wide (so 1080px portrait stacks it below the feed, at most 640px wide), at least 280px, and it takes all the width the capped feed leaves. Up to 2200px wide it is one column: Services, Elsewhere, Most active, Added to KEV, Last 7 days, Sources. From 2200px it is two columns: Services and Elsewhere | the stats. Elsewhere is always a single column of headlines. While the rail is stacked under the feed (under 1200px), the Services block moves to the top of the feed, under the counts, so an outage is seen without scrolling.
+- The feed column fills what the rail leaves from 1200 to 2199px, and is capped at 1100px and centered from 2200px, so the data columns (CVE ID, score, bar, badge, age, chevron) stay near the headline instead of across dead space. Inside it the headline absorbs width; the data columns stay fixed. Under a 760px feed the CVE ID column drops out; under 940px the wire's tabs and filters split onto two lines (container queries on the feed column).
+- Wire rail: see "Wire rails". Under 1200px (so 1080px portrait) it stacks below the feed, at most 640px wide, and the Services block moves to the top of the feed, under the counts, so an outage is seen without scrolling.
 - Home has no rail and no feed: one centered block sized in em off a single `clamp()`, so it scales smoothly instead of jumping at breakpoints.
 - Fill the height with rows, never a fixed count. Home is exactly one screen tall with the block vertically centered. Wire loads at least a screenful and scrolls.
 - Kiosk: key `f` (or `?kiosk=1`) hides nav and rail and scales type about 15%. `f` again leaves it.
@@ -123,14 +123,26 @@ Third-party status for the rail and `/outages`, from each vendor's official sour
 - Rail block, first in the rail: one line `Services · all 8 operational` while nothing is impacted. Otherwise it opens: impacted services first (major, then degraded) with state, incident title linked to the vendor's incident page, and age; then `N others operational`.
 - A service newly in a major outage fires the unseen-tab indicator like a Critical row.
 
-## Right rail (wire only), in this order
+## Wire rails
 
-1. Services (see Services).
-2. Elsewhere. Five most recent from the policy/privacy/culture pool (EFF, 404 Media, Citizen Lab, Lawfare, Wired, TechCrunch Security, Ars). Headline 13px + `source · age` 11px. No vendor, no score.
-3. Most active this week. Vendor + count.
-4. Added to KEV. CVE ID + vendor, last 7 days.
-5. Last 7 days. Four 3px bars: Critical, High, Medium, Low. Each row with a count filters the wire to that severity over the last 7 days (`?severity=critical`, combinable with tab, vendor, search and stack; old CVEs excluded, so the list matches the count). The active row is underlined like the active tab; clicking it again clears the filter. Zero rows are not clickable. The header's "N critical" and "N high" are 24-hour counts, so they set the filter with a 24-hour window (`?severity=critical&window=24h`) and the row count matches the number clicked. The footer line names the active window.
-6. Sources line: count, health, refresh interval.
+Three layouts by viewport width, 48px between columns:
+
+- 2200px and wider: three columns. Left rail 320px: Last 7 days, Added to KEV, Most active this week, Sources line. Feed centered and flexible, max 1100px. Right rail 320px: Services, Elsewhere.
+- 1200 to 2199px: feed plus one 340px right rail: Services, Added to KEV, Last 7 days, Elsewhere, Most active this week, Sources line.
+- Under 1200px: the rail stacks below the feed: Elsewhere, Most active, Added to KEV, Last 7 days, Sources line (Services sits above the feed).
+
+Sections:
+
+- Services (see Services).
+- Elsewhere. Five most recent from the policy/privacy/culture pool (EFF, 404 Media, Citizen Lab, Lawfare, Wired, TechCrunch Security, Ars). Headline 13px, clamped to 2 lines + `source · age` 11px. No vendor, no score.
+- Most active this week. Vendor + count.
+- Added to KEV. CVE ID + vendor, last 7 days.
+- Last 7 days. Four 3px bars: Critical, High, Medium, Low. Each row with a count filters the wire to that severity over the last 7 days (`?severity=critical`, combinable with tab, vendor, search and stack; old CVEs excluded, so the list matches the count). The active row is underlined like the active tab; clicking it again clears the filter. Zero rows are not clickable. The header's "N critical" and "N high" are 24-hour counts, so they set the filter with a 24-hour window (`?severity=critical&window=24h`) and the row count matches the number clicked. The footer line names the active window.
+- Sources line: "Sources: NVD, CISA KEV, vendor PSIRTs, N feeds. All healthy. Rows update every minute." (or "N failing.", plus "Summaries paused." when the model is not ok).
+
+The feed has day separators: a label row ("Today", "Yesterday", then "Thu Sep 24") in 13px sans `--muted` over a hairline, in the viewer's zone. They are not rows: no dot, not counted by "N new ↑", and not `<article>`, so row navigation skips them.
+
+The nav shows the current UTC time ("19:08 UTC", 12px mono `--dim`) before "Synced N min ago" on every page, from 1200px wide.
 
 ## Data rules
 

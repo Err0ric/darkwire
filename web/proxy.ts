@@ -34,7 +34,7 @@ export const config = {
   matcher: [
     {
       // Pages only: not route handlers, build assets, or the static files in /public.
-      source: "/((?!api|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|og.gif|og.png|vendors/).*)",
+      source: "/((?!api|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|icon-192.png|icon-512.png|manifest.webmanifest|og.gif|og.png|vendors/).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

@@ -1,9 +1,19 @@
 "use client"
 
+import { ThemePicker } from "@/components/ThemePicker"
 import { usePrefs } from "@/lib/prefs"
 
-/** "remember on this browser" (off by default), or "remembered · reset" once on. */
+/** Theme picker, then "remember on this browser" (off by default) or "remembered · reset". */
 export function PrefsControls() {
+  return (
+    <>
+      <ThemePicker />
+      <Remember />
+    </>
+  )
+}
+
+function Remember() {
   const { remember, setRemember, reset } = usePrefs()
   return remember ? (
     <span className="whitespace-nowrap">

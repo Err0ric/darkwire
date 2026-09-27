@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { Kiosk } from "@/components/Kiosk"
 import { Nav } from "@/components/nav"
 import { PrefsProvider } from "@/lib/prefs"
+import { THEME_SCRIPT } from "@/lib/stack"
 
 import "./globals.css"
 
@@ -24,7 +25,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    // data-theme is set by the head script before paint, so the server markup never has it.
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="flex min-h-full flex-col">
         <PrefsProvider>
           <Kiosk />

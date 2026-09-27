@@ -7,9 +7,9 @@ import { useCallback, useEffect, useRef } from "react"
 // and the favicon gets a static red dot. Both clear when the tab is visible again.
 // Nothing is stored between visits.
 
-// Canvas cannot read CSS variables, so the two tokens are repeated here.
-const DOT_COLOR = "#dc2626" // --critical
-const RING_COLOR = "#0a0a0a" // --bg
+// Canvas cannot use CSS variables directly, so the theme's current values are read at draw time.
+const token = (name: string, fallback: string) =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 // On the icon's 32-unit grid: a dot in the top-right corner with a 2-unit ring, so the
 // unseen state still reads at 16px next to the centered wordmark dot.
 const DOT = { cx: 25, cy: 7, r: 5, ring: 2 }
@@ -33,11 +33,11 @@ async function dottedIcon(src: string): Promise<string | null> {
   if (!ctx) return null
   ctx.drawImage(img, 0, 0, size, size)
   const u = size / 32
-  ctx.fillStyle = RING_COLOR
+  ctx.fillStyle = token("--bg", "#0a0a0a")
   ctx.beginPath()
   ctx.arc(DOT.cx * u, DOT.cy * u, (DOT.r + DOT.ring) * u, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = DOT_COLOR
+  ctx.fillStyle = token("--critical", "#dc2626")
   ctx.beginPath()
   ctx.arc(DOT.cx * u, DOT.cy * u, DOT.r * u, 0, Math.PI * 2)
   ctx.fill()

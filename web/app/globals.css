@@ -24,8 +24,77 @@
   --summary: #b5b5b5;
   --chip: #161616;
   --chip-impact: #1c1010; /* C / I / A at High */
+  --on-critical: #ffffff; /* CRITICAL badge text */
 
   color-scheme: dark;
+}
+
+/* Themes (?theme=, CLAUDE.md "Themes"). Same variables, different values. In every theme
+   severity stays red and is the loudest thing on screen: text runs in a desaturated tone of
+   the theme's hue so a red fill or outline still reads first. */
+html[data-theme="amber"] {
+  --bg: #0b0906;
+  --surface: #110e09;
+  --hairline: #1a150d;
+  --rule: #271f12;
+  --fg: #e8c690;
+  --fg-2: #b39463;
+  --muted: #86704c;
+  --dim: #5e4f37;
+  --accent: #c2261d;
+  --critical: #ef2d21;
+  --medium: #7a6645;
+  --outline-medium: #3d3220;
+  --outline-muted: #2c2417;
+  --chevron: #4d412d;
+  --summary: #cdb083;
+  --chip: #1a150d;
+  --chip-impact: #2a120c;
+  --on-critical: #ffffff;
+}
+
+html[data-theme="phosphor"] {
+  --bg: #050a06;
+  --surface: #08100a;
+  --hairline: #0e1a11;
+  --rule: #15271a;
+  --fg: #a9e4b4;
+  --fg-2: #74b282;
+  --muted: #548a61;
+  --dim: #3b6345;
+  --accent: #c62828;
+  --critical: #f03030;
+  --medium: #4b7a56;
+  --outline-medium: #22412a;
+  --outline-muted: #1a311f;
+  --chevron: #2f5038;
+  --summary: #93cc9f;
+  --chip: #0e1a11;
+  --chip-impact: #26120e;
+  --on-critical: #ffffff;
+}
+
+/* WCAG-minded: pure black, white text, visible hairlines, every text tone >= 7:1 on --bg
+   except --dim (4.5:1+). Critical sits where both white-on-red and red-on-black clear 4.5:1. */
+html[data-theme="high-contrast"] {
+  --bg: #000000;
+  --surface: #0d0d0d;
+  --hairline: #3a3a3a;
+  --rule: #595959;
+  --fg: #ffffff;
+  --fg-2: #e6e6e6;
+  --muted: #c4c4c4;
+  --dim: #9a9a9a;
+  --accent: #ff5c5c;
+  --critical: #eb0000;
+  --medium: #a3a3a3;
+  --outline-medium: #9a9a9a;
+  --outline-muted: #6b6b6b;
+  --chevron: #b0b0b0;
+  --summary: #f0f0f0;
+  --chip: #1f1f1f;
+  --chip-impact: #3d0b0b;
+  --on-critical: #ffffff;
 }
 
 @theme inline {
@@ -46,6 +115,7 @@
   --color-summary: var(--summary);
   --color-chip: var(--chip);
   --color-chip-impact: var(--chip-impact);
+  --color-on-critical: var(--on-critical);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);

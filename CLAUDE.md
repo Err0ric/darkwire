@@ -162,6 +162,13 @@ NVD, FIRST.org EPSS and the CISA KEV JSON are enrichment APIs, not feeds, and ar
 - "remember on this browser" in the footer, off by default. When on, localStorage keeps only `{stack, theme}` under `darkwire.prefs`; the footer then reads `remembered · reset`. The URL always overrides it, and a stack arriving in a shared link is never written to storage.
 - No service worker, no offline cache, no feed data in the browser.
 
+## Themes
+
+- `?theme=darkwire|amber|phosphor|high-contrast`; darkwire is the default and is never written to the URL. Links carry a non-default theme like they carry the stack.
+- Every theme redefines the same variables under `html[data-theme=...]` in `globals.css`. Components never know which theme is on.
+- Severity stays red and the loudest thing in every theme: amber and phosphor run text in a desaturated tone of their hue; high-contrast is pure black and white with a red chosen so both white-on-red and red-on-black clear 4.5:1.
+- A head script sets `data-theme` before paint (URL first, then a remembered theme). Picker: four words in the footer. Remembered only when "remember on this browser" is on.
+
 ## Keyboard
 
 `j` / `k` move, `enter` expand, `o` open primary source, `/` focus search, `f` kiosk (hide nav and rail, bigger type; also `?kiosk=1`).

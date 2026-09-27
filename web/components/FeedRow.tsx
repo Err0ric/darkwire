@@ -244,7 +244,7 @@ function Bar({ item, className }: { item: FeedItem; className?: string }) {
 }
 
 const BADGE: Record<string, string> = {
-  critical: "border-critical bg-critical text-fg",
+  critical: "border-critical bg-critical text-on-critical",
   high: "border-accent text-fg",
   medium: "border-outline-medium text-fg-2",
   low: "border-outline-muted text-muted",

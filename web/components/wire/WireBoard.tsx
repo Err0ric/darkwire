@@ -11,6 +11,7 @@ import { AddedToKev, Elsewhere, LastSevenDays, MostActive, SourcesLine } from "@
 import { PAGE_HEADER } from "@/components/PageHeader"
 import { Services } from "@/components/wire/Services"
 import { WireClock } from "@/components/wire/WireClock"
+import { NEW_ROWS_EVENT } from "@/components/Wordmark"
 import { useFitCount } from "@/lib/fit"
 import {
   getElsewhere,
@@ -236,6 +237,8 @@ export function WireBoard({ initial }: { initial: WireData }) {
       // With a stack, only its rows count toward the unseen title and dot.
       const counted = mine.length ? d.fresh.filter((i) => i.vendor && mine.includes(i.vendor.slug)) : d.fresh
       void addUnseen(counted.length, counted.some(isImportant))
+      // NEW rows re-type the nav wordmark's ".tech".
+      if (d.fresh.length) window.dispatchEvent(new Event(NEW_ROWS_EVENT))
 
       const ids = new Set(d.fresh.map((i) => i.id))
       pendingRef.current = [...d.fresh, ...pendingRef.current.filter((i) => !ids.has(i.id))]

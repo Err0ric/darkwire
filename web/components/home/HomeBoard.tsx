@@ -6,13 +6,14 @@ import { cn } from "cn"
 
 import { Ticker } from "@/components/home/Ticker"
 import { PrefsControls } from "@/components/PrefsControls"
-import { SyncDot, syncState, type SyncState } from "@/components/SyncDot"
+import { NEW_ROWS_EVENT, Wordmark } from "@/components/Wordmark"
 import { getFeed, getStatus, type FeedItem, type Status } from "@/lib/api"
 import { pad, useMinuteClock, utcHHMM, zoneName } from "@/lib/clock"
 import { NewDot, useDots, type DotState } from "@/lib/dots"
 import { isImportant, kevDueIn } from "@/lib/kev"
 import { apply as applyDiff, changedSince, cursorOf, diff, LIVE_POLL_MS } from "@/lib/live"
 import { usePrefs } from "@/lib/prefs"
+import { syncState, type SyncState } from "@/lib/sync"
 import { age, useNow } from "@/lib/time"
 import { useUnseen } from "@/lib/unseen"
 
@@ -97,6 +98,8 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
       setRightNow((prev) => applyDiff(prev, { fresh: worthy, updated: d.updated }).filter((i) => rightNowWorthy(i, now)).slice(0, RIGHT_NOW_ROWS))
       addDots(worthy.slice(0, RIGHT_NOW_ROWS).map((i) => i.id))
       if (d.fresh.length) void addUnseen(d.fresh.length, d.fresh.some(isImportant))
+      // NEW rows re-type the wordmark's ".tech" (nav and lockup).
+      if (d.fresh.length) window.dispatchEvent(new Event(NEW_ROWS_EVENT))
     }
     const resync = () => getFeed({ pinned: true, limit: RIGHT_NOW_ROWS }).then((p) => setRightNow(p.items)).catch(() => undefined)
     const live = setInterval(poll, LIVE_POLL_MS)
@@ -159,18 +162,14 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
   )
 }
 
-/** The landing's centerpiece, the og.png lockup: the nav wordmark scaled up with the same
- * live/stale/down dot, and "live security news + CVEs" under it, its right edge on the
- * wordmark's right edge. */
+/** The landing's centerpiece, the og.png lockup: the nav's wordmark (red square, typing
+ * ".tech") at landing size, and "live security news + CVEs" under it, right-aligned to the
+ * reserved end of ".tech". */
 function Lockup({ state }: { state: SyncState }) {
   return (
     <div className="inline-flex flex-col items-end">
-      <h1
-        className="flex items-center gap-[0.32em] leading-none font-bold tracking-[-0.02em] text-fg"
-        style={{ fontSize: "clamp(40px, 3.2vw, 64px)" }}
-      >
-        <SyncDot state={state} className="size-[0.3em]" />
-        darkwire
+      <h1 aria-label="darkwire.tech" style={{ fontSize: "clamp(40px, 3.2vw, 64px)" }}>
+        <Wordmark state={state} />
       </h1>
       <p className="mt-2 font-mono text-[13px] leading-4 text-muted">live security news + CVEs</p>
     </div>

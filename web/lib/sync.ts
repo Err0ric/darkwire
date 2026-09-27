@@ -1,9 +1,7 @@
-import { cn } from "cn"
-
 import type { Status } from "@/lib/api"
 
-// The wordmark's dot: pulses (2.4s) while live, solid when the last sync is over 30 minutes
-// old, gray when fetching fails. Shared by the nav and the landing wordmark.
+// Sync state for the wordmark's square: live (last sync within 30 minutes), stale (older),
+// down (the API or the last ingest run failing).
 
 export type SyncState = "live" | "stale" | "down"
 
@@ -22,13 +20,4 @@ export function minutesSinceSync(status: Status | null, now: number | null): num
 export function syncState(status: Status | null, failing: boolean, now: number | null): SyncState {
   const minutes = minutesSinceSync(status, now)
   return failing ? "down" : minutes !== null && minutes <= STALE_AFTER_MIN ? "live" : "stale"
-}
-
-export function SyncDot({ state, className }: { state: SyncState; className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={cn("rounded-full", state === "down" ? "bg-dim" : "bg-accent", state === "live" && "animate-pulse-dot", className)}
-    />
-  )
 }

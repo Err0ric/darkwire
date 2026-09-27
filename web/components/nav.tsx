@@ -5,11 +5,12 @@ import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import { cn } from "cn"
 
-import { minutesSinceSync, SyncDot, syncState } from "@/components/SyncDot"
+import { Wordmark } from "@/components/Wordmark"
 import { ThemePicker } from "@/components/ThemePicker"
 import { getStatus, type Status } from "@/lib/api"
 import { utcHHMM } from "@/lib/clock"
 import { usePrefs } from "@/lib/prefs"
+import { minutesSinceSync, syncState } from "@/lib/sync"
 
 const LINKS = [
   { href: "/wire", label: "Wire" },
@@ -74,8 +75,6 @@ export function Nav() {
 
   const minutes = minutesSinceSync(sync.status, now)
   const dot = syncState(sync.status, sync.failing || sync.unreachable, now)
-  // Home leads with a large wordmark of its own; the nav's would repeat it.
-  const home = pathname === "/"
   const ownClock = OWN_CLOCK.has(pathname)
   const cvesActive = pathname === "/cves" || pathname.startsWith("/cve/")
   const label = sync.unreachable
@@ -88,12 +87,14 @@ export function Nav() {
 
   return (
     <header data-chrome className="flex h-15 items-center page-frame">
-      {!home && (
-        <Link href={`/${query()}`} className="max-md:tap mr-2.5 flex items-center gap-1.5 outline-none focus-visible:outline-1 focus-visible:outline-rule sm:mr-6 md:mr-10">
-          <SyncDot state={dot} className="size-1.5" />
-          <span className="text-base leading-none font-bold tracking-[-0.01em] text-fg sm:text-lg">darkwire</span>
-        </Link>
-      )}
+      <Link
+        href={`/${query()}`}
+        aria-label="darkwire.tech"
+        className="max-md:tap mr-2.5 flex items-center outline-none sm:mr-6 md:mr-10"
+      >
+        {/* .tech is hidden under 640px so the nav still fits on one line on a phone. */}
+        <Wordmark state={sync.status || sync.failing || sync.unreachable ? dot : null} className="text-base sm:text-lg" techClassName="max-sm:hidden" />
+      </Link>
 
       <nav aria-label="Main" className="flex min-w-0 items-center gap-2.5 sm:gap-6">
         {LINKS.map(({ href, label }) => {

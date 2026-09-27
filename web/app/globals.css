@@ -25,6 +25,7 @@
   --chip: #161616;
   --chip-impact: #1c1010; /* C / I / A at High */
   --on-critical: #ffffff; /* CRITICAL badge text */
+  --degraded: #d97706; /* service degraded (amber); major outages use --critical */
 
   color-scheme: dark;
 }
@@ -51,6 +52,7 @@ html[data-theme="amber"] {
   --chip: #1a150d;
   --chip-impact: #2a120c;
   --on-critical: #ffffff;
+  --degraded: #e08a1e;
 }
 
 html[data-theme="phosphor"] {
@@ -72,6 +74,7 @@ html[data-theme="phosphor"] {
   --chip: #0e1a11;
   --chip-impact: #26120e;
   --on-critical: #ffffff;
+  --degraded: #d9a21b;
 }
 
 /* WCAG-minded: pure black, white text, visible hairlines, every text tone >= 7:1 on --bg
@@ -95,6 +98,7 @@ html[data-theme="high-contrast"] {
   --chip: #1f1f1f;
   --chip-impact: #3d0b0b;
   --on-critical: #ffffff;
+  --degraded: #ffb000;
 }
 
 @theme inline {
@@ -116,6 +120,7 @@ html[data-theme="high-contrast"] {
   --color-chip: var(--chip);
   --color-chip-impact: var(--chip-impact);
   --color-on-critical: var(--on-critical);
+  --color-degraded: var(--degraded);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);

@@ -8,11 +8,13 @@ import { Input } from "@/components/ui/input"
 import { SiteFooter } from "@/components/SiteFooter"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Elsewhere, Stats } from "@/components/wire/Rail"
+import { Services } from "@/components/wire/Services"
 import { useFitCount } from "@/lib/fit"
 import {
   getElsewhere,
   getFeed,
   getKev,
+  getServices,
   getStatus,
   getVendors,
   type FeedItem,
@@ -25,6 +27,8 @@ import { feedQuery, stackCriticalQuery, TABS, type Filters, type WireData, type 
 const PAGE = 50
 // 15 minutes. Overridable at build time for local testing only.
 const POLL_MS = Number(process.env.NEXT_PUBLIC_POLL_SECONDS ?? 900) * 1000
+// The API reads status pages every 3 minutes.
+const SERVICES_POLL_MS = 3 * 60 * 1000
 const SEARCH_DEBOUNCE_MS = 250
 const ALL_VENDORS = "all"
 
@@ -56,6 +60,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(initial.error)
   const [stackCritical, setStackCritical] = useState(initial.stackCritical)
+  const [services, setServices] = useState(initial.services)
   const prefs = usePrefs()
   // Until the provider has read the URL, the server's stack is the truth.
   const stack = prefs.ready ? prefs.stack : initial.stack
@@ -121,6 +126,32 @@ export function WireBoard({ initial }: { initial: WireData }) {
       setFailed(true)
     }
   }
+
+  // Services: every 3 minutes, and at once when a remembered ?services= set differs from the
+  // server's. A service newly in a major outage fires the unseen indicator like a Critical row.
+  const watched = prefs.ready ? prefs.services.join(",") : null
+  const majors = useRef(new Set((initial.services?.services ?? []).filter((s) => s.state === "major").map((s) => s.slug)))
+  useEffect(() => {
+    if (watched === null) return
+    let cancelled = false
+    const load = async () => {
+      const next = await getServices(watched || undefined).catch(() => null)
+      if (cancelled || !next) return
+      setServices(next)
+      const nowMajor = new Set(next.services.filter((s) => s.state === "major").map((s) => s.slug))
+      const fresh = [...nowMajor].filter((s) => !majors.current.has(s))
+      majors.current = nowMajor
+      if (fresh.length) void addUnseen(fresh.length, true)
+    }
+    const serverSet = (initial.services?.services ?? []).map((s) => s.slug).join(",")
+    const defaults = (initial.services?.defaults ?? []).join(",")
+    if ((watched || defaults) !== serverSet) void load()
+    const timer = setInterval(load, SERVICES_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [watched, addUnseen, initial.services])
 
   // The stack can change after first paint: restored from storage, or edited in another page.
   // Refetch what depends on it; a URL asking for tab=stack gets it once a stack exists.
@@ -324,7 +355,8 @@ export function WireBoard({ initial }: { initial: WireData }) {
         >
           {/* A wide rail splits into Elsewhere | stats, and each flows into more columns. */}
           <div className="flex flex-col gap-10 @min-[600px]/rail:flex-row @min-[600px]/rail:gap-16">
-          <div className="@container min-w-0 flex-1">
+          <div className="@container flex min-w-0 flex-1 flex-col gap-10">
+            <Services data={services} />
             <Elsewhere elsewhere={elsewhere} />
           </div>
           <div className="@container min-w-0 flex-1">

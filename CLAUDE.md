@@ -112,6 +112,14 @@ Claude Haiku writes the row summary and the What to do workaround sentence. Rule
 - Bumping `RULES_VERSION` wipes every stored summary and workaround so they regenerate under the new rules.
 - `/status` reports the model's health (ok, auth failing, quota, error, no key, pending); the rail says "Summaries paused." when it is not ok.
 
+## Services
+
+Third-party status for the rail and `/outages`, from each vendor's official source, polled by the API every 3 minutes (`api/app/services.py`, `/services`). States: operational, degraded (amber `--degraded`), major (red `--critical`), unknown (source failing or not read yet). Statuspage services follow the page's own overall indicator; an open incident the vendor rates "none" is not an outage. The worst state per UTC hour is kept for 24 hours.
+
+- Default rail set: AWS (all regions, us-east-1 included), Azure, Microsoft 365, Google Cloud, Cloudflare, GitHub, Slack, Okta. `?services=aws,m365,slack` overrides it with the same rules as `?stack=` (URL wins, carried on every link, remembered only with "remember on this browser").
+- Rail block, first in the rail: one line `Services · all 8 operational` while nothing is impacted. Otherwise it opens: impacted services first (major, then degraded) with state, incident title linked to the vendor's incident page, and age; then `N others operational`.
+- A service newly in a major outage fires the unseen-tab indicator like a Critical row.
+
 ## Right rail (wire only), in this order
 
 1. Elsewhere. Five most recent from the policy/privacy/culture pool (EFF, 404 Media, Citizen Lab, Lawfare, Wired, TechCrunch Security, Ars). Headline 13px + `source · age` 11px. No vendor, no score.

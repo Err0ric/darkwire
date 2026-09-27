@@ -8,7 +8,8 @@ from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.enrich import schedule as schedule_enrich
 from app.ingest import scheduler, start_scheduler
-from app.routers import cves, feed, kev, status, vendors
+from app.routers import cves, feed, kev, services, status, vendors
+from app.services import schedule as schedule_services
 from app.seed import seed
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI):
         await seed(session)
     if get_settings().ingest_enabled:
         schedule_enrich(scheduler)
+        schedule_services(scheduler)
         start_scheduler()
     yield
     if scheduler.running:
@@ -35,7 +37,7 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
-for r in (feed.router, cves.router, kev.router, vendors.router, status.router):
+for r in (feed.router, cves.router, kev.router, vendors.router, status.router, services.router):
     app.include_router(r)
 
 

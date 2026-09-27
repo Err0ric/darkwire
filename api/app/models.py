@@ -282,3 +282,29 @@ class JobState(Base):
     name: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ServiceStatus(Base):
+    """Latest state of one third-party service (app/services.py). state: operational,
+    degraded, major, or unknown (never checked, or its status page failed)."""
+
+    __tablename__ = "service_status"
+
+    slug: Mapped[str] = mapped_column(String(64), primary_key=True)
+    state: Mapped[str] = mapped_column(String(16), default="unknown", server_default="unknown")
+    incident_title: Mapped[str | None] = mapped_column(Text)
+    incident_url: Mapped[str | None] = mapped_column(Text)
+    incident_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class ServiceHour(Base):
+    """Worst state seen per service per UTC hour, kept for 24h (the /outages strip)."""
+
+    __tablename__ = "service_hours"
+
+    slug: Mapped[str] = mapped_column(String(64), primary_key=True)
+    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    worst: Mapped[str] = mapped_column(String(16))

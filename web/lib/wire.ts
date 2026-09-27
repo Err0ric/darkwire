@@ -1,7 +1,7 @@
 // Shared by the /wire server page and the client board (plain values cannot cross the
 // "use client" boundary, so they live here).
 
-import type { ElsewhereItem, FeedPage, FeedQuery, KevRow, Status, Tab, VendorOut } from "@/lib/api"
+import type { ElsewhereItem, FeedPage, FeedQuery, KevRow, ServicesOut, Status, Tab, VendorOut } from "@/lib/api"
 
 /** "stack" is the My stack tab: every category, only the viewer's vendors. */
 export type WireTab = Tab | "stack"
@@ -19,6 +19,7 @@ export interface WireData {
   vendors: VendorOut[] // by activity this week
   elsewhere: ElsewhereItem[]
   kev: KevRow[]
+  services: ServicesOut | null
   error: boolean
   /** Stack in the request URL (?stack=); storage is read on the client. */
   stack: string[]

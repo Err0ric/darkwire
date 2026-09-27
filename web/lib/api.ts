@@ -246,4 +246,28 @@ export interface KevRow {
 }
 
 /** Recent additions to the whole CISA KEV catalog. */
+export type ServiceState = "operational" | "degraded" | "major" | "unknown"
+
+export interface ServiceOut {
+  slug: string
+  name: string
+  group: string // Cloud, Identity, Collaboration, Dev
+  page: string // the vendor's status page
+  state: ServiceState
+  incident: { title: string | null; url: string | null; started_at: string | null } | null
+  checked_at: string | null
+  changed_at: string | null
+  hours: ServiceState[] // 24 UTC hours, oldest first; unknown = no data
+}
+
+export interface ServicesOut {
+  services: ServiceOut[]
+  defaults: string[]
+  groups: string[]
+}
+
+/** Service status. No slugs = the default eight; "all" = every service (/outages). */
+export const getServices = (slugs?: string, init?: RequestInit) =>
+  get<ServicesOut>("/services", slugs ? { slugs } : {}, init)
+
 export const getKev = (days = 7, limit = 20, init?: RequestInit) => get<KevRow[]>("/kev", { days, limit }, init)

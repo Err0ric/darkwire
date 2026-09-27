@@ -53,15 +53,15 @@ Layout: no boxes, no cards, no panel borders. Separate regions with background t
 
 ## Layout
 
-Built for wall displays as much as laptops: portrait and landscape, 390px to 3440px wide.
+Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x1440 landscape; secondary: 1080x1920 and 1440x2560 portrait; plus 390px phones. Wider screens (3440) just work and are not tuned for.
 
 - One container on every page: nav and content share the same gutters (16px mobile, 48px from 768px) and left edge.
 - The feed column is capped at 1200px (its flex basis too), so the data columns (CVE ID, score, bar, badge, age, chevron) stay near the headline instead of across dead space. Inside it the headline absorbs width; the data columns stay fixed. Under a 760px feed the CVE ID column drops out; under 940px the wire's tabs and filters split onto two lines (container queries on the feed column).
-- Wire rail: beside the feed from 1200px wide (so 1080px portrait stacks it below the feed), at least 280px, and it takes all the width the capped feed leaves. When the rail is 600px or wider it splits into Elsewhere | stats; Elsewhere items flow into columns and the stat sections sit side by side as the rail grows.
+- Wire rail: beside the feed from 1200px wide (so 1080px portrait stacks it below the feed, at most 640px wide), at least 280px, and it takes all the width the capped feed leaves. Up to 2200px wide it is one column: Services, Elsewhere, Most active, Added to KEV, Last 7 days, Sources. From 2200px it is two columns: Services and Elsewhere | the stats. Elsewhere is always a single column of headlines. While the rail is stacked under the feed (under 1200px), the Services block moves to the top of the feed, under the counts, so an outage is seen without scrolling.
 - Home has no rail: its content caps at 1200px, and from 2500px wide the rows flow into two columns (left column first).
 - Fill the height with rows, never a fixed count. Home is exactly one screen tall: header, as many whole rows as fit, footer at the bottom; on the All tab, Critical or KEV rows with an event in the last 48h are pinned first with a dim `pinned` marker. Wire loads at least a screenful and scrolls.
 - Kiosk: key `f` (or `?kiosk=1`) hides nav and rail and scales type about 15%. `f` again leaves it.
-- Check new work at 390x844, 1080x1920, 1440x2560, 1920x1080, 2560x1440 and 3440x1440.
+- Check new work at 1920x1080 and 2560x1440 first, then 1080x1920, 1440x2560 and 390x844.
 
 ## The row (non-negotiable anatomy)
 
@@ -123,11 +123,12 @@ Third-party status for the rail and `/outages`, from each vendor's official sour
 
 ## Right rail (wire only), in this order
 
-1. Elsewhere. Five most recent from the policy/privacy/culture pool (EFF, 404 Media, Citizen Lab, Lawfare, Wired, TechCrunch Security, Ars). Headline 13px + `source · age` 11px. No vendor, no score.
-2. Most active this week. Vendor + count.
-3. Added to KEV. CVE ID + vendor, last 7 days.
-4. Last 7 days. Four 3px bars: Critical, High, Medium, Low.
-5. Sources line: count, health, refresh interval.
+1. Services (see Services).
+2. Elsewhere. Five most recent from the policy/privacy/culture pool (EFF, 404 Media, Citizen Lab, Lawfare, Wired, TechCrunch Security, Ars). Headline 13px + `source · age` 11px. No vendor, no score.
+3. Most active this week. Vendor + count.
+4. Added to KEV. CVE ID + vendor, last 7 days.
+5. Last 7 days. Four 3px bars: Critical, High, Medium, Low.
+6. Sources line: count, health, refresh interval.
 
 ## Data rules
 

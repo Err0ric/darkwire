@@ -28,9 +28,9 @@ export function Elsewhere({ elsewhere }: { elsewhere: ElsewhereItem[] }) {
   const now = useNow()
   return (
     <Section title="Elsewhere" aside="policy · privacy · culture">
-      <ul className="mt-3 gap-x-10 @min-[520px]:columns-[240px]">
+      <ul className="mt-3">
         {elsewhere.map((e) => (
-          <li key={e.id} className="mb-3.5 break-inside-avoid">
+          <li key={e.id} className="mb-3.5">
             <a href={e.url} {...EXTERNAL} className="block leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
               {e.headline}
             </a>
@@ -69,7 +69,7 @@ export function Stats({
   const peak = Math.max(1, ...week.map(([, n]) => n))
 
   return (
-    <div className="flex flex-col gap-10 @min-[560px]:grid @min-[560px]:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] @min-[560px]:gap-x-12">
+    <div className="flex flex-col gap-10">
       <Section title="Most active this week">
         <ul className="mt-2.5">
           {active.map((v) => (

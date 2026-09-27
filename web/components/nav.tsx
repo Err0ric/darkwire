@@ -83,7 +83,7 @@ export function Nav() {
         <span className="text-lg leading-none font-bold tracking-[-0.01em] text-fg">darkwire</span>
       </Link>
 
-      <nav aria-label="Main" className="ml-5 flex min-w-0 items-center gap-4 sm:ml-6 sm:gap-6 md:ml-10">
+      <nav aria-label="Main" className="ml-4 flex min-w-0 items-center gap-3.5 sm:ml-6 sm:gap-6 md:ml-10">
         {LINKS.map(({ href, label }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`)
           return (

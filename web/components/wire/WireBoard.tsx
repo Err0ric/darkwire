@@ -253,6 +253,10 @@ export function WireBoard({ initial }: { initial: WireData }) {
             {stack.length > 0 && stackCritical === 0 && (
               <p className="mt-1 text-[13px] leading-5 text-muted">Nothing critical in your stack today.</p>
             )}
+            {/* Rail stacked under the feed (< 1200px): Services moves up here so an outage is seen. */}
+            <div data-chrome className="mt-6 max-w-[640px] text-[13px] min-[1200px]:hidden">
+              <Services data={services} />
+            </div>
           </header>
 
           {/* Tabs and filters share a line only when the feed column is wide enough for both;
@@ -351,17 +355,20 @@ export function WireBoard({ initial }: { initial: WireData }) {
         <aside
           data-chrome
           aria-label="Context"
-          className="@container/rail mt-16 text-[13px] min-[1200px]:mt-0 min-[1200px]:min-w-[280px] min-[1200px]:flex-[1_1_280px] min-[1200px]:pt-[133px]"
+          className="mt-16 text-[13px] min-[1200px]:mt-0 min-[1200px]:min-w-[280px] min-[1200px]:flex-[1_1_280px] min-[1200px]:pt-[133px]"
         >
-          {/* A wide rail splits into Elsewhere | stats, and each flows into more columns. */}
-          <div className="flex flex-col gap-10 @min-[600px]/rail:flex-row @min-[600px]/rail:gap-16">
-          <div className="@container flex min-w-0 flex-1 flex-col gap-10">
-            <Services data={services} />
-            <Elsewhere elsewhere={elsewhere} />
-          </div>
-          <div className="@container min-w-0 flex-1">
-            <Stats active={active} kev={kev} status={status} onVendor={(slug) => apply({ vendor: slug })} />
-          </div>
+          {/* One column (Services, Elsewhere, then the stats) up to 2200px wide; from there two:
+              Services and Elsewhere | the stats. Stacked under the feed it keeps a readable width. */}
+          <div className="flex max-w-[640px] flex-col gap-10 min-[1200px]:max-w-none min-[2200px]:flex-row min-[2200px]:gap-16">
+            <div className="flex min-w-0 flex-1 flex-col gap-10">
+              <div className="hidden min-[1200px]:block">
+                <Services data={services} />
+              </div>
+              <Elsewhere elsewhere={elsewhere} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <Stats active={active} kev={kev} status={status} onVendor={(slug) => apply({ vendor: slug })} />
+            </div>
           </div>
         </aside>
       </div>

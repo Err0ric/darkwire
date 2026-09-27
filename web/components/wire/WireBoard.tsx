@@ -320,44 +320,37 @@ export function WireBoard({ initial }: { initial: WireData }) {
 
         <div className="@container min-w-0 flex-1 min-[2200px]:max-w-[1100px]">
           <header className="pt-6 md:pt-[33px]">
-            {/* The clock sits right, level with "Today", at the feed column's right edge. It is
-                shorter than the title and counts, so neither moves. */}
-            <div className="flex items-start justify-between gap-6">
-              <div className="min-w-0">
-                <h1 className="text-[36px] leading-[44px] font-bold tracking-[-0.02em] text-fg">Today</h1>
-                <p className="mt-[3px] flex flex-wrap gap-x-4 text-[15px] leading-5 text-muted md:gap-x-0">
-                  {counts ? (
-                    <>
-                      <Count
-                        n={counts.critical_24h}
-                        active={filters.severity === "critical" && filters.window === "24h"}
-                        onClick={() => apply(toggle24h("critical"))}
-                      >
-                        critical
-                      </Count>
-                      <Count
-                        n={counts.high_24h}
-                        slash
-                        active={filters.severity === "high" && filters.window === "24h"}
-                        onClick={() => apply(toggle24h("high"))}
-                      >
-                        high
-                      </Count>
-                      <Count n={counts.kev_added_7d} slash>
-                        added to KEV this week
-                      </Count>
-                      <Count n={counts.articles_24h} slash>
-                        articles in the last 24h
-                      </Count>
-                    </>
-                  ) : (
-                    <span className="text-dim">Counts unavailable.</span>
-                  )}
-                </p>
-              </div>
-              <WireClock variant="wide" />
-            </div>
-            <WireClock variant="narrow" />
+            {/* The live clock is the heading; the date and UTC line sits on its baseline. */}
+            <WireClock />
+            <p className="mt-[3px] flex flex-wrap gap-x-4 text-[15px] leading-5 text-muted md:gap-x-0">
+              {counts ? (
+                <>
+                  <Count
+                    n={counts.critical_24h}
+                    active={filters.severity === "critical" && filters.window === "24h"}
+                    onClick={() => apply(toggle24h("critical"))}
+                  >
+                    critical
+                  </Count>
+                  <Count
+                    n={counts.high_24h}
+                    slash
+                    active={filters.severity === "high" && filters.window === "24h"}
+                    onClick={() => apply(toggle24h("high"))}
+                  >
+                    high
+                  </Count>
+                  <Count n={counts.kev_added_7d} slash>
+                    added to KEV this week
+                  </Count>
+                  <Count n={counts.articles_24h} slash>
+                    articles in the last 24h
+                  </Count>
+                </>
+              ) : (
+                <span className="text-dim">Counts unavailable.</span>
+              )}
+            </p>
             {stack.length > 0 && stackCritical === 0 && (
               <p className="mt-1 text-[13px] leading-5 text-muted">Nothing critical in your stack today.</p>
             )}
@@ -452,7 +445,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 uses). The day label pins to the top while its rows scroll past; the next day's
                 section pushes it out. Labels are not rows: no dot, not counted, not <article>. */}
             {(now === null ? [{ key: "all", name: "", date: "", today: true, items }] : groupByDay(items, now)).map((g, gi) => (
-              <section key={g.key} aria-label={g.name || undefined} className={cn(gi > 0 && "mt-8")}>
+              <section key={g.key} aria-label={g.name || undefined} className={cn("[&>article:last-child]:border-b-0", gi > 0 && "mt-8")}>
                 {g.name && (
                   <div
                     role="separator"
@@ -465,7 +458,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                   >
                     <span className="font-semibold text-fg-2">{g.name}</span>
                     <span className="text-dim">
-                      {g.name !== g.date && <> · {g.date}</>} · {g.items.length}
+                      {g.name !== g.date && <>&nbsp;· {g.date}</>}&nbsp;· {g.items.length} {g.items.length === 1 ? "item" : "items"}
                     </span>
                   </div>
                 )}

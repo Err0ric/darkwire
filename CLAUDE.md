@@ -17,7 +17,7 @@ Reference mockups: `/design-refs/home.png` and `/design-refs/wire.png`. Match th
 
 | Route | Purpose |
 |---|---|
-| `/` | Home, a calm landing page (layout after `design-refs/home-v3.png`, calmer). A centered block, max 880px, about half the viewport tall with black space around it: date (17px), mono clock `clamp(44px, 3.6vw, 72px)` with seconds in `--dim`, a zone line `PDT · 19:08 UTC` (just `UTC` for UTC viewers; 12px mono `--dim`), the tagline "Security news and CVEs on one live board." (15px `--muted`), Right now (critical, KEV and exploited in the last 48h, max 3 rows of 44px with 14px headlines, linking to `/item/[id]`, or "Nothing critical in the last 48h."), a 13px ticker crossfading through the last 10 headlines every 8s, OPEN WIRE (40px, 13px mono) with CVEs · Vendors · Outages under it, and the stack link. No status line: counts, KEV due and services live on `/wire`. Footer: sources line from `/status`, darkwire.tech. No scrolling at 1920x1080 or 2560x1440; vertically centered in portrait. The nav hides its UTC time here. |
+| `/` | Home, a calm landing page. A centered block, max 880px, about half the viewport tall with black space around it: the wordmark as centerpiece (the nav wordmark scaled up, `clamp(40px, 3.2vw, 64px)`, 700, -0.02em, with the same pulsing live/stale/failing dot), the tagline "Security news and CVEs on one live board." (16px `--muted`), one 13px mono `--dim` line `Sunday, Sep 27 · 12:20 PDT · 19:20 UTC` updating each minute (no seconds), Right now (critical, KEV and exploited in the last 48h, max 3 rows of 44px with 14px headlines, linking to `/item/[id]`, or "Nothing critical in the last 48h."), a 13px ticker crossfading through the last 10 headlines every 8s, OPEN WIRE (40px, 13px mono) with CVEs · Vendors · Outages under it, and the stack link. No status line or clock: those live on `/wire`. The nav hides its wordmark and UTC time here. Footer: sources line from `/status`, darkwire.tech. No scrolling at 1920x1080 or 2560x1440; vertically centered in portrait. |
 | `/wire` | The board. Full feed, seven tabs, vendor filter, search, right rail. |
 | `/cves` | Sortable table: CVE, vendor, product, CVSS, EPSS, KEV, published. |
 | `/vendor/[slug]` | Everything tagged to one vendor. |
@@ -142,7 +142,9 @@ Sections:
 
 The feed has day separators: a label row ("Today", "Yesterday", then "Thu Sep 24") in 13px sans `--muted` over a hairline, in the viewer's zone. They are not rows: no dot, not counted by "N new ↑", and not `<article>`, so row navigation skips them.
 
-The nav shows the current UTC time ("19:08 UTC", 12px mono `--dim`) before "Synced N min ago" on every page but home (its clock line shows UTC), from 1200px wide.
+The wire header carries the clock: right of "Today", at the feed column's right edge, `HH:MM:SS` in Geist Mono `clamp(24px, 1.6vw, 32px)` (`--fg`, seconds `--dim`, ticking every second) over a right-aligned `PDT · 19:20 UTC` in 12px mono `--dim`. It is shorter than the title and counts, so neither they nor the tabs move. Under 1200px it is one 13px mono line under the counts: `12:20:07 PDT · 19:20 UTC`.
+
+The nav shows the current UTC time ("19:08 UTC", 12px mono `--dim`) before "Synced N min ago" from 1200px wide on `/cves`, `/vendors`, `/outages` and permalinks; not on `/` or `/wire`, whose own lines show UTC.
 
 ## Data rules
 
@@ -191,7 +193,7 @@ Feed audit: `python -m app.audit [--api URL] [--feed NAME] [-v]` in `/api` re-fe
 ## Motion (all respect prefers-reduced-motion)
 
 - Wordmark dot pulses 2.4s while live. Solid if last sync > 30 min. Gray if fetch failing.
-- Home clock ticks seconds.
+- The wire clock ticks seconds; the landing's date line and the nav UTC time change each minute.
 - New rows (see Live updates) fade in from the top over 300ms and get a 6px `--critical` dot just left of the headline, inside the gutter, so the headline does not shift. The dot fades in over 300ms, pulses opacity 1 -> 0.3 -> 1 three times on the 2.4s cycle (about 7.5s), then holds solid at 60%. At 10 minutes it fades out over 1s. Expanding the row clears it at once.
 - A row that arrived while the tab was hidden gets a solid dot; its three pulses start on the next visibilitychange to visible, so a returning viewer sees them.
 - More than 5 new rows in one poll: only the top 5 pulse; the rest get the solid dot (fade in to 60%).

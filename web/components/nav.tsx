@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import { cn } from "cn"
 
+import { minutesSinceSync, SyncDot, syncState } from "@/components/SyncDot"
 import { ThemePicker } from "@/components/ThemePicker"
 import { getStatus, type Status } from "@/lib/api"
+import { utcHHMM } from "@/lib/clock"
 import { usePrefs } from "@/lib/prefs"
 
 const LINKS = [
@@ -18,20 +20,10 @@ const LINKS = [
 
 const STATUS_POLL_MS = 60_000
 const CLOCK_TICK_MS = 15_000
-const STALE_AFTER_MIN = 30
+// Pages whose own header shows the time: no UTC in the nav there.
+const OWN_CLOCK = new Set(["/", "/wire"])
 
 type Sync = { status: Status | null; failing: boolean }
-
-function lastSyncAt(status: Status | null): number | null {
-  const at = status?.sync.last_finished_at ?? status?.sync.last_started_at
-  return at ? Date.parse(at) : null
-}
-
-/** "19:08" in UTC, 24-hour. */
-export function utcHHMM(ms: number): string {
-  const d = new Date(ms)
-  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`
-}
 
 function syncedLabel(minutes: number): string {
   if (minutes < 1) return "Synced just now"
@@ -70,26 +62,22 @@ export function Nav() {
     }
   }, [])
 
-  const syncedAt = lastSyncAt(sync.status)
-  const minutes = syncedAt !== null && now !== null ? Math.max(0, Math.floor((now - syncedAt) / 60_000)) : null
-  const dot = sync.failing ? "down" : minutes !== null && minutes <= STALE_AFTER_MIN ? "live" : "stale"
+  const minutes = minutesSinceSync(sync.status, now)
+  const dot = syncState(sync.status, sync.failing, now)
+  // Home leads with a large wordmark of its own; the nav's would repeat it.
+  const home = pathname === "/"
   const label = sync.failing ? "Sync unavailable" : minutes !== null ? syncedLabel(minutes) : ""
 
   return (
     <header data-chrome className="flex h-15 items-center px-4 md:px-12">
-      <Link href={`/${query()}`} className="flex items-center gap-2 outline-none focus-visible:outline-1 focus-visible:outline-rule">
-        <span
-          aria-hidden
-          className={cn(
-            "size-1.5 rounded-full",
-            dot === "down" ? "bg-dim" : "bg-accent",
-            dot === "live" && "animate-pulse-dot",
-          )}
-        />
-        <span className="text-lg leading-none font-bold tracking-[-0.01em] text-fg">darkwire</span>
-      </Link>
+      {!home && (
+        <Link href={`/${query()}`} className="mr-4 flex items-center gap-2 outline-none focus-visible:outline-1 focus-visible:outline-rule sm:mr-6 md:mr-10">
+          <SyncDot state={dot} className="size-1.5" />
+          <span className="text-lg leading-none font-bold tracking-[-0.01em] text-fg">darkwire</span>
+        </Link>
+      )}
 
-      <nav aria-label="Main" className="ml-4 flex min-w-0 items-center gap-3.5 sm:ml-6 sm:gap-6 md:ml-10">
+      <nav aria-label="Main" className="flex min-w-0 items-center gap-3.5 sm:gap-6">
         {LINKS.map(({ href, label }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`)
           return (
@@ -109,13 +97,13 @@ export function Nav() {
       </nav>
 
       <div className="ml-auto flex shrink-0 items-center gap-4 pl-3">
-        {now !== null && pathname !== "/" && (
+        {now !== null && !OWN_CLOCK.has(pathname) && (
           <time
             dateTime={new Date(now).toISOString()}
             title="Coordinated Universal Time"
             className="hidden font-mono text-xs leading-none text-dim min-[1200px]:block"
           >
-            {utcHHMM(now)} UTC
+            {utcHHMM(new Date(now))} UTC
           </time>
         )}
         <p className="hidden text-[15px] leading-none text-muted sm:block" aria-live="polite">

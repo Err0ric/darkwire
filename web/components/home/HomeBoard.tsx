@@ -5,7 +5,9 @@ import { useEffect, useRef, useState } from "react"
 import { cn } from "cn"
 
 import { PrefsControls } from "@/components/PrefsControls"
+import { SyncDot, syncState, type SyncState } from "@/components/SyncDot"
 import { getFeed, getStatus, type FeedItem, type Status } from "@/lib/api"
+import { pad, useMinuteClock, utcHHMM, zoneName } from "@/lib/clock"
 import { NewDot, useDots, type DotState } from "@/lib/dots"
 import { isImportant, kevDueIn } from "@/lib/kev"
 import { apply as applyDiff, changedSince, cursorOf, diff, LIVE_POLL_MS } from "@/lib/live"
@@ -13,10 +15,10 @@ import { usePrefs } from "@/lib/prefs"
 import { age, useNow } from "@/lib/time"
 import { useUnseen } from "@/lib/unseen"
 
-// Home: a calm landing page. A centered block (date, clock, zone and UTC, tagline, Right now,
-// ticker, OPEN WIRE, stack link) about half the viewport tall, with black space around it;
-// the footer at the bottom. Counts, KEV due dates and services live on /wire only. Gaps
-// scale with the viewport height; the clock with its width.
+// Home: a calm landing page. A centered block (the wordmark with its live dot, tagline, one
+// date and time line, Right now, ticker, OPEN WIRE, stack link) about half the viewport tall,
+// with black space around it; the footer at the bottom. The clock lives on /wire; counts, KEV
+// due dates and services too. Gaps scale with the viewport height; the wordmark with its width.
 
 const STATUS_POLL_MS = 60_000
 // Right now is also re-read in full now and then, quietly, for rows the since-poll cannot place.
@@ -33,26 +35,7 @@ export interface HomeData {
   failed: boolean
 }
 
-/** Wall clock in the viewer's zone, ticking every second. Null until mounted (no server time). */
-function useClock(): Date | null {
-  const [now, setNow] = useState<Date | null>(null)
-  useEffect(() => {
-    const tick = () => setNow(new Date())
-    const first = setTimeout(tick, 0)
-    const timer = setInterval(tick, 1000)
-    return () => {
-      clearTimeout(first)
-      clearInterval(timer)
-    }
-  }, [])
-  return now
-}
 
-function zoneName(d: Date): string {
-  return new Intl.DateTimeFormat([], { timeZoneName: "short" }).formatToParts(d).find((p) => p.type === "timeZoneName")?.value ?? "UTC"
-}
-
-const pad = (n: number) => String(n).padStart(2, "0")
 
 /** Belongs in Right now: Critical, KEV or EXPLOITED, not an old CVE, event in the last 48h. */
 function rightNowWorthy(i: FeedItem, now: number): boolean {
@@ -68,7 +51,8 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
   const [latest, setLatest] = useState(initial.latest)
   const [status, setStatus] = useState(initial.status)
   const { query } = usePrefs()
-  const clock = useClock()
+  const minute = useMinuteClock()
+  const [statusFailed, setStatusFailed] = useState(false)
   const addUnseen = useUnseen()
   const { dots, add: addDots } = useDots()
   const rightNowRef = useRef(rightNow)
@@ -84,7 +68,14 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
   }, [rightNow, latest])
 
   useEffect(() => {
-    const timer = setInterval(() => getStatus().then(setStatus).catch(() => undefined), STATUS_POLL_MS)
+    const load = () =>
+      getStatus()
+        .then((s) => {
+          setStatus(s)
+          setStatusFailed(s.sync.last_ok === false)
+        })
+        .catch(() => setStatusFailed(true))
+    const timer = setInterval(load, STATUS_POLL_MS)
     return () => clearInterval(timer)
   }, [])
 
@@ -121,8 +112,9 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
     // One screen tall: the block centers in whatever the nav and footer leave.
     <main className="flex min-h-[calc(100dvh/var(--zoom)-var(--nav-h))] flex-col px-4 md:px-12">
       <div className="mx-auto my-auto flex w-full max-w-[880px] flex-col items-center py-[clamp(24px,5vh,72px)] text-center">
-        <Clock now={clock} />
-        <p className="mt-[clamp(12px,1.8vh,24px)] text-[15px] leading-5 text-muted">Security news and CVEs on one live board.</p>
+        <Wordmark state={syncState(status, statusFailed || status?.sync.last_ok === false, minute?.getTime() ?? null)} />
+        <p className="mt-[clamp(14px,2vh,24px)] text-base leading-6 text-muted">Security news and CVEs on one live board.</p>
+        <DateLine now={minute} />
         <RightNow items={rightNow.slice(0, RIGHT_NOW_ROWS)} dots={dots} failed={initial.failed && !rightNow.length} />
         <Ticker items={latest} />
 
@@ -166,34 +158,31 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
   )
 }
 
-/** "PDT · 19:08 UTC", or just "UTC" when the viewer is on UTC. */
-function zoneLine(d: Date): string {
-  const zone = zoneName(d)
-  if (zone === "UTC") return "UTC"
-  return `${zone} · ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`
+/** The landing's centerpiece: the nav wordmark, scaled up, with the same live/stale/down dot. */
+function Wordmark({ state }: { state: SyncState }) {
+  return (
+    <h1
+      className="flex items-center gap-[0.32em] leading-none font-bold tracking-[-0.02em] text-fg"
+      style={{ fontSize: "clamp(40px, 3.2vw, 64px)" }}
+    >
+      <SyncDot state={state} className="size-[0.3em]" />
+      darkwire
+    </h1>
+  )
 }
 
-function Clock({ now }: { now: Date | null }) {
-  // Heights are reserved so nothing moves when the client fills the time in.
-  return (
-    <div>
-      <p className="h-6 text-[17px] leading-6 text-fg-2">
-        {now?.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}
-      </p>
-      <p
-        className="mt-1 h-[1.1em] font-mono leading-[1.1em] font-normal tracking-[-0.02em] text-fg tabular-nums"
-        style={{ fontSize: "clamp(44px, 3.6vw, 72px)" }}
-      >
-        {now && (
-          <time dateTime={now.toISOString()}>
-            {pad(now.getHours())}:{pad(now.getMinutes())}
-            <span className="text-dim">:{pad(now.getSeconds())}</span>
-          </time>
-        )}
-      </p>
-      <p className="mt-2 h-4 font-mono text-xs leading-4 tracking-[0.06em] text-dim">{now && zoneLine(now)}</p>
-    </div>
-  )
+/** "Sunday, Sep 27 · 12:20 PDT · 19:20 UTC" (just "… · 19:20 UTC" for UTC viewers). */
+function DateLine({ now }: { now: Date | null }) {
+  const text = now
+    ? [
+        now.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }),
+        zoneName(now) === "UTC" ? null : `${pad(now.getHours())}:${pad(now.getMinutes())} ${zoneName(now)}`,
+        `${utcHHMM(now)} UTC`,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : ""
+  return <p className="mt-2.5 h-4 font-mono text-[13px] leading-4 text-dim">{text}</p>
 }
 
 // ---------------------------------------------------------------- Right now

@@ -9,6 +9,7 @@ import { SiteFooter } from "@/components/SiteFooter"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AddedToKev, Elsewhere, LastSevenDays, MostActive, SourcesLine } from "@/components/wire/Rail"
 import { Services } from "@/components/wire/Services"
+import { WireClock } from "@/components/wire/WireClock"
 import { useFitCount } from "@/lib/fit"
 import {
   getElsewhere,
@@ -310,36 +311,44 @@ export function WireBoard({ initial }: { initial: WireData }) {
 
         <div className="@container min-w-0 flex-1 min-[2200px]:max-w-[1100px]">
           <header className="pt-6 md:pt-[33px]">
-            <h1 className="text-[36px] leading-[44px] font-bold tracking-[-0.02em] text-fg">Today</h1>
-            <p className="mt-[3px] flex flex-wrap gap-x-4 text-[15px] leading-5 text-muted md:gap-x-0">
-              {counts ? (
-                <>
-                  <Count
-                    n={counts.critical_24h}
-                    active={filters.severity === "critical" && filters.window === "24h"}
-                    onClick={() => apply(toggle24h("critical"))}
-                  >
-                    critical
-                  </Count>
-                  <Count
-                    n={counts.high_24h}
-                    slash
-                    active={filters.severity === "high" && filters.window === "24h"}
-                    onClick={() => apply(toggle24h("high"))}
-                  >
-                    high
-                  </Count>
-                  <Count n={counts.kev_added_7d} slash>
-                    added to KEV this week
-                  </Count>
-                  <Count n={counts.articles_24h} slash>
-                    articles in the last 24h
-                  </Count>
-                </>
-              ) : (
-                <span className="text-dim">Counts unavailable.</span>
-              )}
-            </p>
+            {/* The clock sits right, level with "Today", at the feed column's right edge. It is
+                shorter than the title and counts, so neither moves. */}
+            <div className="flex items-start justify-between gap-6">
+              <div className="min-w-0">
+                <h1 className="text-[36px] leading-[44px] font-bold tracking-[-0.02em] text-fg">Today</h1>
+                <p className="mt-[3px] flex flex-wrap gap-x-4 text-[15px] leading-5 text-muted md:gap-x-0">
+                  {counts ? (
+                    <>
+                      <Count
+                        n={counts.critical_24h}
+                        active={filters.severity === "critical" && filters.window === "24h"}
+                        onClick={() => apply(toggle24h("critical"))}
+                      >
+                        critical
+                      </Count>
+                      <Count
+                        n={counts.high_24h}
+                        slash
+                        active={filters.severity === "high" && filters.window === "24h"}
+                        onClick={() => apply(toggle24h("high"))}
+                      >
+                        high
+                      </Count>
+                      <Count n={counts.kev_added_7d} slash>
+                        added to KEV this week
+                      </Count>
+                      <Count n={counts.articles_24h} slash>
+                        articles in the last 24h
+                      </Count>
+                    </>
+                  ) : (
+                    <span className="text-dim">Counts unavailable.</span>
+                  )}
+                </p>
+              </div>
+              <WireClock variant="wide" />
+            </div>
+            <WireClock variant="narrow" />
             {stack.length > 0 && stackCritical === 0 && (
               <p className="mt-1 text-[13px] leading-5 text-muted">Nothing critical in your stack today.</p>
             )}

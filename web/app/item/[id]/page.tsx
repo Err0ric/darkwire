@@ -32,6 +32,8 @@ export default async function Item({ params }: { params: Promise<{ id: string }>
         <QLink href="/wire" className="max-md:tap text-[13px] text-muted outline-none hover:text-fg-2 focus-visible:text-fg-2">
           ← The wire
         </QLink>
+        {/* The row's headline is a link to the source; the page heading names it for screen readers. */}
+        <h1 className="sr-only">{item.headline}</h1>
         <div className="mt-4 border-t border-rule">
           <FeedRow item={item} detail={item} defaultExpanded />
         </div>

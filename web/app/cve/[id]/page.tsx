@@ -38,6 +38,8 @@ export default async function CvePage({ params }: { params: Promise<{ id: string
         <QLink href="/cves" className="max-md:tap text-[13px] text-muted outline-none hover:text-fg-2 focus-visible:text-fg-2">
           ← CVEs
         </QLink>
+        {/* The row's headline is a link to the source; the page heading names it for screen readers. */}
+        <h1 className="sr-only">{`${item.cve_id ?? ""} ${item.headline}`.trim()}</h1>
         <div className="mt-4 border-t border-rule">
           <FeedRow item={item} detail={item} defaultExpanded />
         </div>

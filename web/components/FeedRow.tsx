@@ -191,7 +191,7 @@ function MetaLine({ item, pinned = false, inStack = false }: { item: FeedItem; p
   } else {
     for (const s of item.sources.slice(0, MAX_SOURCES)) {
       parts.push(
-        <a key={s.url} href={s.url} {...EXTERNAL} className="max-md:tap-down text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
+        <a key={s.url} href={s.url} {...EXTERNAL} className="max-md:tap-down text-fg-2 underline decoration-outline-medium underline-offset-[3px] outline-none hover:text-fg hover:decoration-fg-2 focus-visible:text-fg">
           {s.name}
         </a>,
       )
@@ -271,7 +271,7 @@ function Bar({ item, className }: { item: FeedItem; className?: string }) {
   const filled = Math.round(item.cvss)
   const fill = (item.severity && BAR_FILL[item.severity]) || "bg-medium"
   return (
-    <span className={cn("flex shrink-0 gap-0.5", item.stale && STALE_BAR, className)} aria-label={`CVSS ${item.cvss}`}>
+    <span className={cn("flex shrink-0 gap-0.5", item.stale && STALE_BAR, className)} role="img" aria-label={`CVSS ${item.cvss}`}>
       {Array.from({ length: 10 }, (_, i) => (
         <span
           key={i}

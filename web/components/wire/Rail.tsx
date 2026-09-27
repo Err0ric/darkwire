@@ -184,7 +184,7 @@ export function LastSevenDays({
             </>
           )
           return (
-            <li key={key} className="-mx-2 h-[22px] px-2 hover:bg-surface">
+            <li key={key} className="-mx-2 h-6 px-2 hover:bg-surface">
               {n > 0 ? (
                 <button
                   type="button"

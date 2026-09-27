@@ -29,6 +29,8 @@ Reference mockups: `/design-refs/home.png` and `/design-refs/wire.png`. Match th
 
 No pricing, login, signup, newsletter, about-us hero, or footer CTA. Ever.
 
+Errors: a page that cannot render (usually the API not answering) shows the same page header titled "Feed unreachable" with "Try again" and "Home" (`web/app/error.tsx`), never the framework's default screen. Every page has exactly one H1 (permalinks carry a screen-reader H1 with the headline).
+
 Page header (`web/components/PageHeader.tsx`), the same on every page: 24px top padding (33px from 768px), the title in the wire clock's slot at its size (36px/700, -0.02em, 44px line; 28px under 1200px), then the counts line 3px below (15px, words `--muted`, numbers `--fg`). The wire's clock is its title. No other H1 sizes.
 
 ## Design system
@@ -82,7 +84,7 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 - Headlines are one line (ellipsis) only on wide landscape screens (over 1600px wide, landscape); narrower and portrait screens (1200-1600px wide, 1080x1920, 1440x2560) wrap them to at most two lines, and the row grows from 64px.
 - Vendor mark: `/public/vendors/{slug}.svg`, monochrome, currentColor at `--muted`, 20px, no circle. Fallback: Lucide category icon (shield-alert for breach, bug for vuln, file-text for advisory, flask for research).
 - Headline links to the primary source, `target="_blank" rel="noopener noreferrer"`.
-- Meta line: every source name is a link to that outlet's article, same 12px, `--fg-2`. One name per outlet: an outlet with several articles in the cluster links to its newest. Cap 4 visible, then `+N`. Then category, then `KEV` in `--critical` if listed, else `EXPLOITED` in `--critical` when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator is `·`.
+- Meta line: every source name is a link to that outlet's article, same 12px, `--fg-2`, with a quiet `#333` underline (`--outline-medium`, 3px offset) so a link is not told apart by color alone. One name per outlet: an outlet with several articles in the cluster links to its newest. Cap 4 visible, then `+N`. Then category, then `KEV` in `--critical` if listed, else `EXPLOITED` in `--critical` when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator is `·`.
 - KEV due: within 7 days of CISA's due date the marker reads `KEV due in Nd` (`KEV` red, the rest `--fg-2`; all red at 2 days or less, `KEV due today` on the day), and `KEV overdue` in red for 7 days after it. Days count in UTC. These rows count toward the unseen `!`.
 - Old CVEs: a CVE published more than 90 days ago, not in KEV, and in a row where no headline is about exploitation (exploit, exploited, zero-day, in the wild, under attack) keeps its score but dims: the score and badge text take `--dim-text` (the badge a quiet `#333` outline) and the bar cells 40%. Such rows are left out of severity totals, pinning and the unseen `!`.
 - Score: Geist Mono 15px/500. `--fg` for 7.0+, `--fg-2` below. Empty for non-CVE rows.

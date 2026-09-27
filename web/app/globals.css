@@ -148,6 +148,32 @@ html[data-theme="high-contrast"] {
     background: var(--bg);
     color: var(--fg);
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Thin dark scrollbars: a --rule thumb on the page background. */
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule) var(--bg);
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--bg);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--rule);
+  }
+
+  /* Selection: a red-tinted band, text keeps its own color. */
+  ::selection {
+    background: color-mix(in srgb, var(--critical) 32%, transparent);
   }
 }
 

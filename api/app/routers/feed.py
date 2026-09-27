@@ -97,7 +97,8 @@ async def feed(
     q: str | None = Query(None, max_length=200, description="headline text or CVE ID"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    since: datetime | None = Query(None, description="only rows with an event after this time"),
+    since: datetime | None = Query(None, description="only rows with an event after this time (or a change, see changed_since)"),
+    changed_since: datetime | None = Query(None, description="with since: also rows changed after this time (default: since)"),
     pinned: bool = Query(False, description="only Critical, KEV or EXPLOITED rows with an event in the last 48h"),
     critical: bool = Query(False, description="only Critical or KEV rows (old CVEs excluded)"),
     all_sources: bool = Query(False, description="every article, not one per outlet (feed audit)"),
@@ -125,7 +126,7 @@ async def feed(
             )
         )
     if since:
-        where.append(Item.last_event_at > since)
+        where.append(or_(Item.last_event_at > since, Item.changed_at > (changed_since or since)))
     if severity is not None:
         # Matches the header's 24h counts or the rail's "Last 7 days" counts exactly.
         where.append(Item.severity == severity)

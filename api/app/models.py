@@ -180,6 +180,11 @@ class Item(Base):
     # Null until asked; {"workaround": null} when the articles name none.
     action: Mapped[dict | None] = mapped_column(JSONB)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Last time anything on the row changed (sources, scores, KEV, flags, summary). Lets
+    # /feed?since= return in-place updates too; the client decides what counts as new.
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True
+    )
     # Sort key: last significant event (published, kev_added, poc, cvss_changed), not first-seen.
     last_event_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True

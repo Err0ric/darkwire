@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
@@ -39,6 +39,18 @@ app.add_middleware(
 )
 for r in (feed.router, cves.router, kev.router, vendors.router, status.router, services.router):
     app.include_router(r)
+
+
+# Live data: browsers and CDNs must never serve these from cache.
+NO_STORE = ("/feed", "/status", "/services")
+
+
+@app.middleware("http")
+async def no_store(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith(NO_STORE):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/healthz", include_in_schema=False)

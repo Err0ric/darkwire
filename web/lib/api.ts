@@ -204,6 +204,8 @@ export interface FeedQuery {
   limit?: number
   offset?: number
   since?: string
+  /** With since: also rows changed after this time (live updates). */
+  changed_since?: string
   /** Only Critical or KEV rows with an event in the last 48h. */
   pinned?: boolean
   /** Comma-separated vendor slugs (your stack). */

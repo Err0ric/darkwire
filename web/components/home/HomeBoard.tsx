@@ -1,15 +1,18 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { cn } from "cn"
 
 import { PrefsControls } from "@/components/PrefsControls"
 import { byImpact, isImpacted } from "@/components/ServiceBits"
 import { getFeed, getServices, getStatus, type FeedItem, type ServicesOut, type Status } from "@/lib/api"
-import { kevDueIn } from "@/lib/kev"
+import { NewDot, useDots, type DotState } from "@/lib/dots"
+import { isImportant, kevDueIn } from "@/lib/kev"
+import { apply as applyDiff, changedSince, cursorOf, diff, LIVE_POLL_MS } from "@/lib/live"
 import { usePrefs } from "@/lib/prefs"
 import { age, useNow } from "@/lib/time"
+import { useUnseen } from "@/lib/unseen"
 
 // Home: a landing page. Centered block (date, clock, status line, Right now, ticker, OPEN WIRE,
 // stack link), footer at the bottom. Sized in em off one clamp() on the block, so it scales
@@ -17,7 +20,9 @@ import { age, useNow } from "@/lib/time"
 // without scrolling.
 
 const STATUS_POLL_MS = 60_000
-const FEED_POLL_MS = 60_000
+// Right now is also re-read in full now and then, quietly, for rows the since-poll cannot place.
+const RESYNC_MS = 5 * 60_000
+const RIGHT_NOW_MS = 48 * 3600_000
 const SERVICES_POLL_MS = 3 * 60_000
 const TICKER_MS = 8_000
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const
@@ -51,6 +56,15 @@ function zoneName(d: Date): string {
 
 const pad = (n: number) => String(n).padStart(2, "0")
 
+/** Belongs in Right now: Critical, KEV or EXPLOITED, not an old CVE, event in the last 48h. */
+function rightNowWorthy(i: FeedItem, now: number): boolean {
+  return (
+    !i.stale &&
+    (i.severity === "critical" || i.kev || i.exploited) &&
+    now - Date.parse(i.last_event_at) <= RIGHT_NOW_MS
+  )
+}
+
 export function HomeBoard({ initial }: { initial: HomeData }) {
   const [rightNow, setRightNow] = useState(initial.rightNow)
   const [latest, setLatest] = useState(initial.latest)
@@ -58,20 +72,53 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
   const [services, setServices] = useState(initial.services)
   const { query, services: watched, ready } = usePrefs()
   const clock = useClock()
+  const addUnseen = useUnseen()
+  const { dots, add: addDots } = useDots()
+  const rightNowRef = useRef(rightNow)
+  const latestRef = useRef(latest)
+  const loadedAt = useRef(new Date().toISOString())
+  const lastPoll = useRef(0)
+  useEffect(() => {
+    lastPoll.current = Date.now()
+  }, [])
+  useEffect(() => {
+    rightNowRef.current = rightNow
+    latestRef.current = latest
+  }, [rightNow, latest])
 
   useEffect(() => {
     const timer = setInterval(() => getStatus().then(setStatus).catch(() => undefined), STATUS_POLL_MS)
     return () => clearInterval(timer)
   }, [])
 
+  // Every 60s, hidden or not: rows with a newer event or any newer change (lib/live.ts). New
+  // and escalated rows lead the ticker, join Right now when they qualify (with a dot) and count
+  // as unseen; in-place changes update silently.
   useEffect(() => {
-    const load = () => {
-      getFeed({ pinned: true, limit: 5 }).then((p) => setRightNow(p.items)).catch(() => undefined)
-      getFeed({ limit: 10 }).then((p) => setLatest(p.items)).catch(() => undefined)
+    const poll = async () => {
+      const known = [...latestRef.current, ...rightNowRef.current]
+      const changed = changedSince(lastPoll.current)
+      lastPoll.current = Date.now()
+      const page = await getFeed({ since: cursorOf(known) ?? loadedAt.current, changed_since: changed, limit: 50 }).catch(
+        () => null,
+      )
+      if (!page) return
+      const d = diff(known, page.items)
+      const now = Date.now()
+      setLatest((prev) => applyDiff(prev, d).slice(0, 10))
+      const worthy = d.fresh.filter((i) => rightNowWorthy(i, now))
+      setRightNow((prev) => applyDiff(prev, { fresh: worthy, updated: d.updated }).filter((i) => rightNowWorthy(i, now)).slice(0, 5))
+      addDots(worthy.slice(0, 5).map((i) => i.id))
+      if (d.fresh.length) void addUnseen(d.fresh.length, d.fresh.some(isImportant))
     }
-    const timer = setInterval(load, FEED_POLL_MS)
-    return () => clearInterval(timer)
-  }, [])
+    const resync = () => getFeed({ pinned: true, limit: 5 }).then((p) => setRightNow(p.items)).catch(() => undefined)
+    const live = setInterval(poll, LIVE_POLL_MS)
+    const full = setInterval(resync, RESYNC_MS)
+    return () => {
+      clearInterval(live)
+      clearInterval(full)
+    }
+  }, [addDots, addUnseen])
 
   const slugs = ready ? watched.join(",") : null
   useEffect(() => {
@@ -91,7 +138,7 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
       >
         <Clock now={clock} />
         <StatusLine status={status} services={services} query={query} />
-        <RightNow items={rightNow} failed={initial.failed && !rightNow.length} />
+        <RightNow items={rightNow} dots={dots} failed={initial.failed && !rightNow.length} />
         <Ticker items={latest} />
 
         <Link
@@ -223,7 +270,7 @@ function Part({ dot, href, children }: { dot: string; href: string; children: Re
 
 // ---------------------------------------------------------------- Right now
 
-function RightNow({ items, failed }: { items: FeedItem[]; failed: boolean }) {
+function RightNow({ items, dots, failed }: { items: FeedItem[]; dots: ReadonlyMap<number, DotState>; failed: boolean }) {
   return (
     <section aria-label="Right now" className="mt-[2.2em] w-full text-left">
       <div className="flex items-baseline gap-[1em] border-b border-rule pb-[0.6em]">
@@ -233,7 +280,7 @@ function RightNow({ items, failed }: { items: FeedItem[]; failed: boolean }) {
       {items.length ? (
         <ul>
           {items.slice(0, 5).map((item) => (
-            <RightNowRow key={item.id} item={item} />
+            <RightNowRow key={item.id} item={item} dot={dots.get(item.id)} />
           ))}
         </ul>
       ) : (
@@ -255,7 +302,7 @@ const BADGE: Record<string, string> = {
 
 const BAR_FILL: Record<string, string> = { critical: "bg-critical", high: "bg-accent", medium: "bg-medium", low: "bg-dim" }
 
-function RightNowRow({ item }: { item: FeedItem }) {
+function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
   const { query } = usePrefs()
   const now = useNow()
   const severity = item.severity && item.severity !== "none" ? item.severity : null
@@ -309,8 +356,12 @@ function RightNowRow({ item }: { item: FeedItem }) {
           )}
         </span>
         <span className="hidden w-[6.4em] shrink-0 sm:block">{badgeEl}</span>
-        <span className="block min-w-0 flex-1 text-[1em] leading-[1.35em] font-medium tracking-[-0.01em] text-fg group-hover:underline sm:truncate">
-          {item.headline}
+        {/* The wrapper is not clipped, so the dot can sit in the gutter left of the headline. */}
+        <span className="relative block min-w-0 flex-1">
+          {dot && <NewDot state={dot} className="top-[calc(0.675em-3px)] -left-[10px] sm:-left-[0.9em]" />}
+          <span className="block text-[1em] leading-[1.35em] font-medium tracking-[-0.01em] text-fg group-hover:underline sm:truncate">
+            {item.headline}
+          </span>
         </span>
         <span className="mt-[0.4em] flex items-center gap-[0.8em] sm:mt-0 sm:ml-[1.5em] sm:gap-0">
           <span className="sm:hidden">{badgeEl}</span>

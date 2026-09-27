@@ -19,14 +19,18 @@ import {
   getVendors,
   type FeedItem,
 } from "@/lib/api"
+import { useDots } from "@/lib/dots"
 import { usePrefs } from "@/lib/prefs"
 import { isImportant } from "@/lib/kev"
+import { apply as applyDiff, changedSince, cursorOf, diff, LIVE_POLL_MS } from "@/lib/live"
 import { useUnseen } from "@/lib/unseen"
 import { feedQuery, stackCriticalQuery, TABS, type Filters, type WireData, type WireTab } from "@/lib/wire"
 
 const PAGE = 50
-// 15 minutes. Overridable at build time for local testing only.
-const POLL_MS = Number(process.env.NEXT_PUBLIC_POLL_SECONDS ?? 900) * 1000
+// Rows: every 60s (lib/live.ts). The slower rail sections: every 15 minutes.
+const RAIL_POLL_MS = 15 * 60 * 1000
+// Scrolled further than this: new rows wait behind the "N new ↑" button instead of shifting the page.
+const SCROLLED_PX = 160
 // The API reads status pages every 3 minutes.
 const SERVICES_POLL_MS = 3 * 60 * 1000
 const SEARCH_DEBOUNCE_MS = 250
@@ -42,11 +46,6 @@ function syncUrl(f: Filters) {
   set("severity", f.severity)
   set("window", f.severity ? f.window : "")
   window.history.replaceState(null, "", url.pathname + url.search.replace(/%2C/gi, ",") + url.hash)
-}
-
-function mergeNewest(prev: FeedItem[], incoming: FeedItem[]): FeedItem[] {
-  const ids = new Set(incoming.map((i) => i.id))
-  return [...incoming, ...prev.filter((p) => !ids.has(p.id))]
 }
 
 export function WireBoard({ initial }: { initial: WireData }) {
@@ -75,6 +74,16 @@ export function WireBoard({ initial }: { initial: WireData }) {
   const addUnseen = useUnseen()
   const list = useRef<HTMLDivElement>(null)
   const fit = useFitCount(list)
+  const { dots, add: addDots, clear: clearDot } = useDots()
+  // New rows found while scrolled down, waiting for "N new ↑" or a scroll back to the top.
+  const [pending, setPending] = useState<FeedItem[]>([])
+  const pendingRef = useRef<FeedItem[]>([])
+  // Cursor for an empty list: rows newer than the moment it loaded.
+  const loadedAt = useRef(new Date().toISOString())
+  const lastPoll = useRef(0)
+  useEffect(() => {
+    lastPoll.current = Date.now()
+  }, [])
 
   useEffect(() => {
     itemsRef.current = items
@@ -89,6 +98,9 @@ export function WireBoard({ initial }: { initial: WireData }) {
       setItems(page.items)
       setTotal(page.total)
       setFresh(new Set())
+      pendingRef.current = []
+      setPending([])
+      loadedAt.current = new Date().toISOString()
       setFailed(false)
     } catch {
       if (id === request.current) setFailed(true)
@@ -170,39 +182,78 @@ export function WireBoard({ initial }: { initial: WireData }) {
     else if (stack.length && (filtersRef.current.tab === "stack" || wantsStack)) apply({ tab: "stack" })
   }, [stack, apply])
 
-  // Every 15 minutes: rows with an event newer than the top row, plus counts and rail.
+  // Put queued rows on top and give them their dots.
+  const flush = useCallback(() => {
+    const queued = pendingRef.current
+    if (!queued.length) return
+    pendingRef.current = []
+    setPending([])
+    setItems((prev) => applyDiff(prev, { fresh: queued, updated: new Map() }))
+    setFresh(new Set(queued.map((i) => i.id)))
+    addDots(queued.map((i) => i.id))
+  }, [addDots])
+
+  // Every 60s, hidden or not (the unseen count depends on it): rows with a newer event or any
+  // newer change. New and escalated rows go on top with a dot and count as unseen; anything
+  // else updates in place, silently. Scrolled down, new rows wait behind "N new ↑".
   useEffect(() => {
     const poll = async () => {
       const f = filtersRef.current
       const mine = stackRef.current
-      const newest = itemsRef.current[0]?.last_event_at
-      const [feed, st, els, act, kv, crit] = await Promise.allSettled([
-        getFeed({ ...feedQuery(f, mine), limit: PAGE, since: newest }),
+      const current = [...itemsRef.current, ...pendingRef.current]
+      const since = cursorOf(current) ?? loadedAt.current
+      const changed = changedSince(lastPoll.current)
+      lastPoll.current = Date.now()
+      const [feed, st, crit] = await Promise.allSettled([
+        getFeed({ ...feedQuery(f, mine), limit: PAGE, since, changed_since: changed }),
         getStatus(),
-        getElsewhere(5),
-        getVendors("active"),
-        getKev(7, 8),
         mine.length ? getFeed(stackCriticalQuery(mine)).then((p) => p.total) : Promise.resolve(null),
       ])
       if (crit.status === "fulfilled" && mine === stackRef.current) setStackCritical(crit.value)
       if (st.status === "fulfilled") setStatus(st.value)
+      if (feed.status !== "fulfilled" || f !== filtersRef.current) return
+
+      const d = diff(current, feed.value.items)
+      if (d.updated.size) {
+        setItems((prev) => prev.map((i) => d.updated.get(i.id) ?? i))
+        pendingRef.current = pendingRef.current.map((i) => d.updated.get(i.id) ?? i)
+      }
+      if (d.added) setTotal((t) => t + d.added)
+      if (!d.fresh.length) return
+
+      // With a stack, only its rows count toward the unseen title and dot.
+      const counted = mine.length ? d.fresh.filter((i) => i.vendor && mine.includes(i.vendor.slug)) : d.fresh
+      void addUnseen(counted.length, counted.some(isImportant))
+
+      const ids = new Set(d.fresh.map((i) => i.id))
+      pendingRef.current = [...d.fresh, ...pendingRef.current.filter((i) => !ids.has(i.id))]
+      if (window.scrollY > SCROLLED_PX) setPending(pendingRef.current)
+      else flush()
+    }
+    const timer = setInterval(poll, LIVE_POLL_MS)
+    return () => clearInterval(timer)
+  }, [addUnseen, flush])
+
+  // Back at the top: queued rows go in directly.
+  useEffect(() => {
+    const onScroll = () => {
+      if (window.scrollY <= SCROLLED_PX && pendingRef.current.length) flush()
+    }
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [flush])
+
+  // The slower rail sections.
+  useEffect(() => {
+    const poll = async () => {
+      const [els, act, kv] = await Promise.allSettled([getElsewhere(5), getVendors("active"), getKev(7, 8)])
       if (els.status === "fulfilled") setElsewhere(els.value)
       if (act.status === "fulfilled") setVendors(act.value)
       if (kv.status === "fulfilled") setKev(kv.value)
-      if (feed.status !== "fulfilled" || f !== filtersRef.current) return
-      const incoming = newest ? feed.value.items : []
-      if (!incoming.length) return
-      const known = new Set(itemsRef.current.map((i) => i.id))
-      setItems((prev) => mergeNewest(prev, incoming))
-      setTotal((t) => t + incoming.filter((i) => !known.has(i.id)).length)
-      setFresh(new Set(incoming.map((i) => i.id)))
-      // With a stack, only its rows count toward the unseen title and dot.
-      const counted = mine.length ? incoming.filter((i) => i.vendor && mine.includes(i.vendor.slug)) : incoming
-      void addUnseen(counted.length, counted.some(isImportant))
     }
-    const timer = setInterval(poll, POLL_MS)
+    const timer = setInterval(poll, RAIL_POLL_MS)
     return () => clearInterval(timer)
-  }, [addUnseen])
+  }, [])
 
   // Tall displays: keep at least a screenful of rows loaded.
   const loadedRef = useRef(0)
@@ -341,12 +392,30 @@ export function WireBoard({ initial }: { initial: WireData }) {
             </div>
           </div>
 
+          {pending.length > 0 && (
+            // Pinned under the tabs while scrolled; nothing above the viewer moves until asked.
+            <div className="sticky top-3 z-10 flex h-0 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  window.scrollTo({ top: 0 })
+                  flush()
+                }}
+                className="mt-2 h-7 rounded-control border border-rule bg-bg px-3 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+              >
+                {pending.length} new ↑
+              </button>
+            </div>
+          )}
+
           <div ref={list} className={cn(loading && "opacity-60")} aria-busy={loading}>
             {items.map((item) => (
               <FeedRow
                 key={item.id}
                 item={item}
                 fresh={fresh.has(item.id)}
+                dot={dots.get(item.id)}
+                onSeen={() => clearDot(item.id)}
                 inStack={filters.tab !== "stack" && !!item.vendor && stack.includes(item.vendor.slug)}
               />
             ))}

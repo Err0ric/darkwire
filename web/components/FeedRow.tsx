@@ -9,6 +9,7 @@ import { getItem, type Category, type FeedItem, type ItemDetail, type PatchStatu
 import { IMPACT_METRICS, parseVector } from "@/lib/cvss"
 import { kevDueIn, URGENT_DAYS } from "@/lib/kev"
 import { kevDate, ticketText, whatToDo, type Todo } from "@/lib/todo"
+import { NewDot, type DotState } from "@/lib/dots"
 import { age, useNow } from "@/lib/time"
 
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const
@@ -41,16 +42,22 @@ export function FeedRow({
   fresh = false,
   pinned = false,
   inStack = false,
+  dot,
+  onSeen,
 }: {
   item: FeedItem
   detail?: ItemDetail
   defaultExpanded?: boolean
-  /** Arrived on a poll: fades in with the red left edge. */
+  /** Arrived on a poll: fades in from the top. */
   fresh?: boolean
   /** Held at the top of home (Critical or KEV in the last 48h). */
   pinned?: boolean
   /** Vendor is in the viewer's stack: brighter mark and a quiet "stack" in the meta line. */
   inStack?: boolean
+  /** New-row dot (lib/dots.tsx), left of the headline. */
+  dot?: DotState
+  /** Expanding the row clears its dot. */
+  onSeen?: () => void
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [detail, setDetail] = useState<Detail>(
@@ -61,6 +68,7 @@ export function FeedRow({
   function toggle() {
     const next = !expanded
     setExpanded(next)
+    if (next) onSeen?.()
     if (next && (detail.state === "idle" || detail.state === "error")) {
       setDetail({ state: "loading" })
       getItem(item.id)
@@ -88,7 +96,8 @@ export function FeedRow({
       >
         <VendorMark item={item} inStack={inStack} />
 
-        <div className="min-w-0 flex-1 md:mr-[22px]">
+        <div className="relative min-w-0 flex-1 md:mr-[22px]">
+          {dot && <NewDot state={dot} className="top-[7px] -left-[9px] md:-left-[13px]" />}
           <a
             href={item.primary_url}
             {...EXTERNAL}

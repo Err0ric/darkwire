@@ -140,7 +140,7 @@ async def refresh_exploited(session: AsyncSession) -> None:
     wild, and the row has no CVE. Recomputed for every main row, so it clears once a CVE lands.
     items.exploitation: any headline is about exploitation at all, CVE or not (staleness)."""
     await session.execute(text(r"""
-        UPDATE items i SET exploited = f.flagged, exploitation = f.about
+        UPDATE items i SET exploited = f.flagged, exploitation = f.about, changed_at = now()
         FROM (
             SELECT i2.id,
                    NOT EXISTS (SELECT 1 FROM item_cves c WHERE c.item_id = i2.id)

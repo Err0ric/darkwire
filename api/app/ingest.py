@@ -235,6 +235,7 @@ async def ingest_source(
             if cluster.category == Category.news:
                 cluster.category = category
             await link_cves(session, cluster, cves)
+            cluster.changed_at = func.now()  # a new source alone does not touch the row's columns
             stored.merged += 1
         else:
             # cve_id starts as the first CVE mentioned; enrichment re-points it at the highest-scored one.

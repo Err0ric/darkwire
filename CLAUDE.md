@@ -184,9 +184,18 @@ Feed audit: `python -m app.audit [--api URL] [--feed NAME] [-v]` in `/api` re-fe
 - Bar cells fill left to right, 25ms per cell, on first paint and for new rows.
 - Nothing else moves. No hover lifts, no bounce, no parallax, no background effects.
 
+## Live updates
+
+- `/wire` and `/` poll `GET /feed?since=<newest last_event_at>&changed_since=<previous poll, less 3 min>` every 60s, hidden or not (the unseen count depends on it). The API returns rows with a newer event or any newer change (`items.changed_at`) and sends `Cache-Control: no-store` on `/feed`, `/status` and `/services`. No service worker, no feed data in localStorage.
+- NEW: a row that was not on screen and is newer than everything on screen, or an on-screen row that escalated (became KEV, became Critical, or got EXPLOITED). New rows go to the top, count toward the unseen title and favicon dot, and get the new-row dot.
+- Not new: a source added, an age change, a summary filled in, an EPSS change. The row updates in place, silently.
+- Scrolled down on `/wire` (more than 160px), new rows are not inserted above the viewer: a small `N new ↑` button is pinned under the tabs. Clicking it scrolls to the top and inserts them; scrolling back to the top inserts them too.
+- Home: new rows lead the ticker; those that qualify join Right now (quietly re-read in full every 5 minutes as well).
+- Ages update every 60s without a refetch.
+
 ## Unseen-item indicators
 
-- When a poll finds new rows and `document.hidden` is true: title becomes `(3) darkwire`, or `(3!) darkwire` if any new row is Critical or KEV.
+- When a poll finds NEW rows (see Live updates) and `document.hidden` is true: title becomes `(3) darkwire`, or `(3!) darkwire` if any new row is Critical or KEV.
 - Favicon swaps to a copy with a static red dot drawn via canvas. Never blinking.
 - Both clear on `visibilitychange` when the tab is visible. Nothing stored between visits.
 - Opt-in bell in the status line: requests Notification permission only on click, sends one grouped notification for Critical/KEV additions only. Never prompt on load.

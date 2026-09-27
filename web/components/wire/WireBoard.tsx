@@ -1,36 +1,18 @@
-"use client";
+"use client"
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import { cn } from "cn";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { cn } from "cn"
 
-import { FeedRow } from "@/components/FeedRow";
-import { Input } from "@/components/ui/input";
-import { SiteFooter } from "@/components/SiteFooter";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  AddedToKev,
-  Elsewhere,
-  LastSevenDays,
-  MostActive,
-  SourcesLine,
-} from "@/components/wire/Rail";
-import { PAGE_HEADER } from "@/components/PageHeader";
-import { Services } from "@/components/wire/Services";
-import { WireClock } from "@/components/wire/WireClock";
-import { NEW_ROWS_EVENT } from "@/components/Wordmark";
-import { useFitCount } from "@/lib/fit";
+import { FeedRow } from "@/components/FeedRow"
+import { Input } from "@/components/ui/input"
+import { SiteFooter } from "@/components/SiteFooter"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { AddedToKev, Elsewhere, LastSevenDays, MostActive, SourcesLine } from "@/components/wire/Rail"
+import { PAGE_HEADER } from "@/components/PageHeader"
+import { Services } from "@/components/wire/Services"
+import { WireClock } from "@/components/wire/WireClock"
+import { NEW_ROWS_EVENT } from "@/components/Wordmark"
+import { useFitCount } from "@/lib/fit"
 import {
   getElsewhere,
   getFeed,
@@ -40,247 +22,212 @@ import {
   getVendors,
   type FeedItem,
   type Severity,
-} from "@/lib/api";
-import { useDots } from "@/lib/dots";
-import { useStickyTop } from "@/lib/sticky";
-import { usePrefs } from "@/lib/prefs";
-import { isImportant } from "@/lib/kev";
-import {
-  apply as applyDiff,
-  changedSince,
-  cursorOf,
-  diff,
-  LIVE_POLL_MS,
-} from "@/lib/live";
-import { groupByDay, useNow } from "@/lib/time";
-import { useUnseen } from "@/lib/unseen";
-import {
-  feedQuery,
-  stackCriticalQuery,
-  TABS,
-  type Filters,
-  type WireData,
-  type WireTab,
-} from "@/lib/wire";
+} from "@/lib/api"
+import { useDots } from "@/lib/dots"
+import { useStickyTop } from "@/lib/sticky"
+import { usePrefs } from "@/lib/prefs"
+import { isImportant } from "@/lib/kev"
+import { apply as applyDiff, changedSince, cursorOf, diff, LIVE_POLL_MS } from "@/lib/live"
+import { groupByDay, useNow } from "@/lib/time"
+import { useUnseen } from "@/lib/unseen"
+import { feedQuery, stackCriticalQuery, TABS, type Filters, type WireData, type WireTab } from "@/lib/wire"
 
-const PAGE = 50;
+const PAGE = 50
 // Rows: every 60s (lib/live.ts). The slower rail sections: every 15 minutes.
-const RAIL_POLL_MS = 15 * 60 * 1000;
+const RAIL_POLL_MS = 15 * 60 * 1000
 // Scrolled further than this: new rows wait behind the "N new ↑" button instead of shifting the page.
-const SCROLLED_PX = 160;
+const SCROLLED_PX = 160
 // The API reads status pages every 3 minutes.
-const SERVICES_POLL_MS = 3 * 60 * 1000;
-const SEARCH_DEBOUNCE_MS = 250;
-const ALL_VENDORS = "all";
+const SERVICES_POLL_MS = 3 * 60 * 1000
+const SEARCH_DEBOUNCE_MS = 250
+const ALL_VENDORS = "all"
 
 // Filters live in the URL next to whatever else is there (?stack=, ?theme=).
 function syncUrl(f: Filters) {
-  const url = new URL(window.location.href);
-  const set = (k: string, v: string) =>
-    v ? url.searchParams.set(k, v) : url.searchParams.delete(k);
-  set("tab", f.tab === "all" ? "" : f.tab);
-  set("vendor", f.vendor);
-  set("q", f.q);
-  set("severity", f.severity);
-  set("window", f.severity ? f.window : "");
-  window.history.replaceState(
-    null,
-    "",
-    url.pathname + url.search.replace(/%2C/gi, ",") + url.hash,
-  );
+  const url = new URL(window.location.href)
+  const set = (k: string, v: string) => (v ? url.searchParams.set(k, v) : url.searchParams.delete(k))
+  set("tab", f.tab === "all" ? "" : f.tab)
+  set("vendor", f.vendor)
+  set("q", f.q)
+  set("severity", f.severity)
+  set("window", f.severity ? f.window : "")
+  window.history.replaceState(null, "", url.pathname + url.search.replace(/%2C/gi, ",") + url.hash)
 }
 
 export function WireBoard({ initial }: { initial: WireData }) {
-  const [filters, setFilters] = useState(initial.filters);
-  const [query, setQuery] = useState(initial.filters.q);
-  const [items, setItems] = useState(initial.feed.items);
-  const [total, setTotal] = useState(initial.feed.total);
-  const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set());
-  const [status, setStatus] = useState(initial.status);
-  const [vendors, setVendors] = useState(initial.vendors);
-  const [elsewhere, setElsewhere] = useState(initial.elsewhere);
-  const [kev, setKev] = useState(initial.kev);
-  const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(initial.error);
-  const [stackCritical, setStackCritical] = useState(initial.stackCritical);
-  const [services, setServices] = useState(initial.services);
-  const prefs = usePrefs();
+  const [filters, setFilters] = useState(initial.filters)
+  const [query, setQuery] = useState(initial.filters.q)
+  const [items, setItems] = useState(initial.feed.items)
+  const [total, setTotal] = useState(initial.feed.total)
+  const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set())
+  const [status, setStatus] = useState(initial.status)
+  const [vendors, setVendors] = useState(initial.vendors)
+  const [elsewhere, setElsewhere] = useState(initial.elsewhere)
+  const [kev, setKev] = useState(initial.kev)
+  const [loading, setLoading] = useState(false)
+  const [failed, setFailed] = useState(initial.error)
+  const [stackCritical, setStackCritical] = useState(initial.stackCritical)
+  const [services, setServices] = useState(initial.services)
+  const prefs = usePrefs()
   // Until the provider has read the URL, the server's stack is the truth.
-  const stack = prefs.ready ? prefs.stack : initial.stack;
+  const stack = prefs.ready ? prefs.stack : initial.stack
 
-  const filtersRef = useRef(filters);
-  const itemsRef = useRef(items);
-  const stackRef = useRef(initial.stack);
-  const request = useRef(0);
-  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const addUnseen = useUnseen();
-  const list = useRef<HTMLDivElement>(null);
-  const fit = useFitCount(list);
-  const { dots, add: addDots, clear: clearDot } = useDots();
+  const filtersRef = useRef(filters)
+  const itemsRef = useRef(items)
+  const stackRef = useRef(initial.stack)
+  const request = useRef(0)
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const addUnseen = useUnseen()
+  const list = useRef<HTMLDivElement>(null)
+  const fit = useFitCount(list)
+  const { dots, add: addDots, clear: clearDot } = useDots()
   // Rails stick while the feed scrolls (lib/sticky.ts). Under 1200px the rail stacks below the
   // feed and is not sticky (no position: sticky there), so its computed top does nothing.
-  const leftRail = useRef<HTMLElement>(null);
-  const rightRail = useRef<HTMLElement>(null);
-  useStickyTop(leftRail);
-  useStickyTop(rightRail);
-  const now = useNow();
+  const leftRail = useRef<HTMLElement>(null)
+  const rightRail = useRef<HTMLElement>(null)
+  useStickyTop(leftRail)
+  useStickyTop(rightRail)
+  const now = useNow()
   // New rows found while scrolled down, waiting for "N new ↑" or a scroll back to the top.
-  const [pending, setPending] = useState<FeedItem[]>([]);
-  const pendingRef = useRef<FeedItem[]>([]);
+  const [pending, setPending] = useState<FeedItem[]>([])
+  const pendingRef = useRef<FeedItem[]>([])
   // Cursor for an empty list: rows newer than the moment it loaded.
-  const loadedAt = useRef(new Date().toISOString());
-  const lastPoll = useRef(0);
+  const loadedAt = useRef(new Date().toISOString())
+  const lastPoll = useRef(0)
   useEffect(() => {
-    lastPoll.current = Date.now();
-  }, []);
+    lastPoll.current = Date.now()
+  }, [])
 
   useEffect(() => {
-    itemsRef.current = items;
-  }, [items]);
+    itemsRef.current = items
+  }, [items])
 
   const load = useCallback(async (f: Filters) => {
-    const id = ++request.current;
-    setLoading(true);
+    const id = ++request.current
+    setLoading(true)
     try {
       const page = await getFeed({
         ...feedQuery(f, stackRef.current),
         limit: PAGE,
-      });
-      if (id !== request.current) return;
-      setItems(page.items);
-      setTotal(page.total);
-      setFresh(new Set());
-      pendingRef.current = [];
-      setPending([]);
-      loadedAt.current = new Date().toISOString();
-      setFailed(false);
+      })
+      if (id !== request.current) return
+      setItems(page.items)
+      setTotal(page.total)
+      setFresh(new Set())
+      pendingRef.current = []
+      setPending([])
+      loadedAt.current = new Date().toISOString()
+      setFailed(false)
     } catch {
-      if (id === request.current) setFailed(true);
+      if (id === request.current) setFailed(true)
     } finally {
-      if (id === request.current) setLoading(false);
+      if (id === request.current) setLoading(false)
     }
-  }, []);
+  }, [])
 
   const apply = useCallback(
     (next: Partial<Filters>) => {
-      const f = { ...filtersRef.current, ...next };
-      filtersRef.current = f;
-      setFilters(f);
-      syncUrl(f);
-      void load(f);
+      const f = { ...filtersRef.current, ...next }
+      filtersRef.current = f
+      setFilters(f)
+      syncUrl(f)
+      void load(f)
     },
     [load],
-  );
+  )
 
   function onSearch(value: string) {
-    setQuery(value);
-    if (debounce.current) clearTimeout(debounce.current);
-    debounce.current = setTimeout(
-      () => apply({ q: value.trim() }),
-      SEARCH_DEBOUNCE_MS,
-    );
+    setQuery(value)
+    if (debounce.current) clearTimeout(debounce.current)
+    debounce.current = setTimeout(() => apply({ q: value.trim() }), SEARCH_DEBOUNCE_MS)
   }
 
   async function showMore() {
-    const f = filtersRef.current;
+    const f = filtersRef.current
     try {
       const page = await getFeed({
         ...feedQuery(f, stackRef.current),
         limit: PAGE,
         offset: itemsRef.current.length,
-      });
-      if (f !== filtersRef.current) return;
+      })
+      if (f !== filtersRef.current) return
       setItems((prev) => {
-        const seen = new Set(prev.map((p) => p.id));
-        return [...prev, ...page.items.filter((i) => !seen.has(i.id))];
-      });
-      setTotal(page.total);
+        const seen = new Set(prev.map((p) => p.id))
+        return [...prev, ...page.items.filter((i) => !seen.has(i.id))]
+      })
+      setTotal(page.total)
     } catch {
-      setFailed(true);
+      setFailed(true)
     }
   }
 
   // Services: every 3 minutes, and at once when a remembered ?services= set differs from the
   // server's. A service newly in a major outage fires the unseen indicator like a Critical row.
-  const watched = prefs.ready ? prefs.services.join(",") : null;
+  const watched = prefs.ready ? prefs.services.join(",") : null
   const majors = useRef(
-    new Set(
-      (initial.services?.services ?? [])
-        .filter((s) => s.state === "major")
-        .map((s) => s.slug),
-    ),
-  );
+    new Set((initial.services?.services ?? []).filter((s) => s.state === "major").map((s) => s.slug)),
+  )
   useEffect(() => {
-    if (watched === null) return;
-    let cancelled = false;
+    if (watched === null) return
+    let cancelled = false
     const load = async () => {
-      const next = await getServices(watched || undefined).catch(() => null);
-      if (cancelled || !next) return;
-      setServices(next);
-      const nowMajor = new Set(
-        next.services.filter((s) => s.state === "major").map((s) => s.slug),
-      );
-      const fresh = [...nowMajor].filter((s) => !majors.current.has(s));
-      majors.current = nowMajor;
-      if (fresh.length) void addUnseen(fresh.length, true);
-    };
-    const serverSet = (initial.services?.services ?? [])
-      .map((s) => s.slug)
-      .join(",");
-    const defaults = (initial.services?.defaults ?? []).join(",");
-    if ((watched || defaults) !== serverSet) void load();
-    const timer = setInterval(load, SERVICES_POLL_MS);
+      const next = await getServices(watched || undefined).catch(() => null)
+      if (cancelled || !next) return
+      setServices(next)
+      const nowMajor = new Set(next.services.filter((s) => s.state === "major").map((s) => s.slug))
+      const fresh = [...nowMajor].filter((s) => !majors.current.has(s))
+      majors.current = nowMajor
+      if (fresh.length) void addUnseen(fresh.length, true)
+    }
+    const serverSet = (initial.services?.services ?? []).map((s) => s.slug).join(",")
+    const defaults = (initial.services?.defaults ?? []).join(",")
+    if ((watched || defaults) !== serverSet) void load()
+    const timer = setInterval(load, SERVICES_POLL_MS)
     return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [watched, addUnseen, initial.services]);
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [watched, addUnseen, initial.services])
 
   // The stack can change after first paint: restored from storage, or edited in another page.
   // Refetch what depends on it; a URL asking for tab=stack gets it once a stack exists.
   useEffect(() => {
-    const key = stack.join(",");
-    if (key === stackRef.current.join(",")) return;
-    stackRef.current = stack;
+    const key = stack.join(",")
+    if (key === stackRef.current.join(",")) return
+    stackRef.current = stack
     const refresh = async () => {
       setStackCritical(
-        stack.length
-          ? ((await getFeed(stackCriticalQuery(stack)).catch(() => null))
-              ?.total ?? null)
-          : null,
-      );
-    };
-    void refresh();
-    const wantsStack =
-      new URLSearchParams(window.location.search).get("tab") === "stack";
-    if (!stack.length && filtersRef.current.tab === "stack")
-      apply({ tab: "all" });
-    else if (stack.length && (filtersRef.current.tab === "stack" || wantsStack))
-      apply({ tab: "stack" });
-  }, [stack, apply]);
+        stack.length ? ((await getFeed(stackCriticalQuery(stack)).catch(() => null))?.total ?? null) : null,
+      )
+    }
+    void refresh()
+    const wantsStack = new URLSearchParams(window.location.search).get("tab") === "stack"
+    if (!stack.length && filtersRef.current.tab === "stack") apply({ tab: "all" })
+    else if (stack.length && (filtersRef.current.tab === "stack" || wantsStack)) apply({ tab: "stack" })
+  }, [stack, apply])
 
   // Put queued rows on top and give them their dots.
   const flush = useCallback(() => {
-    const queued = pendingRef.current;
-    if (!queued.length) return;
-    pendingRef.current = [];
-    setPending([]);
-    setItems((prev) => applyDiff(prev, { fresh: queued, updated: new Map() }));
-    setFresh(new Set(queued.map((i) => i.id)));
-    addDots(queued.map((i) => i.id));
-  }, [addDots]);
+    const queued = pendingRef.current
+    if (!queued.length) return
+    pendingRef.current = []
+    setPending([])
+    setItems((prev) => applyDiff(prev, { fresh: queued, updated: new Map() }))
+    setFresh(new Set(queued.map((i) => i.id)))
+    addDots(queued.map((i) => i.id))
+  }, [addDots])
 
   // Every 60s, hidden or not (the unseen count depends on it): rows with a newer event or any
   // newer change. New and escalated rows go on top with a dot and count as unseen; anything
   // else updates in place, silently. Scrolled down, new rows wait behind "N new ↑".
   useEffect(() => {
     const poll = async () => {
-      const f = filtersRef.current;
-      const mine = stackRef.current;
-      const current = [...itemsRef.current, ...pendingRef.current];
-      const since = cursorOf(current) ?? loadedAt.current;
-      const changed = changedSince(lastPoll.current);
-      lastPoll.current = Date.now();
+      const f = filtersRef.current
+      const mine = stackRef.current
+      const current = [...itemsRef.current, ...pendingRef.current]
+      const since = cursorOf(current) ?? loadedAt.current
+      const changed = changedSince(lastPoll.current)
+      lastPoll.current = Date.now()
       const [feed, st, crit] = await Promise.allSettled([
         getFeed({
           ...feedQuery(f, mine),
@@ -289,122 +236,88 @@ export function WireBoard({ initial }: { initial: WireData }) {
           changed_since: changed,
         }),
         getStatus(),
-        mine.length
-          ? getFeed(stackCriticalQuery(mine)).then((p) => p.total)
-          : Promise.resolve(null),
-      ]);
-      if (crit.status === "fulfilled" && mine === stackRef.current)
-        setStackCritical(crit.value);
-      if (st.status === "fulfilled") setStatus(st.value);
-      if (feed.status !== "fulfilled" || f !== filtersRef.current) return;
+        mine.length ? getFeed(stackCriticalQuery(mine)).then((p) => p.total) : Promise.resolve(null),
+      ])
+      if (crit.status === "fulfilled" && mine === stackRef.current) setStackCritical(crit.value)
+      if (st.status === "fulfilled") setStatus(st.value)
+      if (feed.status !== "fulfilled" || f !== filtersRef.current) return
 
-      const d = diff(current, feed.value.items);
+      const d = diff(current, feed.value.items)
       if (d.updated.size) {
-        setItems((prev) => prev.map((i) => d.updated.get(i.id) ?? i));
-        pendingRef.current = pendingRef.current.map(
-          (i) => d.updated.get(i.id) ?? i,
-        );
+        setItems((prev) => prev.map((i) => d.updated.get(i.id) ?? i))
+        pendingRef.current = pendingRef.current.map((i) => d.updated.get(i.id) ?? i)
       }
-      if (d.added) setTotal((t) => t + d.added);
-      if (!d.fresh.length) return;
+      if (d.added) setTotal((t) => t + d.added)
+      if (!d.fresh.length) return
 
       // With a stack, only its rows count toward the unseen title and dot.
-      const counted = mine.length
-        ? d.fresh.filter((i) => i.vendor && mine.includes(i.vendor.slug))
-        : d.fresh;
-      void addUnseen(counted.length, counted.some(isImportant));
+      const counted = mine.length ? d.fresh.filter((i) => i.vendor && mine.includes(i.vendor.slug)) : d.fresh
+      void addUnseen(counted.length, counted.some(isImportant))
       // NEW rows re-type the nav wordmark's ".tech".
-      if (d.fresh.length) window.dispatchEvent(new Event(NEW_ROWS_EVENT));
+      if (d.fresh.length) window.dispatchEvent(new Event(NEW_ROWS_EVENT))
 
-      const ids = new Set(d.fresh.map((i) => i.id));
-      pendingRef.current = [
-        ...d.fresh,
-        ...pendingRef.current.filter((i) => !ids.has(i.id)),
-      ];
-      if (window.scrollY > SCROLLED_PX) setPending(pendingRef.current);
-      else flush();
-    };
-    const timer = setInterval(poll, LIVE_POLL_MS);
-    return () => clearInterval(timer);
-  }, [addUnseen, flush]);
+      const ids = new Set(d.fresh.map((i) => i.id))
+      pendingRef.current = [...d.fresh, ...pendingRef.current.filter((i) => !ids.has(i.id))]
+      if (window.scrollY > SCROLLED_PX) setPending(pendingRef.current)
+      else flush()
+    }
+    const timer = setInterval(poll, LIVE_POLL_MS)
+    return () => clearInterval(timer)
+  }, [addUnseen, flush])
 
   // Back at the top: queued rows go in directly.
   useEffect(() => {
     const onScroll = () => {
-      if (window.scrollY <= SCROLLED_PX && pendingRef.current.length) flush();
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [flush]);
+      if (window.scrollY <= SCROLLED_PX && pendingRef.current.length) flush()
+    }
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [flush])
 
   // The slower rail sections.
   useEffect(() => {
     const poll = async () => {
-      const [els, act, kv] = await Promise.allSettled([
-        getElsewhere(5),
-        getVendors("active"),
-        getKev(7, 8),
-      ]);
-      if (els.status === "fulfilled") setElsewhere(els.value);
-      if (act.status === "fulfilled") setVendors(act.value);
-      if (kv.status === "fulfilled") setKev(kv.value);
-    };
-    const timer = setInterval(poll, RAIL_POLL_MS);
-    return () => clearInterval(timer);
-  }, []);
+      const [els, act, kv] = await Promise.allSettled([getElsewhere(5), getVendors("active"), getKev(7, 8)])
+      if (els.status === "fulfilled") setElsewhere(els.value)
+      if (act.status === "fulfilled") setVendors(act.value)
+      if (kv.status === "fulfilled") setKev(kv.value)
+    }
+    const timer = setInterval(poll, RAIL_POLL_MS)
+    return () => clearInterval(timer)
+  }, [])
 
   // Tall displays: keep at least a screenful of rows loaded.
-  const loadedRef = useRef(0);
+  const loadedRef = useRef(0)
   useEffect(() => {
-    if (
-      fit === null ||
-      items.length >= total ||
-      fit <= items.length ||
-      loadedRef.current >= fit
-    )
-      return;
-    loadedRef.current = fit;
-    const f = filtersRef.current;
+    if (fit === null || items.length >= total || fit <= items.length || loadedRef.current >= fit) return
+    loadedRef.current = fit
+    const f = filtersRef.current
     getFeed({
       ...feedQuery(f, stackRef.current),
       limit: Math.min(100, fit),
       offset: 0,
     })
       .then((page) => {
-        if (f !== filtersRef.current) return;
-        setItems((prev) =>
-          page.items.length > prev.length ? page.items : prev,
-        );
-        setTotal(page.total);
+        if (f !== filtersRef.current) return
+        setItems((prev) => (page.items.length > prev.length ? page.items : prev))
+        setTotal(page.total)
       })
-      .catch(() => undefined);
-  }, [fit, items.length, total]);
+      .catch(() => undefined)
+  }, [fit, items.length, total])
 
   // Header counts are 24h numbers, so their filter uses a 24h window; again clears it.
   // The rail's Last 7 days rows: 7-day window; clicking the active row clears it.
-  const railSeverity = filters.window === "24h" ? "" : filters.severity;
+  const railSeverity = filters.window === "24h" ? "" : filters.severity
   const onRailSeverity = (s: Severity) =>
-    apply(
-      filters.severity === s && !filters.window
-        ? { severity: "", window: "" }
-        : { severity: s, window: "" },
-    );
+    apply(filters.severity === s && !filters.window ? { severity: "", window: "" } : { severity: s, window: "" })
   const toggle24h = (s: "critical" | "high"): Partial<Filters> =>
-    filters.severity === s && filters.window === "24h"
-      ? { severity: "", window: "" }
-      : { severity: s, window: "24h" };
-  const windowText = filters.severity
-    ? filters.window === "24h"
-      ? "24 hours"
-      : "7 days"
-    : "14 days";
+    filters.severity === s && filters.window === "24h" ? { severity: "", window: "" } : { severity: s, window: "24h" }
+  const windowText = filters.severity ? (filters.window === "24h" ? "24 hours" : "7 days") : "14 days"
 
-  const byName = [...vendors].sort((a, b) => a.name.localeCompare(b.name));
-  const active = vendors.filter((v) => v.items_7d > 0).slice(0, 5);
-  const counts = status?.counts;
-  const tabs: [WireTab, string][] = stack.length
-    ? [["stack", "My stack"], ...TABS]
-    : TABS;
+  const byName = [...vendors].sort((a, b) => a.name.localeCompare(b.name))
+  const active = vendors.filter((v) => v.items_7d > 0).slice(0, 5)
+  const counts = status?.counts
+  const tabs: [WireTab, string][] = stack.length ? [["stack", "My stack"], ...TABS] : TABS
 
   return (
     <main className="flex-1 page-frame pb-24">
@@ -424,16 +337,15 @@ export function WireBoard({ initial }: { initial: WireData }) {
             <MostActive
               active={active}
               vendor={filters.vendor}
-              onVendor={(slug) =>
-                apply({ vendor: filters.vendor === slug ? "" : slug })
-              }
+              onVendor={(slug) => apply({ vendor: filters.vendor === slug ? "" : slug })}
             />
-            <LastSevenDays
-              status={status}
-              severity={railSeverity}
-              onSeverity={onRailSeverity}
+            <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
+            <AddedToKev
+              kev={kev}
+              total={counts?.kev_added_7d}
+              query={prefs.query()}
+              onMore={() => apply({ tab: "kev" })}
             />
-            <AddedToKev kev={kev} total={counts?.kev_added_7d} query={prefs.query()} onMore={() => apply({ tab: "kev" })} />
             <SourcesLine status={status} />
           </div>
         </aside>
@@ -447,15 +359,10 @@ export function WireBoard({ initial }: { initial: WireData }) {
               <p className="flex min-h-7 flex-wrap items-baseline gap-x-4 text-[15px] leading-5 text-muted md:gap-x-0">
                 {counts ? (
                   <>
-                    <span className="whitespace-nowrap text-muted md:mr-2">
-                      Last 24h:
-                    </span>
+                    <span className="whitespace-nowrap text-muted md:mr-2">Last 24h:</span>
                     <Count
                       n={counts.critical_24h}
-                      active={
-                        filters.severity === "critical" &&
-                        filters.window === "24h"
-                      }
+                      active={filters.severity === "critical" && filters.window === "24h"}
                       onClick={() => apply(toggle24h("critical"))}
                     >
                       critical
@@ -463,9 +370,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                     <Count
                       n={counts.high_24h}
                       sep="slash"
-                      active={
-                        filters.severity === "high" && filters.window === "24h"
-                      }
+                      active={filters.severity === "high" && filters.window === "24h"}
                       onClick={() => apply(toggle24h("high"))}
                     >
                       high
@@ -484,15 +389,10 @@ export function WireBoard({ initial }: { initial: WireData }) {
               <WireClock />
             </div>
             {stack.length > 0 && stackCritical === 0 && (
-              <p className="mt-1 text-[13px] leading-5 text-muted">
-                Nothing critical in your stack today.
-              </p>
+              <p className="mt-1 text-[13px] leading-5 text-muted">Nothing critical in your stack today.</p>
             )}
             {/* Rail stacked under the feed (< 1200px): Services moves up here so an outage is seen. */}
-            <div
-              data-chrome
-              className="mt-6 max-w-[640px] text-[13px] min-[1200px]:hidden"
-            >
+            <div data-chrome className="mt-6 max-w-[640px] text-[13px] min-[1200px]:hidden">
               <Services data={services} />
             </div>
           </header>
@@ -507,10 +407,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 : "@min-[940px]:flex-row @min-[940px]:items-end @min-[940px]:justify-between",
             )}
           >
-            <nav
-              aria-label="Categories"
-              className="-mb-px flex gap-6 overflow-x-auto [scrollbar-width:none]"
-            >
+            <nav aria-label="Categories" className="-mb-px flex gap-6 overflow-x-auto [scrollbar-width:none]">
               {tabs.map(([tab, label]) => (
                 <button
                   key={tab}
@@ -520,18 +417,11 @@ export function WireBoard({ initial }: { initial: WireData }) {
                   className={cn(
                     "max-md:tap",
                     "relative shrink-0 pb-[18px] text-[15px] leading-5 whitespace-nowrap outline-none focus-visible:text-fg",
-                    filters.tab === tab
-                      ? "text-fg"
-                      : "text-muted hover:text-fg-2",
+                    filters.tab === tab ? "text-fg" : "text-muted hover:text-fg-2",
                   )}
                 >
                   {label}
-                  {filters.tab === tab && (
-                    <span
-                      aria-hidden
-                      className="absolute inset-x-0 bottom-[6px] h-px bg-fg"
-                    />
-                  )}
+                  {filters.tab === tab && <span aria-hidden className="absolute inset-x-0 bottom-[6px] h-px bg-fg" />}
                 </button>
               ))}
             </nav>
@@ -545,14 +435,9 @@ export function WireBoard({ initial }: { initial: WireData }) {
             >
               <Select
                 value={filters.vendor || ALL_VENDORS}
-                onValueChange={(v) =>
-                  apply({ vendor: v === ALL_VENDORS ? "" : v })
-                }
+                onValueChange={(v) => apply({ vendor: v === ALL_VENDORS ? "" : v })}
               >
-                <SelectTrigger
-                  aria-label="Vendor"
-                  className="h-[30px] px-0 text-[15px] max-md:tap"
-                >
+                <SelectTrigger aria-label="Vendor" className="h-[30px] px-0 text-[15px] max-md:tap">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-h-80">
@@ -587,8 +472,8 @@ export function WireBoard({ initial }: { initial: WireData }) {
               <button
                 type="button"
                 onClick={() => {
-                  window.scrollTo({ top: 0 });
-                  flush();
+                  window.scrollTo({ top: 0 })
+                  flush()
                 }}
                 className="max-md:tap mt-2 h-7 rounded-control border border-rule bg-bg px-3 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
               >
@@ -597,60 +482,48 @@ export function WireBoard({ initial }: { initial: WireData }) {
             </div>
           )}
 
-          <div
-            ref={list}
-            className={cn(loading && "opacity-60")}
-            aria-busy={loading}
-          >
+          <div ref={list} className={cn(loading && "opacity-60")} aria-busy={loading}>
             {/* One section per local day of last_event_at (the sort key, also what the age column
                 uses). The day label pins to the top while its rows scroll past; the next day's
                 section pushes it out. Labels are not rows: no dot, not counted, not <article>. */}
-            {(now === null
-              ? [{ key: "all", name: "", date: "", today: true, items }]
-              : groupByDay(items, now)
-            ).map((g, gi) => (
-              <section
-                key={g.key}
-                aria-label={g.name || undefined}
-                className={cn(
-                  "[&>article:last-child]:border-b-0",
-                  gi > 0 && "mt-8",
-                )}
-              >
-                {g.name && (
-                  <div
-                    role="separator"
-                    aria-label={`${g.name}, ${g.items.length} rows`}
-                    className={cn(
-                      "sticky top-0 z-[5] flex h-9 items-center border-t bg-bg text-[13px]",
-                      // The tabs row's rule is already right above the first label.
-                      gi === 0 ? "border-transparent" : "border-rule",
-                    )}
-                  >
-                    <span className="font-semibold text-fg-2">{g.name}</span>
-                    <span className="text-dim-text">
-                      {g.name !== g.date && <>&nbsp;· {g.date}</>}&nbsp;·{" "}
-                      {g.items.length} {g.items.length === 1 ? "item" : "items"}
-                    </span>
-                  </div>
-                )}
-                {g.items.map((item) => (
-                  <FeedRow
-                    key={item.id}
-                    item={item}
-                    fresh={fresh.has(item.id)}
-                    dot={dots.get(item.id)}
-                    onSeen={() => clearDot(item.id)}
-                    clockAge={!g.today}
-                    inStack={
-                      filters.tab !== "stack" &&
-                      !!item.vendor &&
-                      stack.includes(item.vendor.slug)
-                    }
-                  />
-                ))}
-              </section>
-            ))}
+            {(now === null ? [{ key: "all", name: "", date: "", today: true, items }] : groupByDay(items, now)).map(
+              (g, gi) => (
+                <section
+                  key={g.key}
+                  aria-label={g.name || undefined}
+                  className={cn("[&>article:last-child]:border-b-0", gi > 0 && "mt-8")}
+                >
+                  {g.name && (
+                    <div
+                      role="separator"
+                      aria-label={`${g.name}, ${g.items.length} rows`}
+                      className={cn(
+                        "sticky top-0 z-[5] flex h-9 items-center border-t bg-bg text-[13px]",
+                        // The tabs row's rule is already right above the first label.
+                        gi === 0 ? "border-transparent" : "border-rule",
+                      )}
+                    >
+                      <span className="font-semibold text-fg-2">{g.name}</span>
+                      <span className="text-dim-text">
+                        {g.name !== g.date && <>&nbsp;· {g.date}</>}&nbsp;· {g.items.length}{" "}
+                        {g.items.length === 1 ? "item" : "items"}
+                      </span>
+                    </div>
+                  )}
+                  {g.items.map((item) => (
+                    <FeedRow
+                      key={item.id}
+                      item={item}
+                      fresh={fresh.has(item.id)}
+                      dot={dots.get(item.id)}
+                      onSeen={() => clearDot(item.id)}
+                      clockAge={!g.today}
+                      inStack={filters.tab !== "stack" && !!item.vendor && stack.includes(item.vendor.slug)}
+                    />
+                  ))}
+                </section>
+              ),
+            )}
           </div>
 
           {failed && items.length === 0 ? (
@@ -658,9 +531,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
               The feed is unreachable right now. It retries on the next refresh.
             </p>
           ) : items.length === 0 && !loading ? (
-            <p className="py-10 text-[15px] text-muted">
-              Nothing here in the last {windowText}.
-            </p>
+            <p className="py-10 text-[15px] text-muted">Nothing here in the last {windowText}.</p>
           ) : (
             <div className="flex items-baseline justify-between pt-6 text-[15px]">
               <span className="text-muted">
@@ -696,20 +567,19 @@ export function WireBoard({ initial }: { initial: WireData }) {
               <MostActive
                 active={active}
                 vendor={filters.vendor}
-                onVendor={(slug) =>
-                  apply({ vendor: filters.vendor === slug ? "" : slug })
-                }
+                onVendor={(slug) => apply({ vendor: filters.vendor === slug ? "" : slug })}
               />
             </div>
             <div className="order-4 min-[1200px]:order-3 min-[2200px]:hidden">
-              <LastSevenDays
-                status={status}
-                severity={railSeverity}
-                onSeverity={onRailSeverity}
-              />
+              <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
             </div>
             <div className="order-3 min-[1200px]:order-4 min-[2200px]:hidden">
-              <AddedToKev kev={kev} total={counts?.kev_added_7d} query={prefs.query()} onMore={() => apply({ tab: "kev" })} />
+              <AddedToKev
+                kev={kev}
+                total={counts?.kev_added_7d}
+                query={prefs.query()}
+                onMore={() => apply({ tab: "kev" })}
+              />
             </div>
             <div className="order-1 min-[1200px]:order-5 min-[2200px]:order-2">
               <Elsewhere elsewhere={elsewhere} />
@@ -722,7 +592,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
       </div>
       <SiteFooter data-chrome className="mt-16" />
     </main>
-  );
+  )
 }
 
 function Count({
@@ -732,31 +602,26 @@ function Count({
   onClick,
   children,
 }: {
-  n: number;
+  n: number
   /** Before this count: "/" between the 24h counts, "·" before the weekly one. */
-  sep?: "slash" | "dot";
-  active?: boolean;
+  sep?: "slash" | "dot"
+  active?: boolean
   /** Critical and high filter the wire to that severity over the last 24h; again clears it. */
-  onClick?: () => void;
-  children: ReactNode;
+  onClick?: () => void
+  children: ReactNode
 }) {
   // Desktop: "/" between counts, as in wire.png. Narrow screens wrap, so they use a gap instead.
   const body = (
     <>
       <span className="text-fg">{n}</span> {children}
     </>
-  );
+  )
   return (
     <span className="whitespace-nowrap">
       {sep && (
         <span
           aria-hidden
-          className={cn(
-            "hidden md:inline",
-            sep === "slash"
-              ? "mx-[13px] text-outline-medium"
-              : "mx-2 text-dim-text",
-          )}
+          className={cn("hidden md:inline", sep === "slash" ? "mx-[13px] text-outline-medium" : "mx-2 text-dim-text")}
         >
           {sep === "slash" ? "/" : "·"}
         </span>
@@ -766,16 +631,11 @@ function Count({
           type="button"
           onClick={onClick}
           aria-pressed={active}
-          title={
-            active
-              ? "Clear the severity filter"
-              : "Show this severity over the last 24 hours"
-          }
+          title={active ? "Clear the severity filter" : "Show this severity over the last 24 hours"}
           className={cn(
             "max-md:tap",
             "relative outline-none hover:text-fg-2 focus-visible:text-fg-2",
-            active &&
-              "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg",
+            active && "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg",
           )}
         >
           {body}
@@ -784,5 +644,5 @@ function Count({
         body
       )}
     </span>
-  );
+  )
 }

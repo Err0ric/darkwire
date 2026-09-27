@@ -1,8 +1,52 @@
 import type { VendorRef } from "@/lib/api"
 
-// Slugs with a monochrome mark in /public/vendors/{slug}.svg. Add a slug here when its
+// Slugs with a monochrome mark in /public/vendors/{slug}.svg, from Simple Icons (CC0; the marks
+// stay their owners' trademarks). Rendered as a CSS mask in currentColor. Add a slug here when its
 // SVG lands; everything else falls back to initials, so no request ever 404s.
-export const VENDOR_LOGOS = new Set<string>([])
+export const VENDOR_LOGOS = new Set<string>([
+  "amd",
+  "apache",
+  "apple",
+  "arm",
+  "atlassian",
+  "broadcom",
+  "cisco",
+  "citrix",
+  "cloudflare",
+  "docker",
+  "f5",
+  "fortinet",
+  "github",
+  "gitlab",
+  "google",
+  "intel",
+  "jenkins",
+  "jetbrains",
+  "juniper",
+  "kubernetes",
+  "linux",
+  "mozilla",
+  "npm",
+  "nvidia",
+  "okta",
+  "openssl",
+  "palo-alto-networks",
+  "progress",
+  "pypi",
+  "qnap",
+  "qualcomm",
+  "red-hat",
+  "samsung",
+  "sap",
+  "sonicwall",
+  "synology",
+  "tp-link",
+  "trend-micro",
+  "ubiquiti",
+  "veeam",
+  "vmware",
+  "wordpress",
+])
 
 // Two-letter marks where the mechanical rule reads wrong (from design-refs).
 const MARKS: Record<string, string> = {

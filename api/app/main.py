@@ -29,6 +29,7 @@ app = FastAPI(title="darkwire", docs_url="/docs", redoc_url=None, lifespan=lifes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origin_list,
+    allow_origin_regex=get_settings().cors_origin_regex,
     allow_methods=["GET"],
     allow_headers=["*"],
 )

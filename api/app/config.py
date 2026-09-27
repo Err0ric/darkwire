@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     ingest_interval_minutes: int = 15
     ingest_enabled: bool = True
     cors_origins: str = "http://localhost:3000,https://darkwire.tech"
+    # Vercel production and preview deployments. Matched against the full Origin.
+    cors_origin_regex: str | None = r"https://[a-z0-9-]+\.vercel\.app"
 
     @property
     def async_database_url(self) -> str:

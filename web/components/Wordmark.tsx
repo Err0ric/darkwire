@@ -98,7 +98,6 @@ function useSquareGeometry(anchor: React.RefObject<HTMLSpanElement | null>, squa
       const fs = parseFloat(getComputedStyle(a).fontSize)
       if (!fs) return
       const dpr = window.devicePixelRatio || 1
-      const up = (v: number) => Math.ceil(v * dpr - 1e-6) / dpr
       const down = (v: number) => Math.floor(v * dpr + 1e-6) / dpr
       const near = (v: number) => Math.round(v * dpr) / dpr
       const r = a.getBoundingClientRect() // zero-height inline-block: its bottom is the baseline
@@ -106,7 +105,8 @@ function useSquareGeometry(anchor: React.RefObject<HTMLSpanElement | null>, squa
       const stemTop = base - sq0.stemTop * fs
       const ascTop = base - sq0.ascender * fs
       const bottom = down(stemTop - 1 / dpr) // a gap of at least one device pixel
-      const top = up(ascTop) // never above the ascender
+      // On the ascender, to the nearest device pixel (its top ink row is partly covered).
+      const top = near(ascTop)
       const size = Math.max(1 / dpr, Math.min(near(sq0.stemWidth * fs), bottom - top))
       const cx = r.left + (sq0.stemLeft + sq0.stemWidth / 2) * fs
       const left = near(cx - size / 2)

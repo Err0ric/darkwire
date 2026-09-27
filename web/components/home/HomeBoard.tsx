@@ -5,8 +5,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { cn } from "cn"
 
 import { FeedRow } from "@/components/FeedRow"
+import { PrefsControls } from "@/components/PrefsControls"
 import { getFeed, getStatus, type FeedItem, type Status, type Tab } from "@/lib/api"
 import { useRowsIn } from "@/lib/fit"
+import { usePrefs } from "@/lib/prefs"
 import { useUnseen } from "@/lib/unseen"
 
 // Home shows as many rows as fit the screen. Load a generous first page, more on tall screens.
@@ -68,6 +70,7 @@ export function HomeBoard({
   const itemsRef = useRef(items)
   const request = useRef(0)
   const addUnseen = useUnseen()
+  const { stack, query } = usePrefs()
   const now = useClock()
 
   const limitRef = useRef(limit)
@@ -152,7 +155,7 @@ export function HomeBoard({
             {now?.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}
           </h1>
           <Link
-            href={tab === "all" ? "/wire" : `/wire?tab=${tab}`}
+            href={`/wire${query({ tab: tab === "all" ? undefined : tab })}`}
             className="mt-px inline-flex h-[30px] items-center gap-2 rounded-control border border-accent px-[14px] font-mono text-[13px] tracking-[0.04em] text-fg outline-none hover:text-fg focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             OPEN WIRE <span className="text-critical">→</span>
@@ -219,7 +222,13 @@ export function HomeBoard({
         className="@container min-h-0 flex-1 overflow-hidden *:break-inside-avoid min-[2500px]:columns-2 min-[2500px]:gap-16 min-[2500px]:[column-fill:auto]"
       >
         {visible.map((item) => (
-          <FeedRow key={item.id} item={item} fresh={fresh.has(item.id)} pinned={pinIds.has(item.id)} />
+          <FeedRow
+            key={item.id}
+            item={item}
+            fresh={fresh.has(item.id)}
+            pinned={pinIds.has(item.id)}
+            inStack={!!item.vendor && stack.includes(item.vendor.slug)}
+          />
         ))}
         {rows.length === 0 && (
           <p className="py-10 text-[15px] text-muted">
@@ -233,7 +242,10 @@ export function HomeBoard({
           Sources: NVD, CISA KEV, vendor PSIRTs, {status?.sources_total ?? "–"} feeds. Refreshes every{" "}
           {status?.sync.interval_minutes ?? 15} minutes.
         </span>
-        <span className="shrink-0">darkwire.tech</span>
+        <span className="flex shrink-0 flex-wrap items-baseline justify-end gap-x-6">
+          <PrefsControls />
+          <span>darkwire.tech</span>
+        </span>
       </footer>
     </main>
   )

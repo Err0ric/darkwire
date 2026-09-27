@@ -5,6 +5,7 @@ import { cn } from "cn"
 
 import { FeedRow } from "@/components/FeedRow"
 import { Input } from "@/components/ui/input"
+import { SiteFooter } from "@/components/SiteFooter"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Elsewhere, Stats } from "@/components/wire/Rail"
 import { useFitCount } from "@/lib/fit"
@@ -16,8 +17,9 @@ import {
   getVendors,
   type FeedItem,
 } from "@/lib/api"
+import { usePrefs } from "@/lib/prefs"
 import { useUnseen } from "@/lib/unseen"
-import { TABS, type Filters, type WireData } from "@/lib/wire"
+import { feedQuery, stackCriticalQuery, TABS, type Filters, type WireData, type WireTab } from "@/lib/wire"
 
 const PAGE = 50
 // 15 minutes. Overridable at build time for local testing only.
@@ -25,18 +27,14 @@ const POLL_MS = Number(process.env.NEXT_PUBLIC_POLL_SECONDS ?? 900) * 1000
 const SEARCH_DEBOUNCE_MS = 250
 const ALL_VENDORS = "all"
 
-
-function feedQuery(f: Filters) {
-  return { tab: f.tab, vendor: f.vendor || undefined, q: f.q || undefined }
-}
-
+// Filters live in the URL next to whatever else is there (?stack=, ?theme=).
 function syncUrl(f: Filters) {
-  const params = new URLSearchParams()
-  if (f.tab !== "all") params.set("tab", f.tab)
-  if (f.vendor) params.set("vendor", f.vendor)
-  if (f.q) params.set("q", f.q)
-  const qs = params.toString()
-  window.history.replaceState(null, "", qs ? `/wire?${qs}` : "/wire")
+  const url = new URL(window.location.href)
+  const set = (k: string, v: string) => (v ? url.searchParams.set(k, v) : url.searchParams.delete(k))
+  set("tab", f.tab === "all" ? "" : f.tab)
+  set("vendor", f.vendor)
+  set("q", f.q)
+  window.history.replaceState(null, "", url.pathname + url.search.replace(/%2C/gi, ",") + url.hash)
 }
 
 function mergeNewest(prev: FeedItem[], incoming: FeedItem[]): FeedItem[] {
@@ -56,9 +54,14 @@ export function WireBoard({ initial }: { initial: WireData }) {
   const [kev, setKev] = useState(initial.kev)
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(initial.error)
+  const [stackCritical, setStackCritical] = useState(initial.stackCritical)
+  const prefs = usePrefs()
+  // Until the provider has read the URL, the server's stack is the truth.
+  const stack = prefs.ready ? prefs.stack : initial.stack
 
   const filtersRef = useRef(filters)
   const itemsRef = useRef(items)
+  const stackRef = useRef(initial.stack)
   const request = useRef(0)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const addUnseen = useUnseen()
@@ -73,7 +76,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
     const id = ++request.current
     setLoading(true)
     try {
-      const page = await getFeed({ ...feedQuery(f), limit: PAGE })
+      const page = await getFeed({ ...feedQuery(f, stackRef.current), limit: PAGE })
       if (id !== request.current) return
       setItems(page.items)
       setTotal(page.total)
@@ -106,7 +109,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
   async function showMore() {
     const f = filtersRef.current
     try {
-      const page = await getFeed({ ...feedQuery(f), limit: PAGE, offset: itemsRef.current.length })
+      const page = await getFeed({ ...feedQuery(f, stackRef.current), limit: PAGE, offset: itemsRef.current.length })
       if (f !== filtersRef.current) return
       setItems((prev) => {
         const seen = new Set(prev.map((p) => p.id))
@@ -118,18 +121,36 @@ export function WireBoard({ initial }: { initial: WireData }) {
     }
   }
 
+  // The stack can change after first paint: restored from storage, or edited in another page.
+  // Refetch what depends on it; a URL asking for tab=stack gets it once a stack exists.
+  useEffect(() => {
+    const key = stack.join(",")
+    if (key === stackRef.current.join(",")) return
+    stackRef.current = stack
+    const refresh = async () => {
+      setStackCritical(stack.length ? (await getFeed(stackCriticalQuery(stack)).catch(() => null))?.total ?? null : null)
+    }
+    void refresh()
+    const wantsStack = new URLSearchParams(window.location.search).get("tab") === "stack"
+    if (!stack.length && filtersRef.current.tab === "stack") apply({ tab: "all" })
+    else if (stack.length && (filtersRef.current.tab === "stack" || wantsStack)) apply({ tab: "stack" })
+  }, [stack, apply])
+
   // Every 15 minutes: rows with an event newer than the top row, plus counts and rail.
   useEffect(() => {
     const poll = async () => {
       const f = filtersRef.current
+      const mine = stackRef.current
       const newest = itemsRef.current[0]?.last_event_at
-      const [feed, st, els, act, kv] = await Promise.allSettled([
-        getFeed({ ...feedQuery(f), limit: PAGE, since: newest }),
+      const [feed, st, els, act, kv, crit] = await Promise.allSettled([
+        getFeed({ ...feedQuery(f, mine), limit: PAGE, since: newest }),
         getStatus(),
         getElsewhere(5),
         getVendors("active"),
         getKev(7, 8),
+        mine.length ? getFeed(stackCriticalQuery(mine)).then((p) => p.total) : Promise.resolve(null),
       ])
+      if (crit.status === "fulfilled" && mine === stackRef.current) setStackCritical(crit.value)
       if (st.status === "fulfilled") setStatus(st.value)
       if (els.status === "fulfilled") setElsewhere(els.value)
       if (act.status === "fulfilled") setVendors(act.value)
@@ -141,7 +162,9 @@ export function WireBoard({ initial }: { initial: WireData }) {
       setItems((prev) => mergeNewest(prev, incoming))
       setTotal((t) => t + incoming.filter((i) => !known.has(i.id)).length)
       setFresh(new Set(incoming.map((i) => i.id)))
-      void addUnseen(incoming.length, incoming.some((i) => !i.stale && (i.severity === "critical" || i.kev)))
+      // With a stack, only its rows count toward the unseen title and dot.
+      const counted = mine.length ? incoming.filter((i) => i.vendor && mine.includes(i.vendor.slug)) : incoming
+      void addUnseen(counted.length, counted.some((i) => !i.stale && (i.severity === "critical" || i.kev)))
     }
     const timer = setInterval(poll, POLL_MS)
     return () => clearInterval(timer)
@@ -153,7 +176,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
     if (fit === null || items.length >= total || fit <= items.length || loadedRef.current >= fit) return
     loadedRef.current = fit
     const f = filtersRef.current
-    getFeed({ ...feedQuery(f), limit: Math.min(200, fit), offset: 0 })
+    getFeed({ ...feedQuery(f, stackRef.current), limit: Math.min(200, fit), offset: 0 })
       .then((page) => {
         if (f !== filtersRef.current) return
         setItems((prev) => (page.items.length > prev.length ? page.items : prev))
@@ -165,6 +188,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
   const byName = [...vendors].sort((a, b) => a.name.localeCompare(b.name))
   const active = vendors.filter((v) => v.items_7d > 0).slice(0, 5)
   const counts = status?.counts
+  const tabs: [WireTab, string][] = stack.length ? [["stack", "My stack"], ...TABS] : TABS
 
   return (
     <main className="flex-1 px-4 pb-24 md:px-12">
@@ -194,12 +218,23 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 <span className="text-dim">Counts unavailable.</span>
               )}
             </p>
+            {stack.length > 0 && stackCritical === 0 && (
+              <p className="mt-1 text-[13px] leading-5 text-muted">Nothing critical in your stack today.</p>
+            )}
           </header>
 
-          {/* Tabs and filters share a line only when the feed column is wide enough for both. */}
-          <div className="mt-8 flex flex-col-reverse border-b border-rule md:mt-[32px] @min-[940px]:flex-row @min-[940px]:items-end @min-[940px]:justify-between">
+          {/* Tabs and filters share a line only when the feed column is wide enough for both;
+              My stack adds a tab, so the split moves out. */}
+          <div
+            className={cn(
+              "mt-8 flex flex-col-reverse border-b border-rule md:mt-[32px]",
+              stack.length
+                ? "@min-[1060px]:flex-row @min-[1060px]:items-end @min-[1060px]:justify-between"
+                : "@min-[940px]:flex-row @min-[940px]:items-end @min-[940px]:justify-between",
+            )}
+          >
             <nav aria-label="Categories" className="-mb-px flex gap-6 overflow-x-auto [scrollbar-width:none]">
-              {TABS.map(([tab, label]) => (
+              {tabs.map(([tab, label]) => (
                 <button
                   key={tab}
                   type="button"
@@ -215,7 +250,12 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 </button>
               ))}
             </nav>
-            <div className="mb-4 flex items-center gap-5 @min-[940px]:mb-[10px] @min-[940px]:shrink-0">
+            <div
+              className={cn(
+                "mb-4 flex items-center gap-5",
+                stack.length ? "@min-[1060px]:mb-[10px] @min-[1060px]:shrink-0" : "@min-[940px]:mb-[10px] @min-[940px]:shrink-0",
+              )}
+            >
               <Select
                 value={filters.vendor || ALL_VENDORS}
                 onValueChange={(v) => apply({ vendor: v === ALL_VENDORS ? "" : v })}
@@ -239,14 +279,22 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 onKeyDown={(e) => e.key === "Escape" && onSearch("")}
                 placeholder="Search or CVE ID"
                 aria-label="Search headlines or CVE IDs"
-                className="h-[30px] min-w-0 flex-1 @min-[940px]:w-[200px] @min-[940px]:flex-none"
+                className={cn(
+                  "h-[30px] min-w-0 flex-1",
+                  stack.length ? "@min-[1060px]:w-[200px] @min-[1060px]:flex-none" : "@min-[940px]:w-[200px] @min-[940px]:flex-none",
+                )}
               />
             </div>
           </div>
 
           <div ref={list} className={cn(loading && "opacity-60")} aria-busy={loading}>
             {items.map((item) => (
-              <FeedRow key={item.id} item={item} fresh={fresh.has(item.id)} />
+              <FeedRow
+                key={item.id}
+                item={item}
+                fresh={fresh.has(item.id)}
+                inStack={filters.tab !== "stack" && !!item.vendor && stack.includes(item.vendor.slug)}
+              />
             ))}
           </div>
 
@@ -284,6 +332,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
           </div>
         </aside>
       </div>
+      <SiteFooter data-chrome className="mt-16" />
     </main>
   )
 }

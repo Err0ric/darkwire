@@ -6,6 +6,7 @@ import { useEffect, useState } from "react"
 import { cn } from "cn"
 
 import { getStatus, type Status } from "@/lib/api"
+import { usePrefs } from "@/lib/prefs"
 
 const LINKS = [
   { href: "/wire", label: "Wire" },
@@ -33,6 +34,7 @@ function syncedLabel(minutes: number): string {
 
 export function Nav() {
   const pathname = usePathname()
+  const { query } = usePrefs()
   const [sync, setSync] = useState<Sync>({ status: null, failing: false })
   const [now, setNow] = useState<number | null>(null)
 
@@ -67,7 +69,7 @@ export function Nav() {
 
   return (
     <header data-chrome className="flex h-15 items-center px-4 md:px-12">
-      <Link href="/" className="flex items-center gap-2 outline-none focus-visible:outline-1 focus-visible:outline-rule">
+      <Link href={`/${query()}`} className="flex items-center gap-2 outline-none focus-visible:outline-1 focus-visible:outline-rule">
         <span
           aria-hidden
           className={cn(
@@ -85,7 +87,7 @@ export function Nav() {
           return (
             <Link
               key={href}
-              href={href}
+              href={`${href}${query()}`}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "text-[15px] leading-none outline-none focus-visible:text-fg",

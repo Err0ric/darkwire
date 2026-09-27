@@ -79,11 +79,13 @@ def _feed_fields(item: Item) -> dict:
 async def feed(
     tab: Tab = Tab.all,
     vendor: str | None = Query(None, description="vendor slug"),
+    vendors: str | None = Query(None, max_length=2000, description="comma-separated vendor slugs (a stack)"),
     q: str | None = Query(None, max_length=200, description="headline text or CVE ID"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     since: datetime | None = Query(None, description="only rows with an event after this time"),
     pinned: bool = Query(False, description="only Critical or KEV rows with an event in the last 48h"),
+    critical: bool = Query(False, description="only Critical or KEV rows (old CVEs excluded)"),
     session: AsyncSession = Depends(get_session),
 ) -> FeedPage:
     where = [Item.stream == Stream.main]
@@ -93,6 +95,9 @@ async def feed(
         where.append(Item.category == TAB_CATEGORY[tab])
     if vendor:
         where.append(Item.vendor.has(Vendor.slug == vendor))
+    if vendors is not None:
+        slugs = [v.strip() for v in vendors.split(",") if v.strip()][:50]
+        where.append(Item.vendor.has(Vendor.slug.in_(slugs)))
     if q and q.strip():
         term = q.strip()
         where.append(
@@ -104,6 +109,9 @@ async def feed(
         )
     if since:
         where.append(Item.last_event_at > since)
+    if critical:
+        where.append(or_(Item.severity == Severity.critical, Item.kev.is_(True)))
+        where.append(not_stale(datetime.now(UTC)))
     if pinned:
         where.append(or_(Item.severity == Severity.critical, Item.kev.is_(True)))
         where.append(not_stale(datetime.now(UTC)))

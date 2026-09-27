@@ -38,6 +38,7 @@ export function FeedRow({
   defaultExpanded = false,
   fresh = false,
   pinned = false,
+  inStack = false,
 }: {
   item: FeedItem
   detail?: ItemDetail
@@ -46,6 +47,8 @@ export function FeedRow({
   fresh?: boolean
   /** Held at the top of home (Critical or KEV in the last 48h). */
   pinned?: boolean
+  /** Vendor is in the viewer's stack: brighter mark and a quiet "stack" in the meta line. */
+  inStack?: boolean
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [detail, setDetail] = useState<Detail>(
@@ -81,7 +84,7 @@ export function FeedRow({
         onClick={onRowClick}
         className="flex cursor-pointer items-start py-3 md:h-16 md:items-center md:py-0"
       >
-        <VendorMark item={item} />
+        <VendorMark item={item} inStack={inStack} />
 
         <div className="min-w-0 flex-1 md:mr-[22px]">
           <a
@@ -91,7 +94,7 @@ export function FeedRow({
           >
             {item.headline}
           </a>
-          <MetaLine item={item} pinned={pinned} />
+          <MetaLine item={item} pinned={pinned} inStack={inStack} />
           <div className="mt-2 flex items-center md:hidden">
             <Score item={item} className="mr-3" />
             <Bar item={item} />
@@ -134,8 +137,8 @@ export function FeedRow({
   )
 }
 
-function VendorMark({ item }: { item: FeedItem }) {
-  const box = "mr-3 flex h-5 w-5 shrink-0 items-center justify-center text-muted md:mr-5"
+function VendorMark({ item, inStack }: { item: FeedItem; inStack: boolean }) {
+  const box = cn("mr-3 flex h-5 w-5 shrink-0 items-center justify-center md:mr-5", inStack ? "text-fg" : "text-muted")
   if (item.vendor) {
     return (
       <span className={box} title={item.vendor.name}>
@@ -160,7 +163,7 @@ function Sep({ wide = false }: { wide?: boolean }) {
   )
 }
 
-function MetaLine({ item, pinned = false }: { item: FeedItem; pinned?: boolean }) {
+function MetaLine({ item, pinned = false, inStack = false }: { item: FeedItem; pinned?: boolean; inStack?: boolean }) {
   const parts: ReactNode[] = []
   if (item.sources.length === 0) {
     parts.push("NVD", "CVE published", "no coverage yet")
@@ -185,6 +188,7 @@ function MetaLine({ item, pinned = false }: { item: FeedItem; pinned?: boolean }
   if (item.kev) parts.push(<span key="kev" className="text-critical">KEV</span>)
   else if (item.exploited) parts.push(<span key="exploited" className="text-critical">EXPLOITED</span>)
   if (pinned) parts.push(<span key="pinned" className="text-dim">pinned</span>)
+  if (inStack) parts.push(<span key="stack" className="text-dim">your stack</span>)
 
   return (
     <p className="mt-0.5 truncate text-xs leading-4 text-muted">

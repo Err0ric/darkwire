@@ -152,6 +152,15 @@ NVD, FIRST.org EPSS and the CISA KEV JSON are enrichment APIs, not feeds, and ar
 - Favicon swaps to a copy with a static red dot drawn via canvas. Never blinking.
 - Both clear on `visibilitychange` when the tab is visible. Nothing stored between visits.
 - Opt-in bell in the status line: requests Notification permission only on click, sends one grouped notification for Critical/KEV additions only. Never prompt on load.
+- With a stack set, only stack rows count toward the title and dot.
+
+## Your stack (no accounts)
+
+- `?stack=slug,slug` on every page. Every internal link carries it, so any URL is shareable as-is.
+- `/vendors`: a toggle per vendor updates the URL; "View my stack on the wire" appears when any are selected.
+- Wire with a stack: "My stack" tab first (all categories, stack vendors only), brighter vendor mark and a dim `your stack` in the meta line on other tabs, one quiet line under the counts when the stack has nothing Critical or KEV in 24h: "Nothing critical in your stack today."
+- "remember on this browser" in the footer, off by default. When on, localStorage keeps only `{stack, theme}` under `darkwire.prefs`; the footer then reads `remembered · reset`. The URL always overrides it, and a stack arriving in a shared link is never written to storage.
+- No service worker, no offline cache, no feed data in the browser.
 
 ## Keyboard
 

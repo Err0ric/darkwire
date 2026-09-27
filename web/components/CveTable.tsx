@@ -6,6 +6,7 @@ import { ChevronDown } from "lucide-react"
 import { cn } from "cn"
 
 import type { CveRow, PatchStatus } from "@/lib/api"
+import { usePrefs } from "@/lib/prefs"
 
 type Key = "cve" | "vendor" | "product" | "cvss" | "epss" | "kev" | "patch" | "published"
 
@@ -52,6 +53,7 @@ function Dash() {
 }
 
 export function CveTable({ rows }: { rows: CveRow[] }) {
+  const { query } = usePrefs()
   const [sort, setSort] = useState<{ key: Key; order: "asc" | "desc" }>({ key: "published", order: "desc" })
 
   const sorted = [...rows].sort((a, b) => {
@@ -106,7 +108,7 @@ export function CveTable({ rows }: { rows: CveRow[] }) {
           {sorted.map((r) => (
             <tr key={r.id} className="border-b border-hairline">
               <td className="h-11 pr-6 font-mono text-xs whitespace-nowrap">
-                <Link href={`/wire?q=${r.id}`} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
+                <Link href={`/wire${query({ q: r.id })}`} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
                   {r.id}
                 </Link>
               </td>

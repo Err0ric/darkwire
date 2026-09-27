@@ -194,6 +194,10 @@ export interface FeedQuery {
   since?: string
   /** Only Critical or KEV rows with an event in the last 48h. */
   pinned?: boolean
+  /** Comma-separated vendor slugs (your stack). */
+  vendors?: string
+  /** Only Critical or KEV rows, old CVEs left out. */
+  critical?: boolean
 }
 
 export const getFeed = (query: FeedQuery = {}, init?: RequestInit) =>

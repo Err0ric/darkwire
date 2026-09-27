@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { connection } from "next/server"
 
 import { CveTable } from "@/components/CveTable"
+import { SiteFooter } from "@/components/SiteFooter"
 import { getCves } from "@/lib/api"
 
 export const metadata: Metadata = { title: "CVEs · darkwire" }
@@ -27,6 +28,7 @@ export default async function Cves() {
         </p>
       </header>
       {rows && <CveTable rows={rows} />}
+      <SiteFooter className="mt-16" />
     </main>
   )
 }

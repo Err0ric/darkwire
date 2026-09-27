@@ -106,7 +106,7 @@ def png_bytes(im: Image.Image) -> bytes:
 
 def write_ico(path: Path, images: list[Image.Image]) -> None:
     """ICO with PNG entries, each drawn at its own size (no resampling)."""
-    datas = [png_bytes(im) for im in images]
+    datas = [png_bytes(im.convert("RGBA")) for im in images]  # ICO readers want RGBA PNGs
     header = struct.pack("<HHH", 0, 1, len(images))
     offset = 6 + 16 * len(images)
     entries = b""

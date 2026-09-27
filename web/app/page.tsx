@@ -1,23 +1,33 @@
 import { connection } from "next/server"
 
 import { HomeBoard } from "@/components/home/HomeBoard"
-import { getFeed, getStatus } from "@/lib/api"
+import { getFeed, getServices, getStatus } from "@/lib/api"
+import { parseStack } from "@/lib/stack"
 
-// Home: status header, as many rows as fit (Critical/KEV of the last 48h pinned first),
-// four tabs. Meant to be left open.
-export default async function Home() {
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? ""
+
+// Home is a landing page, not a feed: date and clock, one status line, what matters right now,
+// the latest headline, and the way into the wire. /wire is the all-day screen.
+export default async function Home({ searchParams }: PageProps<"/">) {
   await connection()
-  const [feed, pinned, status] = await Promise.allSettled([
-    getFeed({ limit: 40 }),
-    getFeed({ pinned: true, limit: 10 }),
+  const params = await searchParams
+  const watched = parseStack(one(params.services))
+  const [rightNow, latest, status, services] = await Promise.allSettled([
+    getFeed({ pinned: true, limit: 5 }),
+    getFeed({ limit: 10 }),
     getStatus(),
+    getServices(watched.join(",") || undefined),
   ])
+  const value = <T,>(r: PromiseSettledResult<T>, fallback: T) => (r.status === "fulfilled" ? r.value : fallback)
   return (
     <HomeBoard
-      initialItems={feed.status === "fulfilled" ? feed.value.items : []}
-      initialPinned={pinned.status === "fulfilled" ? pinned.value.items : []}
-      initialStatus={status.status === "fulfilled" ? status.value : null}
-      initialFailed={feed.status === "rejected"}
+      initial={{
+        rightNow: value(rightNow, { items: [], total: 0 }).items,
+        latest: value(latest, { items: [], total: 0 }).items,
+        status: value(status, null),
+        services: value(services, null),
+        failed: rightNow.status === "rejected",
+      }}
     />
   )
 }

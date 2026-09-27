@@ -30,25 +30,3 @@ export function useFitCount(list: RefObject<HTMLElement | null>, reserve?: RefOb
   }, [list, reserve, min])
   return count
 }
-
-/** Whole rows that fit inside a height-bounded `box` (home), times its CSS column count.
- * Null until measured. */
-export function useRowsIn(box: RefObject<HTMLElement | null>) {
-  const [count, setCount] = useState<number | null>(null)
-  useEffect(() => {
-    const el = box.current
-    if (!el) return
-    const measure = () => {
-      const row = el.querySelector("article")
-      const pitch = row ? row.getBoundingClientRect().height : 65
-      const height = el.getBoundingClientRect().height
-      const columns = Number.parseInt(getComputedStyle(el).columnCount, 10) || 1
-      setCount(Math.max(1, Math.floor(height / Math.max(pitch, 1)) * columns))
-    }
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [box])
-  return count
-}

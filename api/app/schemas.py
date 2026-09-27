@@ -40,6 +40,7 @@ class FeedItem(BaseModel):
     kev: bool
     kev_due_date: datetime | None  # CISA remediation deadline when the row's CVE is in KEV
     exploited: bool  # headline says exploited / zero-day and no CVE is known yet
+    patch_status: PatchStatus  # rolled up from vendor / NVD data; "no fix yet" on home
     stale: bool  # CVE >90 days old, not in KEV, no exploitation headline: dimmed, left out of totals
     epss: float | None
     sources: list[SourceLink]
@@ -108,7 +109,6 @@ class Action(BaseModel):
 class ItemDetail(FeedItem):
     summary: str | None
     action: Action | None  # model-read from the articles, CVE rows only
-    patch_status: PatchStatus
     patch_url: str | None
     first_seen_at: datetime
     cve: CveDetail | None
@@ -170,6 +170,7 @@ class Counts(BaseModel):
     items_24h: int
     articles_24h: int  # main-stream articles published in the last 24h (rows can hold several)
     kev_added_7d: int
+    kev_due_7d: int  # CVEs on the board whose CISA KEV due date falls in the next 7 days
     critical_7d: int
     high_7d: int
     medium_7d: int

@@ -17,7 +17,7 @@ Reference mockups: `/design-refs/home.png` and `/design-refs/wire.png`. Match th
 
 | Route | Purpose |
 |---|---|
-| `/` | Home. Status header, as many rows as fit the screen (Critical/KEV of the last 48h pinned first), four tabs, OPEN WIRE link. Meant to be left open. |
+| `/` | Home, a landing page (`design-refs/home-v3.png`, `home-v3-mobile.png`). Centered block: date, large mono clock (seconds in `--dim`, zone under it), status line (`N critical · N KEV due this week · worst service incident`, nonzero parts only, each linking to its filtered view, else "All quiet"), Right now (critical, KEV and exploited in the last 48h, max 5 one-line rows linking to `/item/[id]`, or "Nothing critical in the last 48h."), a one-line ticker crossfading through the last 10 headlines every 8s, OPEN WIRE with CVEs · Vendors · Outages under it, and the stack link. Footer: sources line from `/status`, darkwire.tech. Scales with one `clamp()`; no scrolling at 1920x1080 or 2560x1440; vertically centered in portrait. `/wire` is the all-day screen. |
 | `/wire` | The board. Full feed, seven tabs, vendor filter, search, right rail. |
 | `/cves` | Sortable table: CVE, vendor, product, CVSS, EPSS, KEV, published. |
 | `/vendor/[slug]` | Everything tagged to one vendor. |
@@ -58,8 +58,8 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 - One container on every page: nav and content share the same gutters (16px mobile, 48px from 768px) and left edge.
 - The feed column is capped at 1200px (its flex basis too), so the data columns (CVE ID, score, bar, badge, age, chevron) stay near the headline instead of across dead space. Inside it the headline absorbs width; the data columns stay fixed. Under a 760px feed the CVE ID column drops out; under 940px the wire's tabs and filters split onto two lines (container queries on the feed column).
 - Wire rail: beside the feed from 1200px wide (so 1080px portrait stacks it below the feed, at most 640px wide), at least 280px, and it takes all the width the capped feed leaves. Up to 2200px wide it is one column: Services, Elsewhere, Most active, Added to KEV, Last 7 days, Sources. From 2200px it is two columns: Services and Elsewhere | the stats. Elsewhere is always a single column of headlines. While the rail is stacked under the feed (under 1200px), the Services block moves to the top of the feed, under the counts, so an outage is seen without scrolling.
-- Home has no rail: its content caps at 1200px, and from 2500px wide the rows flow into two columns (left column first).
-- Fill the height with rows, never a fixed count. Home is exactly one screen tall: header, as many whole rows as fit, footer at the bottom; on the All tab, Critical or KEV rows with an event in the last 48h are pinned first with a dim `pinned` marker. Wire loads at least a screenful and scrolls.
+- Home has no rail and no feed: one centered block sized in em off a single `clamp()`, so it scales smoothly instead of jumping at breakpoints.
+- Fill the height with rows, never a fixed count. Home is exactly one screen tall with the block vertically centered. Wire loads at least a screenful and scrolls.
 - Kiosk: key `f` (or `?kiosk=1`) hides nav and rail and scales type about 15%. `f` again leaves it.
 - Check new work at 1920x1080 and 2560x1440 first, then 1080x1920, 1440x2560 and 390x844.
 

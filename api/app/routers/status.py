@@ -8,7 +8,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.ingest import next_run_at
 from app.staleness import not_stale
-from app.models import Health, Item, ItemSource, KevEntry, Severity, Source, Stream, SyncRun
+from app.models import Cve, Health, Item, ItemSource, KevEntry, Severity, Source, Stream, SyncRun
 from app.schemas import Counts, SourceStatus, Status, SummariesStatus, SyncStatus
 from app.summaries import health
 
@@ -54,6 +54,20 @@ async def status(session: AsyncSession = Depends(get_session)) -> Status:
         select(func.count()).select_from(KevEntry).where(KevEntry.date_added >= (now - timedelta(days=7)).date())
     )
 
+    # Board CVEs in KEV whose due date is today or in the next 6 days.
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    kev_due_7d = await session.scalar(
+        select(func.count(func.distinct(Cve.id)))
+        .select_from(Cve)
+        .join(Item, Item.cve_id == Cve.id)
+        .where(
+            Item.stream == Stream.main,
+            Cve.kev.is_(True),
+            Cve.kev_due_date >= today,
+            Cve.kev_due_date < today + timedelta(days=7),
+        )
+    )
+
     return Status(
         now=now,
         sync=SyncStatus(
@@ -78,6 +92,7 @@ async def status(session: AsyncSession = Depends(get_session)) -> Status:
             items_24h=items_24h,
             articles_24h=articles_24h or 0,
             kev_added_7d=kev_added_7d or 0,
+            kev_due_7d=kev_due_7d or 0,
             critical_7d=by_severity_7d.get(Severity.critical, 0),
             high_7d=by_severity_7d.get(Severity.high, 0),
             medium_7d=by_severity_7d.get(Severity.medium, 0),

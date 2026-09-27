@@ -76,6 +76,7 @@ def _feed_fields(item: Item, all_sources: bool = False) -> dict:
         "kev": item.kev,
         "kev_due_date": item.cve.kev_due_date if item.cve and item.cve.kev else None,
         "exploited": item.exploited,
+        "patch_status": item.patch_status,
         "stale": is_stale(item, datetime.now(UTC)),
         "epss": item.epss,
         "sources": (
@@ -97,7 +98,7 @@ async def feed(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     since: datetime | None = Query(None, description="only rows with an event after this time"),
-    pinned: bool = Query(False, description="only Critical or KEV rows with an event in the last 48h"),
+    pinned: bool = Query(False, description="only Critical, KEV or EXPLOITED rows with an event in the last 48h"),
     critical: bool = Query(False, description="only Critical or KEV rows (old CVEs excluded)"),
     all_sources: bool = Query(False, description="every article, not one per outlet (feed audit)"),
     severity: Severity | None = Query(None, description="only this severity (window below), old CVEs excluded"),
@@ -135,7 +136,7 @@ async def feed(
         where.append(or_(Item.severity == Severity.critical, Item.kev.is_(True)))
         where.append(not_stale(datetime.now(UTC)))
     if pinned:
-        where.append(or_(Item.severity == Severity.critical, Item.kev.is_(True)))
+        where.append(or_(Item.severity == Severity.critical, Item.kev.is_(True), Item.exploited.is_(True)))
         where.append(not_stale(datetime.now(UTC)))
         where.append(Item.last_event_at >= datetime.now(UTC) - timedelta(hours=48))
 
@@ -163,7 +164,6 @@ async def item_detail(item_id: int, session: AsyncSession = Depends(get_session)
         **_feed_fields(item),
         summary=item.summary,
         action=item.action,
-        patch_status=item.patch_status,
         patch_url=item.patch_url,
         first_seen_at=item.first_seen_at,
         cve=CveDetail.model_validate(item.cve) if item.cve else None,

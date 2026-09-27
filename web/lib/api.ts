@@ -41,6 +41,7 @@ export interface FeedItem {
   kev: boolean
   kev_due_date: string | null // CISA deadline, midnight UTC, when in KEV
   exploited: boolean // headline says exploited / zero-day and no CVE is known yet
+  patch_status: PatchStatus // rolled up from vendor / NVD data
   stale: boolean // CVE >90 days old, not in KEV, no exploitation headline: dimmed, left out of totals
   epss: number | null
   sources: SourceLink[]
@@ -98,7 +99,6 @@ export interface ItemDetail extends FeedItem {
   summary: string | null
   /** Workaround read from the articles by the summary model, CVE rows only. Never versions. */
   action: { workaround: string | null } | null
-  patch_status: PatchStatus
   patch_url: string | null
   first_seen_at: string
   cve: CveDetail | null
@@ -155,6 +155,7 @@ export interface Counts {
   items_24h: number
   articles_24h: number
   kev_added_7d: number
+  kev_due_7d: number // board CVEs whose KEV due date is in the next 7 days
   critical_7d: number
   high_7d: number
   medium_7d: number

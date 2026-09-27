@@ -127,7 +127,7 @@ Third-party status for the rail and `/outages`, from each vendor's official sour
 2. Elsewhere. Five most recent from the policy/privacy/culture pool (EFF, 404 Media, Citizen Lab, Lawfare, Wired, TechCrunch Security, Ars). Headline 13px + `source · age` 11px. No vendor, no score.
 3. Most active this week. Vendor + count.
 4. Added to KEV. CVE ID + vendor, last 7 days.
-5. Last 7 days. Four 3px bars: Critical, High, Medium, Low.
+5. Last 7 days. Four 3px bars: Critical, High, Medium, Low. Each row with a count filters the wire to that severity over the last 7 days (`?severity=critical`, combinable with tab, vendor, search and stack; old CVEs excluded, so the list matches the count). The active row is underlined like the active tab; clicking it again clears the filter. Zero rows are not clickable. The header's "N critical" and "N high" set the same filter.
 6. Sources line: count, health, refresh interval.
 
 ## Data rules

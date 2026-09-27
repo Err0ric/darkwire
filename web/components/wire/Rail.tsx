@@ -3,7 +3,7 @@
 import type { ReactNode } from "react"
 import { cn } from "cn"
 
-import type { ElsewhereItem, KevRow, Status, VendorOut } from "@/lib/api"
+import type { ElsewhereItem, KevRow, Severity, Status, VendorOut } from "@/lib/api"
 import { age, useNow } from "@/lib/time"
 
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const
@@ -51,22 +51,27 @@ export function Stats({
   kev,
   status,
   onVendor,
+  severity,
+  onSeverity,
 }: {
   active: VendorOut[]
   kev: KevRow[]
   status: Status | null
   onVendor: (slug: string) => void
+  /** The wire's ?severity= filter; a row click sets it, clicking the active row clears it. */
+  severity: Severity | ""
+  onSeverity: (s: Severity) => void
 }) {
   const counts = status?.counts
-  const week: [string, number, string][] = counts
+  const week: [Severity, string, number, string][] = counts
     ? [
-        ["Critical", counts.critical_7d, "bg-critical"],
-        ["High", counts.high_7d, "bg-accent"],
-        ["Medium", counts.medium_7d, "bg-dim"],
-        ["Low", counts.low_7d, "bg-outline-medium"],
+        ["critical", "Critical", counts.critical_7d, "bg-critical"],
+        ["high", "High", counts.high_7d, "bg-accent"],
+        ["medium", "Medium", counts.medium_7d, "bg-dim"],
+        ["low", "Low", counts.low_7d, "bg-outline-medium"],
       ]
     : []
-  const peak = Math.max(1, ...week.map(([, n]) => n))
+  const peak = Math.max(1, ...week.map(([, , n]) => n))
 
   return (
     <div className="flex flex-col gap-10">
@@ -105,15 +110,46 @@ export function Stats({
 
       <Section title="Last 7 days">
         <ul className="mt-2.5">
-          {week.map(([label, n, fill]) => (
-            <li key={label} className="flex h-[22px] items-center">
-              <span className="w-[62px] text-muted">{label}</span>
-              <span className="relative h-[3px] flex-1 bg-rule" aria-hidden>
-                <span className={cn("absolute inset-y-0 left-0", fill)} style={{ width: `${(n / peak) * 100}%` }} />
-              </span>
-              <span className="w-8 text-right font-mono text-xs text-fg-2">{n}</span>
-            </li>
-          ))}
+          {week.map(([key, label, n, fill]) => {
+            const on = severity === key
+            const row = (
+              <>
+                <span className="w-[62px] text-left">
+                  <span
+                    className={cn(
+                      "relative",
+                      on ? "text-fg" : "text-muted",
+                      n > 0 && !on && "group-hover:text-fg-2",
+                      on && "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg",
+                    )}
+                  >
+                    {label}
+                  </span>
+                </span>
+                <span className="relative h-[3px] flex-1 bg-rule" aria-hidden>
+                  <span className={cn("absolute inset-y-0 left-0", fill)} style={{ width: `${(n / peak) * 100}%` }} />
+                </span>
+                <span className="w-8 text-right font-mono text-xs text-fg-2">{n}</span>
+              </>
+            )
+            return (
+              <li key={key} className="h-[22px]">
+                {n > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => onSeverity(key)}
+                    aria-pressed={on}
+                    title={on ? "Clear the severity filter" : `Show ${label.toLowerCase()} rows from the last 7 days`}
+                    className="group flex h-full w-full items-center outline-none focus-visible:outline-1 focus-visible:outline-rule"
+                  >
+                    {row}
+                  </button>
+                ) : (
+                  <span className="flex h-full items-center">{row}</span>
+                )}
+              </li>
+            )
+          })}
         </ul>
       </Section>
 

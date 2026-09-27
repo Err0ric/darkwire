@@ -39,6 +39,7 @@ function syncUrl(f: Filters) {
   set("tab", f.tab === "all" ? "" : f.tab)
   set("vendor", f.vendor)
   set("q", f.q)
+  set("severity", f.severity)
   window.history.replaceState(null, "", url.pathname + url.search.replace(/%2C/gi, ",") + url.hash)
 }
 
@@ -235,8 +236,19 @@ export function WireBoard({ initial }: { initial: WireData }) {
             <p className="mt-[3px] flex flex-wrap gap-x-4 text-[15px] leading-5 text-muted md:gap-x-0">
               {counts ? (
                 <>
-                  <Count n={counts.critical_24h}>critical</Count>
-                  <Count n={counts.high_24h} slash>
+                  <Count
+                    n={counts.critical_24h}
+                    active={filters.severity === "critical"}
+                    onClick={() => apply({ severity: filters.severity === "critical" ? "" : "critical" })}
+                  >
+                    critical
+                  </Count>
+                  <Count
+                    n={counts.high_24h}
+                    slash
+                    active={filters.severity === "high"}
+                    onClick={() => apply({ severity: filters.severity === "high" ? "" : "high" })}
+                  >
                     high
                   </Count>
                   <Count n={counts.kev_added_7d} slash>
@@ -337,11 +349,11 @@ export function WireBoard({ initial }: { initial: WireData }) {
           {failed && items.length === 0 ? (
             <p className="py-10 text-[15px] text-muted">The feed is unreachable right now. It retries on the next refresh.</p>
           ) : items.length === 0 && !loading ? (
-            <p className="py-10 text-[15px] text-muted">Nothing here in the last 14 days.</p>
+            <p className="py-10 text-[15px] text-muted">Nothing here in the last {filters.severity ? 7 : 14} days.</p>
           ) : (
             <div className="flex items-baseline justify-between pt-6 text-[15px]">
               <span className="text-muted">
-                {items.length} of {total} in the last 14 days
+                {items.length} of {total} in the last {filters.severity ? 7 : 14} days
               </span>
               {items.length < total && (
                 <button type="button" onClick={showMore} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
@@ -367,7 +379,14 @@ export function WireBoard({ initial }: { initial: WireData }) {
               <Elsewhere elsewhere={elsewhere} />
             </div>
             <div className="min-w-0 flex-1">
-              <Stats active={active} kev={kev} status={status} onVendor={(slug) => apply({ vendor: slug })} />
+              <Stats
+                active={active}
+                kev={kev}
+                status={status}
+                onVendor={(slug) => apply({ vendor: slug })}
+                severity={filters.severity}
+                onSeverity={(s) => apply({ severity: filters.severity === s ? "" : s })}
+              />
             </div>
           </div>
         </aside>
@@ -377,8 +396,26 @@ export function WireBoard({ initial }: { initial: WireData }) {
   )
 }
 
-function Count({ n, slash = false, children }: { n: number; slash?: boolean; children: ReactNode }) {
+function Count({
+  n,
+  slash = false,
+  active = false,
+  onClick,
+  children,
+}: {
+  n: number
+  slash?: boolean
+  active?: boolean
+  /** Critical and high filter the wire to that severity (last 7 days); again clears it. */
+  onClick?: () => void
+  children: ReactNode
+}) {
   // Desktop: "/" between counts, as in wire.png. Narrow screens wrap, so they use a gap instead.
+  const body = (
+    <>
+      <span className="text-fg">{n}</span> {children}
+    </>
+  )
   return (
     <span className="whitespace-nowrap">
       {slash && (
@@ -386,7 +423,22 @@ function Count({ n, slash = false, children }: { n: number; slash?: boolean; chi
           /
         </span>
       )}
-      <span className="text-fg">{n}</span> {children}
+      {onClick ? (
+        <button
+          type="button"
+          onClick={onClick}
+          aria-pressed={active}
+          title={active ? "Clear the severity filter" : "Show this severity over the last 7 days"}
+          className={cn(
+            "relative outline-none hover:text-fg-2 focus-visible:text-fg-2",
+            active && "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg",
+          )}
+        >
+          {body}
+        </button>
+      ) : (
+        body
+      )}
     </span>
   )
 }

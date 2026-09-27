@@ -1,7 +1,7 @@
 // Shared by the /wire server page and the client board (plain values cannot cross the
 // "use client" boundary, so they live here).
 
-import type { ElsewhereItem, FeedPage, FeedQuery, KevRow, ServicesOut, Status, Tab, VendorOut } from "@/lib/api"
+import type { ElsewhereItem, FeedPage, FeedQuery, KevRow, ServicesOut, Severity, Status, Tab, VendorOut } from "@/lib/api"
 
 /** "stack" is the My stack tab: every category, only the viewer's vendors. */
 export type WireTab = Tab | "stack"
@@ -10,6 +10,14 @@ export interface Filters {
   tab: WireTab
   vendor: string // slug, "" for all
   q: string
+  /** ?severity=: this severity over the last 7 days; "" for none. Combines with tab/vendor/stack. */
+  severity: Severity | ""
+}
+
+export const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"]
+
+export function parseSeverity(raw: string | undefined): Severity | "" {
+  return SEVERITIES.find((s) => s === raw) ?? ""
 }
 
 export interface WireData {
@@ -31,7 +39,7 @@ export const DAY_MS = 24 * 3600 * 1000
 
 /** API query for the wire's filters. My stack is the All tab narrowed to the stack's vendors. */
 export function feedQuery(f: Filters, stack: string[]): FeedQuery {
-  const base = { vendor: f.vendor || undefined, q: f.q || undefined }
+  const base = { vendor: f.vendor || undefined, q: f.q || undefined, severity: f.severity || undefined }
   if (f.tab === "stack") return { ...base, tab: "all", vendors: stack.join(",") || undefined }
   return { ...base, tab: f.tab }
 }

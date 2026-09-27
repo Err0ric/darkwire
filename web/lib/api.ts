@@ -209,6 +209,8 @@ export interface FeedQuery {
   vendors?: string
   /** Only Critical or KEV rows, old CVEs left out. */
   critical?: boolean
+  /** Only this severity over the last 7 days, old CVEs left out (the rail's Last 7 days). */
+  severity?: Severity
 }
 
 export const getFeed = (query: FeedQuery = {}, init?: RequestInit) =>

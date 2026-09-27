@@ -1,7 +1,7 @@
 import { connection } from "next/server"
 
 import { WireBoard } from "@/components/wire/WireBoard"
-import { feedQuery, stackCriticalQuery, TABS, type Filters, type WireData, type WireTab } from "@/lib/wire"
+import { feedQuery, parseSeverity, stackCriticalQuery, TABS, type Filters, type WireData, type WireTab } from "@/lib/wire"
 import { parseStack } from "@/lib/stack"
 import { getElsewhere, getFeed, getKev, getServices, getStatus, getVendors } from "@/lib/api"
 
@@ -17,6 +17,7 @@ export default async function Wire({ searchParams }: PageProps<"/wire">) {
     tab: TABS.some(([t]) => t === tab) || (tab === "stack" && stack.length > 0) ? tab : "all",
     vendor: one(params.vendor),
     q: one(params.q),
+    severity: parseSeverity(one(params.severity)),
   }
 
   const [feed, status, vendors, elsewhere, kev, critical, services] = await Promise.allSettled([

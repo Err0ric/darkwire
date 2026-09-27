@@ -198,6 +198,11 @@ Feed audit: `python -m app.audit [--api URL] [--feed NAME] [-v]` in `/api` re-fe
 - Home: new rows lead the ticker; those that qualify join Right now (quietly re-read in full every 5 minutes as well).
 - Ages update every 60s without a refetch.
 
+## Auto-update on deploy
+
+- `NEXT_PUBLIC_BUILD_ID` is `VERCEL_GIT_COMMIT_SHA` at build time (`dev` locally). `/api/version` returns `{ build }`, dynamic, `Cache-Control: no-store`.
+- Every open page checks it every 5 minutes. A different build reloads the page at a safe moment: at once if the tab is hidden, else on the next switch to hidden, or after 2 minutes with no pointer or key activity. Never while a row is expanded or a text field has focus. The full URL is kept. It logs `darkwire: new build <sha>, reloading` first.
+
 ## Unseen-item indicators
 
 - When a poll finds NEW rows (see Live updates) and `document.hidden` is true: title becomes `(3) darkwire`, or `(3!) darkwire` if any new row is Critical or KEV.

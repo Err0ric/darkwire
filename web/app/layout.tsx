@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 
+import { AutoUpdate } from "@/components/AutoUpdate"
 import { Kiosk } from "@/components/Kiosk"
 import { Nav } from "@/components/nav"
 import { PrefsProvider } from "@/lib/prefs"
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <PrefsProvider>
           <Kiosk />
+          <AutoUpdate />
           <Nav />
           {children}
         </PrefsProvider>

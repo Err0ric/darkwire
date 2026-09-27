@@ -8,11 +8,13 @@ from datetime import UTC, datetime, time, timedelta
 import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app import epss, kev, nvd, summaries
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
+from app.tagging import says_unpatched
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +58,12 @@ async def roll_up(session: AsyncSession) -> int:
         by_item[item_id].append(cve)
     if not by_item:
         return 0
-    items = {i.id: i for i in (await session.scalars(select(Item).where(Item.id.in_(list(by_item))))).all()}
+    items = {
+        i.id: i
+        for i in (
+            await session.scalars(select(Item).where(Item.id.in_(list(by_item))).options(selectinload(Item.sources)))
+        ).all()
+    }
     msrc = {
         m.cve_id: m
         for m in (
@@ -89,6 +96,14 @@ async def roll_up(session: AsyncSession) -> int:
                 event, kind = changed_at, "cvss_changed"
         if event != item.last_event_at:
             resurfaced += 1
+
+        # Coverage override: when a headline or lead paragraph in the cluster says unpatched / no
+        # patch, nothing in it is "patched". With no explicit vendor fix it is "no fix"; with one
+        # (coverage and vendor disagree) it is "unverified" until they agree.
+        if says_unpatched(*(t for s in item.sources for t in (s.title, s.excerpt))):
+            status = PatchStatus.unverified if status == PatchStatus.patched else PatchStatus.no_fix
+            for c in cves:
+                c.patch_status = PatchStatus.unverified if c.patch_status == PatchStatus.patched else PatchStatus.no_fix
 
         item.cve_id = primary.id
         item.cvss = primary.base_score

@@ -38,6 +38,55 @@ def extract_cves(*texts: str) -> list[str]:
     return list(seen)
 
 
+_COUNT = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+_COUNTED = re.compile(
+    r"\b(two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\s+(?:[\w-]+\s+){0,3}?"
+    r"(?:zero-days?|0-days?|flaws?|vulnerabilit(?:y|ies)|bugs?|cves?|issues?|weaknesses)\b",
+    re.IGNORECASE,
+)
+SMALL_LIST = 3
+
+
+def headline_cves(title: str, lead: str, *rest: str) -> list[str]:
+    """The CVE IDs an article ties to its headline's issue, not every ID it mentions.
+
+    Articles about one bulletin often list all of it ("the six other flaws ...") and older
+    CVEs for context. In order: IDs in the title; IDs in the lead paragraph; everything when
+    the article names three or fewer; the first N when the headline counts them ("Two ...
+    Zero-Days"); IDs mentioned more than once; else the first one."""
+    in_title = extract_cves(title)
+    if in_title:
+        return in_title
+    everything = extract_cves(lead, *rest)
+    if len(everything) <= SMALL_LIST:
+        return everything
+    in_lead = extract_cves(lead)
+    if in_lead:
+        return in_lead
+    counted = _COUNTED.search(title or "")
+    if counted:
+        word = counted.group(1).lower()
+        n = int(word) if word.isdigit() else _COUNT[word]
+        if 0 < n < len(everything):
+            return everything[:n]
+    text = " ".join(t or "" for t in (lead, *rest)).upper()
+    repeated = [c for c in everything if text.count(c) > 1]
+    return repeated or everything[:1]
+
+
+# Coverage that says there is no fix. Checked on titles and lead paragraphs only: bodies often
+# mention "unpatched systems" in passing.
+UNPATCHED = re.compile(
+    r"\b(?:unpatched|no (?:patch|fix)(?:es)?(?: is| are)? (?:yet )?(?:available|released)"
+    r"|without (?:a )?(?:patch|fix)|not yet (?:patched|fixed)|yet to (?:be )?(?:patch|fix)(?:ed)?)\b",
+    re.IGNORECASE,
+)
+
+
+def says_unpatched(*texts: str) -> bool:
+    return any(UNPATCHED.search(t or "") for t in texts)
+
+
 def _words(*terms: str) -> re.Pattern[str]:
     return re.compile(r"(?<!\w)(?:" + "|".join(terms) + r")(?!\w)", re.IGNORECASE)
 

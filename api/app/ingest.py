@@ -26,7 +26,7 @@ from app.models import Category, Cve, Health, Item, ItemCve, ItemSource, Source,
 from app.tagging import (
     VendorMatcher,
     clean_text,
-    extract_cves,
+    headline_cves,
     first_paragraph,
     guess_category,
     is_ad,
@@ -214,7 +214,7 @@ async def ingest_source(
             stored.added += 1
             continue
 
-        cves = extract_cves(a.title, a.text, a.body)
+        cves = headline_cves(a.title, a.excerpt, a.text, a.body)
         if cves:
             # Placeholder rows so the FKs hold. Enrichment fills them in.
             await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
@@ -290,7 +290,7 @@ async def reextract_once(
             if link is None:
                 continue
             link.body = a.body or link.body
-            cves = extract_cves(a.title, a.text, a.body)
+            cves = headline_cves(a.title, a.excerpt, a.text, a.body)
             if cves:
                 await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
                 item = await session.get(Item, link.item_id)
@@ -379,6 +379,11 @@ async def run_ingest() -> None:
                     await cleanup.retag_once(once, matcher)
             except Exception:
                 log.exception("ingest: cleanup failed, retried next run")
+            try:
+                async with SessionLocal() as once:
+                    await cleanup.relink_cves_once(once)
+            except Exception:
+                log.exception("ingest: CVE relink failed, retried next run")
             try:
                 async with SessionLocal() as once:
                     # v2: vendorless stories that share distinctive words (Kiteworks-style pairs).

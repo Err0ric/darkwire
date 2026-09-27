@@ -5,13 +5,13 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import exists, select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app import jobstate
 from app.models import Category, Item, ItemCve, ItemSource, Stream
-from app.tagging import VendorMatcher, guess_category, is_ad
+from app.tagging import VendorMatcher, guess_category, headline_cves, is_ad
 
 log = logging.getLogger(__name__)
 
@@ -67,4 +67,46 @@ async def retag_once(session: AsyncSession, matcher: VendorMatcher) -> dict | No
     await jobstate.put(session, STATE, json.dumps({"at": datetime.now(UTC).isoformat(), **counts}))
     await session.commit()
     log.info("cleanup: %s", ", ".join(f"{k}={v}" for k, v in counts.items()))
+    return counts
+
+
+RELINK_STATE = "cve_links_v2"
+
+
+async def relink_cves_once(session: AsyncSession) -> dict | None:
+    """One time: keep only the CVEs each row's articles tie to their headlines (tagging.
+    headline_cves), dropping IDs attached from a whole bulletin. Uses the stored title, lead
+    paragraph and body; a row where that yields nothing keeps its links (its CVEs may have come
+    from feed text that is not stored). Enrichment re-points cve_id and patch status after."""
+    if await jobstate.get(session, RELINK_STATE):
+        return None
+    counts = {"items": 0, "links_removed": 0, "items_changed": 0}
+    items = (
+        await session.scalars(
+            select(Item).where(Item.stream == Stream.main, Item.sources.any()).options(selectinload(Item.sources))
+        )
+    ).all()
+    changed_ids = []
+    for item in items:
+        counts["items"] += 1
+        allowed: list[str] = []
+        for src in item.sources:
+            for cve in headline_cves(src.title, src.excerpt or "", src.body or ""):
+                if cve not in allowed:
+                    allowed.append(cve)
+        if not allowed:
+            continue
+        linked = (await session.scalars(select(ItemCve.cve_id).where(ItemCve.item_id == item.id))).all()
+        extra = [c for c in linked if c not in allowed]
+        if not extra:
+            continue
+        await session.execute(delete(ItemCve).where(ItemCve.item_id == item.id, ItemCve.cve_id.in_(extra)))
+        if item.cve_id in extra:
+            item.cve_id = next((c for c in linked if c in allowed), None)
+        counts["links_removed"] += len(extra)
+        counts["items_changed"] += 1
+        changed_ids.append(item.id)
+    await jobstate.put(session, RELINK_STATE, json.dumps({"at": datetime.now(UTC).isoformat(), **counts, "item_ids": changed_ids}))
+    await session.commit()
+    log.info("cleanup: relinked CVEs: %s, items %s", ", ".join(f"{k}={v}" for k, v in counts.items()), changed_ids)
     return counts

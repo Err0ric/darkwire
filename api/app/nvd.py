@@ -30,7 +30,7 @@ CHANGES_STATE = "nvd_changes_until"
 ANALYZED = {"Analyzed", "Modified"}
 # Bump when parse() output changes; the next enrichment pass re-derives every stored CVE
 # from its cached NVD record (no API calls).
-PARSER_VERSION = "3"
+PARSER_VERSION = "4"
 
 
 class Nvd:
@@ -182,9 +182,9 @@ def affected_summary(cve: dict, cpes: list[dict]) -> str | None:
 
 
 def fixed_versions(cve: dict, cpes: list[dict], limit: int = 6) -> list[dict]:
-    """First fixed version per affected range: CPE versionEndExcluding, else the CNA's
-    lessThan / "unaffected at" versions. versionEndIncluding names the last bad version,
-    not a fix, so it never counts."""
+    """Explicit fixed versions: CPE versionEndExcluding, else the CNA's "unaffected at"
+    versions. versionEndIncluding names the last bad version and a CNA lessThan only bounds the
+    affected range, so neither counts as a fix."""
     names = {_norm(p): p for p, _ in _cna_versions(cve) if p}
     out: list[dict] = []
 
@@ -201,7 +201,8 @@ def fixed_versions(cve: dict, cpes: list[dict], limit: int = 6) -> list[dict]:
         for product, v in _cna_versions(cve):
             if v.get("status") != "affected":
                 continue
-            add(product, v.get("lessThan"))
+            # "lessThan" only bounds the affected range (it can name a fix not shipped yet);
+            # "unaffected at" is the vendor saying where it is fixed.
             for c in v.get("changes") or []:
                 if c.get("status") == "unaffected":
                     add(product, c.get("at"))
@@ -218,8 +219,12 @@ def patch_status(cve: dict, cpes: list[dict], refs: list[dict]) -> tuple[PatchSt
         return [r["url"] for r in refs if tag in (r.get("tags") or [])]
 
     advisory, patches, mitigations = tagged("Vendor Advisory"), tagged("Patch"), tagged("Mitigation")
+    # Explicit fixes only: NVD's CPE upper bound (set from the vendor's fixed version when NVD
+    # analyzes the CVE) or the CNA saying "unaffected at" a version. A CNA "lessThan" alone is
+    # the edge of the affected range and can name a fix that has not shipped.
     fix_known = any(m.get("versionEndExcluding") for m in cpes) or any(
-        v.get("status") == "affected" and (v.get("lessThan") or v.get("changes")) for _, v in _cna_versions(cve)
+        v.get("status") == "affected" and any(c.get("status") == "unaffected" for c in v.get("changes") or [])
+        for _, v in _cna_versions(cve)
     )
     if patches or fix_known:
         return PatchStatus.patched, (advisory or patches or [None])[0]

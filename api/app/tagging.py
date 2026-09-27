@@ -40,20 +40,25 @@ def extract_cves(*texts: str) -> list[str]:
 
 _COUNT = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
 _COUNTED = re.compile(
-    r"\b(two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\s+(?:[\w-]+\s+){0,3}?"
+    r"\b(two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\s+(?:[\w-]+\s+){0,4}?"
     r"(?:zero-days?|0-days?|flaws?|vulnerabilit(?:y|ies)|bugs?|cves?|issues?|weaknesses)\b",
     re.IGNORECASE,
 )
 SMALL_LIST = 3
+_EXPLOITED = re.compile(
+    r"\b(?:zero-days?|0-days?|exploit(?:ed|ing|s)?|in the wild|KEV|Known Exploited)\b", re.IGNORECASE
+)
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
 
 def headline_cves(title: str, lead: str, *rest: str) -> list[str]:
     """The CVE IDs an article ties to its headline's issue, not every ID it mentions.
 
     Articles about one bulletin often list all of it ("the six other flaws ...") and older
-    CVEs for context. In order: IDs in the title; IDs in the lead paragraph; everything when
-    the article names three or fewer; the first N when the headline counts them ("Two ...
-    Zero-Days"); IDs mentioned more than once; else the first one."""
+    CVEs for context. In order: IDs in the title; everything when the article names three or
+    fewer; IDs in the lead paragraph unless it lists a whole bulletin; the first N when the
+    headline counts them ("Two ... Zero-Days"); for exploitation headlines, the IDs in
+    sentences about exploitation; IDs mentioned more than once; else the first one."""
     in_title = extract_cves(title)
     if in_title:
         return in_title
@@ -61,7 +66,9 @@ def headline_cves(title: str, lead: str, *rest: str) -> list[str]:
     if len(everything) <= SMALL_LIST:
         return everything
     in_lead = extract_cves(lead)
-    if in_lead:
+    # A lead that enumerates a whole bulletin ("eight new vulnerabilities: CVE-..., ...") is
+    # context, not the headline's issue.
+    if in_lead and len(in_lead) <= SMALL_LIST:
         return in_lead
     counted = _COUNTED.search(title or "")
     if counted:
@@ -69,6 +76,17 @@ def headline_cves(title: str, lead: str, *rest: str) -> list[str]:
         n = int(word) if word.isdigit() else _COUNT[word]
         if 0 < n < len(everything):
             return everything[:n]
+    if _EXPLOITED.search(title or ""):
+        # "CISA has added CVE-A and CVE-B to its KEV catalog": the IDs in sentences about
+        # exploitation that name a few, not the "CVE-A through CVE-H" bulletin line.
+        tied: list[str] = []
+        for text in (lead, *rest):
+            for sentence in _SENTENCE.split(text or ""):
+                ids = extract_cves(sentence)
+                if ids and len(ids) <= SMALL_LIST and _EXPLOITED.search(sentence):
+                    tied += [c for c in ids if c not in tied]
+        if tied and len(tied) < len(everything):
+            return tied
     text = " ".join(t or "" for t in (lead, *rest)).upper()
     repeated = [c for c in everything if text.count(c) > 1]
     return repeated or everything[:1]

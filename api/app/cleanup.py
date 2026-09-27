@@ -70,7 +70,7 @@ async def retag_once(session: AsyncSession, matcher: VendorMatcher) -> dict | No
     return counts
 
 
-RELINK_STATE = "cve_links_v2"
+RELINK_STATE = "cve_links_v3"
 
 
 async def relink_cves_once(session: AsyncSession) -> dict | None:

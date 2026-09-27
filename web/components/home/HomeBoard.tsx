@@ -144,7 +144,8 @@ export function HomeBoard({
 
   return (
     // Exactly one screen tall: the row list takes what the header and footer leave.
-    <main className="flex h-[calc(100dvh/var(--zoom)-var(--nav-h))] min-h-0 flex-col px-4 md:px-12">
+    // Content caps at 1200px like the wire's feed; from 2500px rows flow into two columns.
+    <main className="flex h-[calc(100dvh/var(--zoom)-var(--nav-h))] min-h-0 w-full max-w-[calc(1200px+6rem)] flex-col px-4 md:px-12 min-[2500px]:max-w-[calc(2464px+6rem)]">
       <header className="pt-6 md:pt-[39px]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <h1 className="min-h-7 text-[22px] leading-7 font-medium tracking-[-0.01em] text-fg">
@@ -213,7 +214,10 @@ export function HomeBoard({
         </p>
       </div>
 
-      <div ref={box} className="@container min-h-0 flex-1 overflow-hidden">
+      <div
+        ref={box}
+        className="@container min-h-0 flex-1 overflow-hidden *:break-inside-avoid min-[2500px]:columns-2 min-[2500px]:gap-16 min-[2500px]:[column-fill:auto]"
+      >
         {visible.map((item) => (
           <FeedRow key={item.id} item={item} fresh={fresh.has(item.id)} pinned={pinIds.has(item.id)} />
         ))}

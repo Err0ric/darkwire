@@ -24,9 +24,9 @@ export function Elsewhere({ elsewhere }: { elsewhere: ElsewhereItem[] }) {
   const now = useNow()
   return (
     <Section title="Elsewhere" aside="policy · privacy · culture">
-      <ul className="mt-3 space-y-3.5">
+      <ul className="mt-3 gap-x-10 @min-[520px]:columns-[240px]">
         {elsewhere.map((e) => (
-          <li key={e.id}>
+          <li key={e.id} className="mb-3.5 break-inside-avoid">
             <a href={e.url} {...EXTERNAL} className="block leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
               {e.headline}
             </a>
@@ -65,7 +65,7 @@ export function Stats({
   const peak = Math.max(1, ...week.map(([, n]) => n))
 
   return (
-    <>
+    <div className="flex flex-col gap-10 @min-[560px]:grid @min-[560px]:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] @min-[560px]:gap-x-12">
       <Section title="Most active this week">
         <ul className="mt-2.5">
           {active.map((v) => (
@@ -80,7 +80,7 @@ export function Stats({
         </ul>
       </Section>
 
-      <Section title="Added to KEV" className="mt-10">
+      <Section title="Added to KEV">
         <ul className="mt-2.5">
           {kev.map((k) => (
             <li key={k.cve_id} className="flex h-6 items-center justify-between gap-3">
@@ -99,7 +99,7 @@ export function Stats({
         </ul>
       </Section>
 
-      <Section title="Last 7 days" className="mt-10">
+      <Section title="Last 7 days">
         <ul className="mt-2.5">
           {week.map(([label, n, fill]) => (
             <li key={label} className="flex h-[22px] items-center">
@@ -114,13 +114,13 @@ export function Stats({
       </Section>
 
       {status && (
-        <p className="mt-10 leading-[19px] text-muted">
+        <p className="leading-[19px] text-muted">
           Sources: NVD, CISA KEV, vendor PSIRTs, {status.sources_total} feeds.{" "}
           {status.sources_failing === 0 ? "All healthy." : `${status.sources_failing} failing.`}
           <br />
           <span className="mt-2 inline-block">Refreshes every {status.sync.interval_minutes} minutes.</span>
         </p>
       )}
-    </>
+    </div>
   )
 }

@@ -170,8 +170,10 @@ export function WireBoard({ initial }: { initial: WireData }) {
     <main className="flex-1 px-4 pb-24 md:px-12">
       {/* Rail beside the feed from 1000px, stacked below it under that; three columns
           (feed | Elsewhere | stats) from 2200px. The feed is fluid; no page cap. */}
-      <div className="min-[1000px]:flex min-[1000px]:gap-16">
-        <div className="@container min-w-0 flex-1">
+      <div className="min-[1200px]:flex min-[1200px]:gap-16">
+        {/* Feed: basis and cap 1200px so the data columns stay near the headline; the rail
+            takes whatever is left (at least 280px). */}
+        <div className="@container min-w-0 flex-1 min-[1200px]:max-w-[1200px] min-[1200px]:flex-[1_1_1200px]">
           <header className="pt-6 md:pt-[33px]">
             <h1 className="text-[36px] leading-[44px] font-bold tracking-[-0.02em] text-fg">Today</h1>
             <p className="mt-[3px] flex flex-wrap gap-x-4 text-[15px] leading-5 text-muted md:gap-x-0">
@@ -269,13 +271,16 @@ export function WireBoard({ initial }: { initial: WireData }) {
         <aside
           data-chrome
           aria-label="Context"
-          className="mt-16 text-[13px] min-[1000px]:mt-0 min-[1000px]:w-[clamp(280px,20vw,320px)] min-[1000px]:shrink-0 min-[1000px]:pt-[133px] min-[2200px]:flex min-[2200px]:w-auto min-[2200px]:gap-16"
+          className="@container/rail mt-16 text-[13px] min-[1200px]:mt-0 min-[1200px]:min-w-[280px] min-[1200px]:flex-[1_1_280px] min-[1200px]:pt-[133px]"
         >
-          <div className="min-[2200px]:w-[320px]">
+          {/* A wide rail splits into Elsewhere | stats, and each flows into more columns. */}
+          <div className="flex flex-col gap-10 @min-[600px]/rail:flex-row @min-[600px]/rail:gap-16">
+          <div className="@container min-w-0 flex-1">
             <Elsewhere elsewhere={elsewhere} />
           </div>
-          <div className="mt-10 min-[2200px]:mt-0 min-[2200px]:w-[320px]">
+          <div className="@container min-w-0 flex-1">
             <Stats active={active} kev={kev} status={status} onVendor={(slug) => apply({ vendor: slug })} />
+          </div>
           </div>
         </aside>
       </div>

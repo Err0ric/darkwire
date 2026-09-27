@@ -54,9 +54,10 @@ Layout: no boxes, no cards, no panel borders. Separate regions with background t
 
 Built for wall displays as much as laptops: portrait and landscape, 390px to 3440px wide.
 
-- One container on every page: nav and content share the same gutters (16px mobile, 48px from 768px), no max width, so edges line up. Home and wire use the same container.
-- Feed column is fluid. The headline absorbs extra width; vendor mark, CVE ID, score, bar, badge, age and chevron stay fixed. When the feed column is under 760px (rail beside it), the CVE ID column drops out; under 940px, the wire's tabs and filters split onto two lines. Both are container queries on the feed column, not viewport breakpoints.
-- Wire rail: 280-320px on the right from 1000px wide; below that it stacks under the feed. From 2200px: three columns, feed | Elsewhere | stats (Most active, Added to KEV, Last 7 days, sources), 320px each.
+- One container on every page: nav and content share the same gutters (16px mobile, 48px from 768px) and left edge.
+- The feed column is capped at 1200px (its flex basis too), so the data columns (CVE ID, score, bar, badge, age, chevron) stay near the headline instead of across dead space. Inside it the headline absorbs width; the data columns stay fixed. Under a 760px feed the CVE ID column drops out; under 940px the wire's tabs and filters split onto two lines (container queries on the feed column).
+- Wire rail: beside the feed from 1200px wide (so 1080px portrait stacks it below the feed), at least 280px, and it takes all the width the capped feed leaves. When the rail is 600px or wider it splits into Elsewhere | stats; Elsewhere items flow into columns and the stat sections sit side by side as the rail grows.
+- Home has no rail: its content caps at 1200px, and from 2500px wide the rows flow into two columns (left column first).
 - Fill the height with rows, never a fixed count. Home is exactly one screen tall: header, as many whole rows as fit, footer at the bottom; on the All tab, Critical or KEV rows with an event in the last 48h are pinned first with a dim `pinned` marker. Wire loads at least a screenful and scrolls.
 - Kiosk: key `f` (or `?kiosk=1`) hides nav and rail and scales type about 15%. `f` again leaves it.
 - Check new work at 390x844, 1080x1920, 1440x2560, 1920x1080, 2560x1440 and 3440x1440.

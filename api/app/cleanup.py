@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app import jobstate
 from app.models import Category, Item, ItemCve, ItemSource, Stream
-from app.tagging import VendorMatcher, guess_category, headline_cves, is_ad
+from app.tagging import VendorMatcher, cluster_cves, guess_category, is_ad
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ async def retag_once(session: AsyncSession, matcher: VendorMatcher) -> dict | No
     return counts
 
 
-RELINK_STATE = "cve_links_v3"
+RELINK_STATE = "cve_links_v4"
 
 
 async def relink_cves_once(session: AsyncSession) -> dict | None:
@@ -89,11 +89,7 @@ async def relink_cves_once(session: AsyncSession) -> dict | None:
     changed_ids = []
     for item in items:
         counts["items"] += 1
-        allowed: list[str] = []
-        for src in item.sources:
-            for cve in headline_cves(src.title, src.excerpt or "", src.body or ""):
-                if cve not in allowed:
-                    allowed.append(cve)
+        allowed = cluster_cves([(s.title, s.excerpt or "", s.body or "") for s in item.sources])
         if not allowed:
             continue
         linked = (await session.scalars(select(ItemCve.cve_id).where(ItemCve.item_id == item.id))).all()

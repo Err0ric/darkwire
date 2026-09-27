@@ -26,6 +26,7 @@ from app.models import Category, Cve, Health, Item, ItemCve, ItemSource, Source,
 from app.tagging import (
     VendorMatcher,
     clean_text,
+    cluster_cves,
     headline_cves,
     first_paragraph,
     guess_category,
@@ -234,6 +235,12 @@ async def ingest_source(
                 cluster.vendor_id = vendor_id or cluster.vendor_id
             if cluster.category == Category.news:
                 cluster.category = category
+            # The cluster's count can tie more IDs than this article alone ("2 zero-days" in one
+            # headline, the bulletin list in another).
+            texts = [(s.title, s.excerpt or "", s.body or "") for s in cluster.sources if s is not link]
+            cves = cluster_cves([*texts, (a.title, a.excerpt or "", " ".join(t or "" for t in (a.text, a.body)))])
+            if cves:
+                await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
             await link_cves(session, cluster, cves)
             cluster.changed_at = func.now()  # a new source alone does not touch the row's columns
             stored.merged += 1

@@ -51,6 +51,31 @@ _EXPLOITED = re.compile(
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
 
+def headline_count(title: str | None) -> int | None:
+    """"Two ... Zero-Days" -> 2, "2 exploited zero-days" -> 2; None when the title counts nothing."""
+    counted = _COUNTED.search(title or "")
+    if not counted:
+        return None
+    word = counted.group(1).lower()
+    n = int(word) if word.isdigit() else _COUNT[word]
+    return n if n > 0 else None
+
+
+def cluster_cves(articles: list[tuple[str, str, str]]) -> list[str]:
+    """headline_cves for a whole cluster of (title, lead, body) articles. Each article's IDs
+    count; when a title counts the issues ("Two ... Zero-Days") and the articles tie fewer than
+    that, the first IDs the cluster's texts name fill up to the count (one outlet counts, another
+    lists the bulletin)."""
+    tied: list[str] = []
+    for title, lead, body in articles:
+        tied += [c for c in headline_cves(title, lead or "", body or "") if c not in tied]
+    n = max((headline_count(t) or 0 for t, _, _ in articles), default=0)
+    if len(tied) < n:
+        named = extract_cves(*(t for _, lead, body in articles for t in (lead or "", body or "")))
+        tied += [c for c in named if c not in tied][: n - len(tied)]
+    return tied
+
+
 def headline_cves(title: str, lead: str, *rest: str) -> list[str]:
     """The CVE IDs an article ties to its headline's issue, not every ID it mentions.
 
@@ -70,12 +95,9 @@ def headline_cves(title: str, lead: str, *rest: str) -> list[str]:
     # context, not the headline's issue.
     if in_lead and len(in_lead) <= SMALL_LIST:
         return in_lead
-    counted = _COUNTED.search(title or "")
-    if counted:
-        word = counted.group(1).lower()
-        n = int(word) if word.isdigit() else _COUNT[word]
-        if 0 < n < len(everything):
-            return everything[:n]
+    n = headline_count(title)
+    if n and n < len(everything):
+        return everything[:n]
     if _EXPLOITED.search(title or ""):
         # "CISA has added CVE-A and CVE-B to its KEV catalog": the IDs in sentences about
         # exploitation that name a few, not the "CVE-A through CVE-H" bulletin line.

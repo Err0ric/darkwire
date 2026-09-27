@@ -6,7 +6,7 @@ import { cn } from "cn"
 
 import { Ticker } from "@/components/home/Ticker"
 import { PrefsControls } from "@/components/PrefsControls"
-import { NEW_ROWS_EVENT, Wordmark } from "@/components/Wordmark"
+import { CURSOR_RESERVE_EM, NEW_ROWS_EVENT, Wordmark } from "@/components/Wordmark"
 import { getFeed, getStatus, type FeedItem, type Status } from "@/lib/api"
 import { pad, useMinuteClock, utcHHMM, zoneName } from "@/lib/clock"
 import { NewDot, useDots, type DotState } from "@/lib/dots"
@@ -166,9 +166,12 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
  * ".tech") at landing size, and "live security news + CVEs" under it, right-aligned to the
  * reserved end of ".tech". */
 function Lockup({ state }: { state: SyncState }) {
+  // The cursor's reserved space after ".tech" hangs outside the layout box (negative margin),
+  // so the block centers on the visible "darkwire.tech" and the tagline ends under the "h".
+  const size = "clamp(40px, 3.2vw, 64px)"
   return (
     <div className="inline-flex flex-col items-end">
-      <h1 aria-label="darkwire.tech" style={{ fontSize: "clamp(40px, 3.2vw, 64px)" }}>
+      <h1 aria-label="darkwire.tech" style={{ fontSize: size, marginRight: `calc(${size} * ${-CURSOR_RESERVE_EM})` }}>
         <Wordmark state={state} />
       </h1>
       <p className="mt-2 font-mono text-[13px] leading-4 text-muted">live security news + CVEs</p>

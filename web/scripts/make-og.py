@@ -41,18 +41,19 @@ MUTED = (0x8B, 0x8B, 0x8B)  # --muted (tagline)
 RED = (0xDC, 0x26, 0x26)  # --critical (the square)
 TECH = (0x4A, 0x4A, 0x4A)  # ".tech"
 BINARY = (0x3D, 0x1A, 0x1A)  # a character before it resolves
-CURSOR = (0x34, 0x34, 0x34)  # #4a4a4a at 60% over --bg
+CURSOR = (0x24, 0x24, 0x24)  # #4a4a4a at 40% over --bg
 RED_MID = (0x8C, 0x1C, 0x1C)  # the square half way through a blink (palette slot for fades)
 
 # Wordmark geometry, in em of the word's font size (WORDMARK in Wordmark.tsx).
 WORD_TRACKING = -0.03
-SQUARE = 0.20  # square side
-SQUARE_BOTTOM = 0.725  # from the bottom of the ı's 1em box (leading-none) to the square
-TECH_SIZE = 0.8
+# The square is measured from the font itself (as Wordmark.tsx does in the browser): side =
+# the ı stem's width, top on the ascender of "d" (never above), at least 1px above the stem.
+TECH_SIZE = 0.55
 TECH_TRACKING = -0.04  # of the tech font size
 TECH_GAP = -0.05  # of the tech font size
-CURSOR_W = 0.55  # of the tech font size
-CURSOR_H = 0.78  # of the tech font size
+CURSOR_W = 0.4  # of the tech font size
+CURSOR_H = 0.53  # of the tech font size (mono x-height)
+CURSOR_GAP = 0.06  # of the tech font size
 
 # Timing (ms).
 CHAR_MS, FLIP_MS, FADE_MS = 700, 175, 350
@@ -157,8 +158,8 @@ class Lockup:
         gap = TECH_GAP * self.tech_size
         self.tech_adv = self.tech.getlength("0") + self.t_track  # mono: one advance per cell
         tech_w = 5 * self.tech_adv
-        cursor_w = CURSOR_W * self.tech_size
-        total = word_w + gap + tech_w + cursor_w
+        # Center on the visible "darkwire.tech"; the cursor's space hangs past the "h".
+        total = word_w + gap + tech_w
 
         ascent, _ = self.word.getmetrics()
         t_box = self.tag.getbbox("live security news + CVEs")
@@ -175,23 +176,26 @@ class Lockup:
         self.tech_x = self.x0 + word_w + gap
         # Baselines line up: the tech font's origin sits so its baseline matches the word's.
         self.tech_y = self.y0 + ascent - self.tech.getmetrics()[0]
-        self.cursor_x = lambda n: self.tech_x + n * self.tech_adv + 0.06 * self.tech_size
+        self.cursor_x = lambda n: self.tech_x + n * self.tech_adv + CURSOR_GAP * self.tech_size
         self.reserve_end = self.x0 + total
         self.tag_y = self.y0 + word_bottom + TAG_GAP - t_box[1]
         self.tag_x = self.reserve_end - self.tag.getlength("live security news + CVEs")
 
     def _square_rect(self, x0, y0):
-        """The square over the ı, from the same numbers as the CSS: the ı's 1em box bottom is
-        the baseline + descent - half the leading (line-height 1)."""
-        ascent, descent = self.word.getmetrics()
-        half_leading = (WORD_SIZE - (ascent + descent)) / 2
-        box_bottom = ascent + descent + half_leading  # from the draw origin
-        side = SQUARE * WORD_SIZE
-        bottom = box_bottom - SQUARE_BOTTOM * WORD_SIZE
-        prefix = tracked_len("darkw", self.word, self.w_track) + self.w_track
-        glyph_w = self.word.getlength("ı")
-        cx = prefix + glyph_w / 2
-        return (x0 + cx - side / 2, y0 + bottom - side, x0 + cx + side / 2, y0 + bottom)
+        """The square over the ı from the font's own ink: side = stem width, top on the
+        ascender of "d", at least 1px above the stem (the square gives up a pixel before it
+        rises above the ascender)."""
+        f = self.word
+        stem_box = f.getbbox("ı")  # (x0, y0, x1, y1) from the draw origin
+        asc_top = f.getbbox("d")[1]
+        prefix = tracked_len("darkw", f, self.w_track) + self.w_track
+        stem_w = stem_box[2] - stem_box[0]
+        bottom = stem_box[1] - max(1, round(0.024 * WORD_SIZE))
+        side = min(stem_w, bottom - asc_top)
+        cx = prefix + (stem_box[0] + stem_box[2]) / 2
+        left = round(x0 + cx - side / 2)
+        top = round(y0 + bottom - side)
+        return (left, top, left + side, top + side)
 
     def draw(self, typed=5, char_state=None, tech_alpha=1.0, cursor=None, square_alpha=1.0):
         """typed: characters fully shown; char_state: (index, digit, fade 0..1) for the one

@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, type CSSProperties } from "react"
+import type React from "react"
 import { cn } from "cn"
 
 import type { SyncState } from "@/lib/sync"
@@ -12,12 +13,18 @@ export const WORDMARK = {
     tracking: "-0.03em",
   },
   square: {
-    /** Stands in for the i's dot, over a dotless ı. */
-    size: "0.2em",
-    /** From the bottom of the ı's box (leading-none) to the square's bottom edge. */
-    bottom: "0.725em",
-    /** Horizontal nudge from the ı's center (Geist's ı stem sits a touch left of center). */
-    nudge: "0em",
+    /** Geist Sans 700 "i", measured (canvas, 1000px, ink scan), in em of the wordmark size:
+     *  stem 0.150 wide, left edge 0.066 from the glyph origin, top 0.536 above the baseline;
+     *  native tittle 0.155 x 0.120, from 0.602 to 0.722, a 0.066 gap above the stem; the
+     *  ascender of "d"/"k" tops out at 0.710. A stem-wide square over the native gap would rise
+     *  to 0.752 (above the ascender, as Geist's own tittle does), so the square keeps the stem's
+     *  width, its top sits on the ascender, and the gap is what remains (0.024em), never less
+     *  than one device pixel. Snapped to device pixels at the rendered size (see useSquareGeometry). */
+    stemWidth: 0.15,
+    stemLeft: 0.066,
+    stemTop: 0.536,
+    ascender: 0.71,
+    nativeGap: 0.066,
     live: "var(--critical)",
     stale: "var(--accent)",
     staleOpacity: 0.5,
@@ -25,7 +32,8 @@ export const WORDMARK = {
   },
   tech: {
     text: ".tech",
-    size: "0.8em",
+    /** Of the wordmark size; baseline-aligned with "darkwire". */
+    size: 0.55,
     color: "#4a4a4a",
     tracking: "-0.04em",
     /** Pulls ".tech" in toward "darkwire" (the mono "." sits mid-cell, which reads as a space),
@@ -42,9 +50,12 @@ export const WORDMARK = {
     fadeMs: 350,
   },
   cursor: {
-    color: "rgba(74, 74, 74, 0.6)",
-    width: "0.55em",
-    height: "0.78em",
+    /** A faint hint, not a block: 0.4em wide and the mono x-height tall (em of ".tech"). */
+    color: "rgba(74, 74, 74, 0.4)",
+    width: 0.4,
+    height: 0.53,
+    /** Space between the last character and the cursor, em of ".tech". */
+    gap: 0.06,
   },
   blink: {
     /** Cursor and square blink together: opacity 1 -> low -> 1 on a cosine curve. */
@@ -62,6 +73,59 @@ export const WORDMARK = {
 /** Fired by a poll that found NEW rows (lib/dots.tsx); every mounted wordmark re-runs. */
 export const NEW_ROWS_EVENT = "darkwire:new-rows"
 
+/** The cursor's reserved space after ".tech", in em of the wordmark size. The landing lockup
+ * subtracts it so the tagline and the centering use the visible end of ".tech". */
+export const CURSOR_RESERVE_EM = WORDMARK.tech.size * (WORDMARK.cursor.width + WORDMARK.cursor.gap)
+
+const sq0 = WORDMARK.square
+/** The square in em before it is measured (server render): stem-wide, top on the ascender. */
+const SQUARE_EM = {
+  size: sq0.stemWidth,
+  bottom: sq0.ascender - sq0.stemWidth,
+  left: sq0.stemLeft,
+}
+
+/** Snap the square to device pixels at the rendered size: side = stem width, top on the
+ * ascender (never above), gap to the stem at least one device pixel; if both cannot fit at a
+ * small size the square loses a pixel rather than rise above the ascender. Re-runs on resize
+ * and font load. */
+function useSquareGeometry(anchor: React.RefObject<HTMLSpanElement | null>, square: React.RefObject<HTMLSpanElement | null>) {
+  useEffect(() => {
+    const a = anchor.current
+    const sq = square.current
+    if (!a || !sq) return
+    const place = () => {
+      const fs = parseFloat(getComputedStyle(a).fontSize)
+      if (!fs) return
+      const dpr = window.devicePixelRatio || 1
+      const up = (v: number) => Math.ceil(v * dpr - 1e-6) / dpr
+      const down = (v: number) => Math.floor(v * dpr + 1e-6) / dpr
+      const near = (v: number) => Math.round(v * dpr) / dpr
+      const r = a.getBoundingClientRect() // zero-height inline-block: its bottom is the baseline
+      const base = r.bottom
+      const stemTop = base - sq0.stemTop * fs
+      const ascTop = base - sq0.ascender * fs
+      const bottom = down(stemTop - 1 / dpr) // a gap of at least one device pixel
+      const top = up(ascTop) // never above the ascender
+      const size = Math.max(1 / dpr, Math.min(near(sq0.stemWidth * fs), bottom - top))
+      const cx = r.left + (sq0.stemLeft + sq0.stemWidth / 2) * fs
+      const left = near(cx - size / 2)
+      sq.style.width = sq.style.height = `${size}px`
+      sq.style.left = `${left - r.left}px`
+      sq.style.bottom = `${base - bottom}px`
+    }
+    place()
+    const ro = new ResizeObserver(place)
+    ro.observe(a.parentElement ?? a)
+    document.fonts?.ready.then(place)
+    window.addEventListener("resize", place)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener("resize", place)
+    }
+  }, [anchor, square])
+}
+
 type Phase = "idle" | "fadeout" | "pause" | "typing" | "blink" | "done"
 
 /**
@@ -73,6 +137,7 @@ type Phase = "idle" | "fadeout" | "pause" | "typing" | "blink" | "done"
  */
 export function Wordmark({ state, className, techClassName }: { state: SyncState | null; className?: string; techClassName?: string }) {
   const square = useRef<HTMLSpanElement>(null)
+  const anchor = useRef<HTMLSpanElement>(null)
   const overlay = useRef<HTMLSpanElement>(null)
   const cursor = useRef<HTMLSpanElement>(null)
   const chars = useRef<(HTMLSpanElement | null)[]>([])
@@ -81,6 +146,7 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
   const phase = useRef<Phase>("idle")
   const played = useRef(false)
   const queued = useRef(false)
+  useSquareGeometry(anchor, square)
   const stateRef = useRef(state)
   stateRef.current = state
 
@@ -235,10 +301,10 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
 
   const sq = WORDMARK.square
   const squareStyle: CSSProperties = {
-    width: sq.size,
-    height: sq.size,
-    bottom: sq.bottom,
-    marginLeft: sq.nudge,
+    width: `${SQUARE_EM.size}em`,
+    height: `${SQUARE_EM.size}em`,
+    bottom: `${SQUARE_EM.bottom}em`,
+    left: `${SQUARE_EM.left}em`,
     background: state === "down" ? sq.down : state === "stale" ? sq.stale : sq.live,
     ...(state === "stale" ? { filter: `opacity(${sq.staleOpacity})` } : {}),
   }
@@ -247,19 +313,23 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
     <span aria-hidden className={cn("inline-flex items-baseline leading-none whitespace-nowrap text-fg", className)}>
       <span style={{ fontWeight: WORDMARK.word.weight, letterSpacing: WORDMARK.word.tracking }}>
         darkw
-        <span className="relative inline-block">
+        <span className="inline-block">
+          {/* Baseline anchor: zero height, so its bottom edge is the baseline; the square is
+              placed from it with the measured glyph metrics. */}
+          <span ref={anchor} className="relative inline-block h-0 w-0 align-baseline">
+            <span ref={square} data-wordmark-square className="absolute" style={squareStyle} />
+          </span>
           {"ı"}
-          <span ref={square} data-wordmark-square className="absolute left-1/2 -translate-x-1/2" style={squareStyle} />
         </span>
         re
       </span>
       <span
         className={cn("relative inline-block font-mono font-normal", techClassName)}
-        style={{ fontSize: WORDMARK.tech.size, letterSpacing: WORDMARK.tech.tracking, color: WORDMARK.tech.color, marginLeft: WORDMARK.tech.gap }}
+        style={{ fontSize: `${WORDMARK.tech.size}em`, letterSpacing: WORDMARK.tech.tracking, color: WORDMARK.tech.color, marginLeft: WORDMARK.tech.gap }}
       >
         {/* The reserve: the full ".tech" plus the cursor, invisible, so nothing shifts. */}
         <span className="invisible">{text}</span>
-        <span className="invisible inline-block" style={{ width: WORDMARK.cursor.width }} />
+        <span className="invisible inline-block" style={{ width: `${WORDMARK.cursor.width + WORDMARK.cursor.gap}em` }} />
         <span ref={overlay} data-wordmark-tech className="absolute inset-0 text-left whitespace-pre" style={{ opacity: state === null ? 0 : undefined }}>
           {[...text].map((ch, i) => (
             <span
@@ -282,8 +352,14 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
           <span
             ref={cursor}
             data-wordmark-cursor
-            className="ml-[0.06em] inline-block align-baseline"
-            style={{ width: WORDMARK.cursor.width, height: WORDMARK.cursor.height, background: WORDMARK.cursor.color, display: "none" }}
+            className="inline-block align-baseline"
+            style={{
+              marginLeft: `${WORDMARK.cursor.gap}em`,
+              width: `${WORDMARK.cursor.width}em`,
+              height: `${WORDMARK.cursor.height}em`,
+              background: WORDMARK.cursor.color,
+              display: "none",
+            }}
           />
         </span>
       </span>

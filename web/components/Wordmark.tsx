@@ -13,9 +13,9 @@ export const WORDMARK = {
   },
   square: {
     /** Stands in for the i's dot, over a dotless ı. */
-    size: "0.22em",
+    size: "0.2em",
     /** From the bottom of the ı's box (leading-none) to the square's bottom edge. */
-    bottom: "0.75em",
+    bottom: "0.725em",
     /** Horizontal nudge from the ı's center (Geist's ı stem sits a touch left of center). */
     nudge: "0em",
     live: "var(--critical)",
@@ -28,8 +28,9 @@ export const WORDMARK = {
     size: "0.8em",
     color: "#4a4a4a",
     tracking: "-0.04em",
-    /** Pulls ".tech" in toward "darkwire": the mono "." sits mid-cell, which reads as a space. */
-    gap: "-0.22em",
+    /** Pulls ".tech" in toward "darkwire" (the mono "." sits mid-cell, which reads as a space),
+     *  but not so far that the first binary digit runs into the "e". */
+    gap: "-0.05em",
   },
   typing: {
     /** One character every charMs. */

@@ -10,9 +10,9 @@ import { useCallback, useEffect, useRef } from "react"
 // Canvas cannot use CSS variables directly, so the theme's current values are read at draw time.
 const token = (name: string, fallback: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
-// On the icon's 32-unit grid: a dot in the top-right corner with a 2-unit ring, so the
-// unseen state still reads at 16px next to the centered wordmark dot.
-const DOT = { cx: 25, cy: 7, r: 5, ring: 2 }
+// On the icon's 32-unit grid: a dot in the bottom-right corner with a 2-unit ring (the stem
+// ends at x=17, the square sits top center), so the unseen state reads at 16px too.
+const DOT = { cx: 25, cy: 25, r: 5, ring: 2 }
 
 function iconLinks(): HTMLLinkElement[] {
   return [...document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')]

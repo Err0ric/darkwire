@@ -51,7 +51,7 @@ VENDORS: list[dict] = [
     {"slug": "ivanti", "name": "Ivanti", "domain": "ivanti.com", "aliases": ["Ivanti", "Connect Secure", "Pulse Secure", "Policy Secure", "Ivanti EPMM", "MobileIron"]},
     {"slug": "vmware", "name": "VMware", "domain": "vmware.com", "aliases": ["VMware", "vCenter", "ESXi", "vSphere", "Workstation Pro", "Aria Operations"]},
     {"slug": "broadcom", "name": "Broadcom", "domain": "broadcom.com", "aliases": ["Broadcom", "Symantec"]},
-    {"slug": "palo-alto-networks", "name": "Palo Alto Networks", "domain": "paloaltonetworks.com", "aliases": ["Palo Alto Networks", "PAN-OS", "GlobalProtect", "Cortex XDR", "Prisma Access", "Unit 42"]},
+    {"slug": "palo-alto-networks", "name": "Palo Alto Networks", "domain": "paloaltonetworks.com", "aliases": ["Palo Alto Networks", "PAN-OS", "GlobalProtect", "Cortex XDR", "Prisma Access"]},
     {"slug": "atlassian", "name": "Atlassian", "domain": "atlassian.com", "aliases": ["Atlassian", "Confluence", "Jira", "Bitbucket", "Bamboo"]},
     {"slug": "gitlab", "name": "GitLab", "domain": "gitlab.com", "aliases": ["GitLab"]},
     {"slug": "github", "name": "GitHub", "domain": "github.com", "aliases": ["GitHub", "GitHub Actions", "GitHub Enterprise Server"]},

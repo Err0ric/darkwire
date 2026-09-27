@@ -42,22 +42,26 @@ def _words(*terms: str) -> re.Pattern[str]:
     return re.compile(r"(?<!\w)(?:" + "|".join(terms) + r")(?!\w)", re.IGNORECASE)
 
 
+def _keywords(*terms: str) -> re.Pattern[str]:
+    """Like _words, but each term also matches with a plain s / es / ed suffix
+    (breach, breaches, breached). Not stemming: list -ing, -ation and y/ies forms."""
+    return _words(*(rf"(?:{t})(?:s|es|ed)?" for t in terms))
+
+
 # Checked in this order against the title, then the first paragraph. First hit wins.
 CATEGORY_RULES: list[tuple[Category, re.Pattern[str]]] = [
-    (Category.vulnerability, _words(
-        r"vulnerabilit(?:y|ies)", r"zero-days?", r"0-days?", r"flaws?", r"exploit(?:s|ed|ing|ation)?",
-        r"RCE", r"remote code execution", r"patch(?:es|ed)?", r"bugs?", r"security updates?",
-        r"CVE-\d{4}-\d{4,7}", r"privilege escalation", r"authentication bypass",
+    (Category.vulnerability, _keywords(
+        r"vulnerability", r"vulnerabilities", r"zero-day", r"0-day", r"flaw", r"exploit",
+        r"exploiting", r"exploitation", r"RCE", r"remote code execution", r"patch", r"bug",
+        r"security update", r"CVE-\d{4}-\d{4,7}", r"privilege escalation", r"authentication bypass",
     )),
     # Kept narrow: "exposed" or "compromised" in ordinary prose is not a breach.
-    (Category.breach, _words(
-        r"(?:data )?breach(?:es|ed)?", r"data leaks?", r"leaked data", r"stolen data", r"hacked",
-    )),
-    (Category.ransomware, _words(r"ransomware", r"extortion", r"LockBit", r"Akira", r"Cl0p", r"Black Basta")),
-    (Category.advisory, _words(r"advisor(?:y|ies)", r"guidance", r"bulletins?", r"alerts?", r"ICS")),
-    (Category.research, _words(
-        r"research(?:ers?)?", r"analysis", r"campaigns?", r"malware", r"threat actors?", r"APT\d*",
-        r"botnets?", r"phishing", r"backdoors?", r"trojans?", r"infostealers?", r"stealers?",
+    (Category.breach, _keywords(r"breach", r"data leak", r"leaked data", r"stolen data", r"hacked")),
+    (Category.ransomware, _keywords(r"ransomware", r"extortion", r"LockBit", r"Akira", r"Cl0p", r"Black Basta")),
+    (Category.advisory, _keywords(r"advisory", r"advisories", r"guidance", r"bulletin", r"alert", r"ICS")),
+    (Category.research, _keywords(
+        r"research", r"researcher", r"analysis", r"campaign", r"malware", r"threat actor", r"APT\d*",
+        r"botnet", r"phishing", r"backdoor", r"trojan", r"infostealer", r"stealer",
     )),
 ]
 
@@ -71,7 +75,7 @@ def guess_category(title: str, excerpt: str, has_cve: bool) -> Category:
     return Category.vulnerability if has_cve else Category.news
 
 
-AD_TEXT = _words(r"sponsored", r"sponsored by", r"partner content", r"webinars?", r"virtual events?")
+AD_TEXT = _keywords(r"sponsored", r"sponsored by", r"partner content", r"webinar", r"virtual event")
 AD_URL = re.compile(r"/(?:sponsored|partner-content|webinars?|events)(?:/|-|$)", re.IGNORECASE)
 
 

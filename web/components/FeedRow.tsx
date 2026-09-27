@@ -251,7 +251,7 @@ function Score({ item, className }: { item: FeedItem; className?: string }) {
   return (
     <span
       title={item.stale ? STALE_TITLE : undefined}
-      className={cn("font-mono text-sm font-medium", item.stale ? STALE_TEXT : item.cvss >= 7 ? "text-fg" : "text-fg-2", className)}
+      className={cn("font-mono text-[15px] font-medium", item.stale ? STALE_TEXT : item.cvss >= 7 ? "text-fg" : "text-fg-2", className)}
     >
       {item.cvss.toFixed(1)}
     </span>
@@ -306,7 +306,7 @@ function Badge({ item, className }: { item: FeedItem; className?: string }) {
   return (
     <span
       className={cn(
-        "flex h-[18px] w-16 shrink-0 items-center justify-center rounded-badge border font-mono text-[10px] leading-none font-medium tracking-[0.04em] uppercase",
+        "flex h-[18px] w-16 shrink-0 items-center justify-center rounded-badge border font-mono text-[11px] leading-none font-medium tracking-[0.04em] uppercase",
         // Stale: a quiet outline and --dim-text instead of the severity colors.
         item.stale ? "border-outline-medium text-dim-text" : BADGE[severity ?? "muted"],
         className,
@@ -351,7 +351,7 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {d?.summary && <p className="line-clamp-3 max-w-[720px] text-sm leading-[1.6] text-summary">{d.summary}</p>}
+      {d?.summary && <p className="line-clamp-3 max-w-[720px] text-[15px] leading-[1.6] text-summary">{d.summary}</p>}
 
       {todo && <WhatToDo todo={todo} />}
 
@@ -367,7 +367,7 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
         </div>
       )}
 
-      <div className="flex flex-col gap-3 text-sm leading-5 md:flex-row md:items-baseline md:justify-between">
+      <div className="flex flex-col gap-3 text-[13px] leading-5 md:flex-row md:items-baseline md:justify-between">
         {affectedText || patch ? (
           <p className="min-w-0 text-muted">
             {affectedText && (
@@ -406,7 +406,7 @@ function WhatToDo({ todo }: { todo: Todo }) {
   return (
     <section aria-label="What to do" className="max-w-[720px]">
       <h3 className="text-[13px] leading-4 font-normal text-muted">What to do</h3>
-      <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5 text-sm leading-5">
+      <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5 text-[13px] leading-5">
         {todo.fixed.length > 0 && (
           <>
             <dt className="text-muted">Update to</dt>
@@ -417,7 +417,7 @@ function WhatToDo({ todo }: { todo: Todo }) {
                   <span className="font-mono text-[13px] text-fg">{f.versions.join(", ")}</span>
                   {i === 0 && todo.fixedUrl && (
                     <a href={todo.fixedUrl} {...EXTERNAL} className={cn(LINK, "ml-3 text-fg-2")}>
-                      advisory <span aria-hidden className="text-[10px] text-critical-text">↗</span>
+                      advisory <span aria-hidden className="text-[11px] text-critical-text">↗</span>
                     </a>
                   )}
                 </span>
@@ -433,7 +433,7 @@ function WhatToDo({ todo }: { todo: Todo }) {
               {todo.workaroundUrl && (
                 <a href={todo.workaroundUrl} {...EXTERNAL} className={cn(LINK, "text-fg-2", todo.workaround && "ml-3")}>
                   {todo.workaround ? "details" : "vendor mitigation"}{" "}
-                  <span aria-hidden className="text-[10px] text-critical-text">↗</span>
+                  <span aria-hidden className="text-[11px] text-critical-text">↗</span>
                 </a>
               )}
             </dd>
@@ -444,7 +444,7 @@ function WhatToDo({ todo }: { todo: Todo }) {
             <dt className="text-muted">KEV due</dt>
             <dd className="font-mono text-[13px] text-fg">
               <time dateTime={todo.kevDue.toISOString().slice(0, 10)}>{kevDate(todo.kevDue)}</time>
-              <span className="ml-3 font-sans text-sm text-muted">CISA deadline for federal agencies</span>
+              <span className="ml-3 font-sans text-[13px] text-muted">CISA deadline for federal agencies</span>
             </dd>
           </>
         )}
@@ -493,7 +493,7 @@ function VectorChips({ chips }: { chips: ReturnType<typeof parseVector> }) {
           <span className="block font-mono text-xs leading-4 text-fg">
             {c.metric}:{c.value}
           </span>
-          {c.label && <span className="block text-[10px] leading-[14px] text-muted">{c.label}</span>}
+          {c.label && <span className="block text-[11px] leading-[14px] text-muted">{c.label}</span>}
         </li>
       ))}
     </ul>
@@ -519,7 +519,7 @@ function Metrics({ pairs }: { pairs: [string, ReactNode][] }) {
       {pairs.map(([label, value]) => (
         <div key={label}>
           <dt className="text-[13px] leading-4 text-muted">{label}</dt>
-          <dd className="mt-px font-mono text-lg leading-6 text-fg">{value}</dd>
+          <dd className="mt-px font-mono text-[20px] leading-6 text-fg">{value}</dd>
         </div>
       ))}
     </dl>
@@ -541,7 +541,7 @@ function Patch({ status, url }: { status: KnownPatch; url: string | null }) {
     <>
       {p.mark} {p.text}
       {linked && (
-        <span aria-hidden className="ml-1 text-[10px] text-critical-text">
+        <span aria-hidden className="ml-1 text-[11px] text-critical-text">
           ↗
         </span>
       )}

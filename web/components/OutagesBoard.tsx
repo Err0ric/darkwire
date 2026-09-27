@@ -86,7 +86,7 @@ function ImpactedNow({ services, total, now }: { services: ServiceOut[]; total: 
       <h2 className="border-b border-rule pb-2.5 text-[13px] font-medium text-fg">Impacted now</h2>
       <ul>
         {sorted.map((s) => (
-          <li key={s.slug} className="flex min-h-11 items-baseline gap-x-3 border-b border-hairline py-3 text-[14px]">
+          <li key={s.slug} className="flex min-h-11 items-baseline gap-x-3 border-b border-hairline py-3 text-[15px]">
             <StateDot state={s.state} className="relative -top-px self-center" />
             <span className="shrink-0 text-fg">{s.name}</span>
             <span className={cn("shrink-0", s.state === "major" ? "text-critical-text" : "text-degraded")}>
@@ -97,7 +97,7 @@ function ImpactedNow({ services, total, now }: { services: ServiceOut[]; total: 
               {...EXTERNAL}
               className="min-w-0 flex-1 text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
             >
-              {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[10px] text-critical-text">↗</span>
+              {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[11px] text-critical-text">↗</span>
             </a>
             {s.incident?.started_at && now !== null && (
               <span className="shrink-0 font-mono text-xs text-muted">{age(s.incident.started_at, now)}</span>
@@ -121,7 +121,7 @@ function Group({ name, services }: { name: string; services: ServiceOut[] }) {
       <ul className="mt-1">
         {services.map((s) => (
           <li key={s.slug} className="py-2">
-            <p className="flex items-center gap-2.5 text-[14px] leading-5">
+            <p className="flex items-center gap-2.5 text-[15px] leading-5">
               <StateDot state={s.state} />
               <a href={s.page} {...EXTERNAL} className="truncate text-fg outline-none hover:underline focus-visible:underline">
                 {s.name}

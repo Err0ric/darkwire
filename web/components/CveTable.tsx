@@ -224,7 +224,7 @@ export function CveTable({ rows, initial }: { rows: CveRow[]; initial: CveFilter
                     <tr className="border-b border-hairline bg-surface">
                       <td colSpan={COLUMNS.length} className="px-4 pt-1 pb-[22px] md:px-6" aria-busy={detail?.state === "loading"}>
                         {detail?.state === "ready" && <Expanded item={detail.item} detail={detail} />}
-                        {detail?.state === "error" && <p className="text-sm text-muted">Could not load this row. Try again.</p>}
+                        {detail?.state === "error" && <p className="text-[13px] text-muted">Could not load this row. Try again.</p>}
                       </td>
                     </tr>
                   )}
@@ -271,7 +271,7 @@ function Row({ row: r, expanded, onToggle }: { row: CveRow; expanded: boolean; o
   return (
     <tr
       onClick={clickable ? onClick : undefined}
-      className={cn("h-12 text-sm", clickable && "cursor-pointer", expanded ? "bg-surface" : "border-b border-hairline")}
+      className={cn("h-12 text-[13px]", clickable && "cursor-pointer", expanded ? "bg-surface" : "border-b border-hairline")}
     >
       <td className={cn(CELL, "py-2")} title={[r.vendor_name, r.product].filter(Boolean).join(" · ") || undefined}>
         <span className="block truncate leading-4 text-fg">{r.vendor_name}</span>
@@ -291,7 +291,7 @@ function Row({ row: r, expanded, onToggle }: { row: CveRow; expanded: boolean; o
       <td className={CELL}>
         {r.cvss !== null && (
           <span className="flex items-center gap-3">
-            <span className={cn("w-7 font-mono text-sm font-medium", r.cvss >= 7 ? "text-fg" : "text-fg-2")}>
+            <span className={cn("w-9 font-mono text-[15px] font-medium", r.cvss >= 7 ? "text-fg" : "text-fg-2")}>
               {r.cvss.toFixed(1)}
             </span>
             <CvssBar row={r} />

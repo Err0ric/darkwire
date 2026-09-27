@@ -17,7 +17,7 @@ Reference mockups: `/design-refs/home.png` and `/design-refs/wire.png`. Match th
 
 | Route | Purpose |
 |---|---|
-| `/` | Home, a calm landing page. A centered block, max 880px, about half the viewport tall with black space around it: the lockup as centerpiece, as in og.png: the nav wordmark scaled up (`clamp(40px, 3.2vw, 64px)`, 700, -0.02em, same pulsing live/stale/failing dot, which compares `/status` `sync.last_finished_at` with now) with "live security news + CVEs" in 13px Geist Mono `--muted` under it, right-aligned to the wordmark's right edge; 20px below, a 15px date line `Sunday, Sep 27 · 14:09 PDT · 21:09 UTC` (date sans `--fg-2`, times mono `--fg-2`, dots `--dim`; UTC viewers see only UTC) updating each minute; the lockup and date line sit on the same center axis as Right now and OPEN WIRE; Right now (critical, KEV and exploited in the last 48h, max 3 rows of 44px with 14px headlines, linking to `/item/[id]`, or "Nothing critical in the last 48h."), a 13px ticker crossfading through the last 10 headlines every 8s, OPEN WIRE (40px, 13px mono) with CVEs · Vendors · Outages under it, and the stack link. No status line or clock: those live on `/wire`. The nav hides its wordmark and UTC time here. Footer: sources line from `/status`, darkwire.tech. No scrolling at 1920x1080 or 2560x1440; vertically centered in portrait. |
+| `/` | Home, a calm landing page. A centered block, max 880px, about half the viewport tall with black space around it: the lockup as centerpiece, as in og.png: the nav wordmark scaled up (`clamp(40px, 3.2vw, 64px)`, 700, -0.02em, same pulsing live/stale/failing dot, which compares `/status` `sync.last_finished_at` with now) with "live security news + CVEs" in 13px Geist Mono `--muted` under it, right-aligned to the wordmark's right edge; 20px below, a 15px date line `Sunday, Sep 27 · 14:09 PDT · 21:09 UTC` (date sans `--fg-2`, times mono `--fg-2`, dots `--dim`; UTC viewers see only UTC) updating each minute; the lockup and date line sit on the same center axis as Right now and OPEN WIRE; Right now (critical, KEV and exploited in the last 48h, max 3 rows of 44px with 15px headlines, linking to `/item/[id]`, or "Nothing critical in the last 48h."), a 13px ticker crossfading through the last 10 headlines every 8s, OPEN WIRE (40px, 13px mono) with CVEs · Vendors · Outages under it, and the stack link. No status line or clock: those live on `/wire`. The nav hides its wordmark and UTC time here. Footer: sources line from `/status`, darkwire.tech. No scrolling at 1920x1080 or 2560x1440; vertically centered in portrait. |
 | `/wire` | The board. Full feed, seven tabs, vendor filter, search, right rail. |
 | `/cves` | Every CVE on the board, one table of two-line rows (about 48px): Vendor (vendor `--fg` over product `--muted`, as a pair from CPE, else the CNA, else the KEV catalog, else the row's tag; empty if unknown), CVE / Description (CVE ID mono `--fg-2`, links to `/cve/[id]`, over the NVD description in one truncated `--fg-2` line, full text on hover; the widest column), CVSS (score and the 10-cell bar), EPSS (percent, 1 decimal; under 1% `--dim`, over 10% `--fg`), KEV (`--critical`), Patch (as in the expanded row, plus `○ unverified`), Published ("Sep 24", local). No placeholders. The Vendor header sorts alphabetically. Default order KEV first, then CVSS, then newest; headers sort. Search (ID, vendor, product, description) and chips KEV only, Critical, High, Has fix, No fix that combine and live in the URL (`?kev=1&sev=critical&q=citrix`). A row click expands the wire's expanded row in place. Subheader "N CVEs on the board · CVSS from NVD, EPSS from FIRST, KEV from CISA", or "12 of 84 …" when filtered. |
 | `/vendor/[slug]` | Everything tagged to one vendor. |
@@ -50,7 +50,7 @@ Palette. Use CSS variables, never hardcode in components.
 
 Every text color clears 4.5:1 on `--bg` and `--surface` (axe-checked); fade with a color token, never with opacity on text. Red is a signal, not a paint job. If more than ~5% of a screen is red, it is wrong.
 
-Type: Geist Sans for words, Geist Mono for data (CVE IDs, scores, timestamps, vector chips, badges, status line). Headline 15px/500 tracking -0.01em. Meta 12px. Section labels 13px/500 in sans, never mono-caps.
+Type: Geist Sans for words, Geist Mono for data (CVE IDs, scores, timestamps, vector chips, badges, status line). One scale: 11, 12, 13, 15 and 20px, plus the page title / wire clock (36px, 28px under 1200px) and the wordmark (nav 16/18px, landing `clamp(40px, 3.2vw, 64px)`). Nothing else. Headline 15px/500 tracking -0.01em. Meta 12px. Section labels 13px/500 in sans, never mono-caps. Badges and chip labels 11px; scores 15px; metric numbers 20px.
 
 Details: thin dark scrollbars (`--rule` thumb on `--bg`), a red-tinted selection (`--critical` at 32%), antialiased font smoothing.
 
@@ -82,9 +82,9 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 - Meta line: every source name is a link to that outlet's article, same 12px, `--fg-2`. One name per outlet: an outlet with several articles in the cluster links to its newest. Cap 4 visible, then `+N`. Then category, then `KEV` in `--critical` if listed, else `EXPLOITED` in `--critical` when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator is `·`.
 - KEV due: within 7 days of CISA's due date the marker reads `KEV due in Nd` (`KEV` red, the rest `--fg-2`; all red at 2 days or less, `KEV due today` on the day), and `KEV overdue` in red for 7 days after it. Days count in UTC. These rows count toward the unseen `!`.
 - Old CVEs: a CVE published more than 90 days ago, not in KEV, and in a row where no headline is about exploitation (exploit, exploited, zero-day, in the wild, under attack) keeps its score but dims: the score and badge text take `--dim-text` (the badge a quiet `#333` outline) and the bar cells 40%. Such rows are left out of severity totals, pinning and the unseen `!`.
-- Score: Geist Mono 14px/500. `--fg` for 7.0+, `--fg-2` below. Empty for non-CVE rows.
+- Score: Geist Mono 15px/500. `--fg` for 7.0+, `--fg-2` below. Empty for non-CVE rows.
 - Bar: 10 cells, 5x10px, 2px gap. Filled = round(CVSS). Fill color by severity: Critical `--critical`, High `--accent`, Medium #6b6b6b. Empty cells `--rule`. Only rendered when the row has a score; unscored rows keep the empty 68px slot so columns align.
-- Badge: Geist Mono 10px/500, letterspacing 0.04em, 64px wide. CRITICAL = white on `--critical`. HIGH = `--fg` with `--accent` outline. MEDIUM = `--fg-2` with #333 outline. BREACH (breach and ransomware rows) = `--muted` with #262626 outline. Unscored news, advisory and research rows get no badge, just the empty 64px slot.
+- Badge: Geist Mono 11px/500, letterspacing 0.04em, 64px wide. CRITICAL = white on `--critical`. HIGH = `--fg` with `--accent` outline. MEDIUM = `--fg-2` with #333 outline. BREACH (breach and ransomware rows) = `--muted` with #262626 outline. Unscored news, advisory and research rows get no badge, just the empty 64px slot.
 - Age: relative, Geist Mono 12px `--muted`. Updates on a timer without reload.
 - Chevron: Lucide chevron-down 12px at #404040. Expanded: rotate 180, color `--critical`.
 
@@ -92,13 +92,13 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 
 Click anywhere on the row except a link. Background `--surface`, extends 24px past the row edges. Contents in order:
 
-1. Summary, 3 lines max, 14px, `#b5b5b5`, max-width 720px. Generated once on ingest, cached. Prompt: what it is, who is affected, is there a fix. No adjectives.
+1. Summary, 3 lines max, 15px, `#b5b5b5`, max-width 720px. Generated once on ingest, cached. Prompt: what it is, who is affected, is there a fix. No adjectives.
 2. What to do (CVE rows only), label then label/value lines:
    - `Update to`: first fixed version per affected range, product once then versions in Geist Mono. Source order: NVD CPE `versionEndExcluding`, then the CNA's `lessThan` / unaffected-at versions, then MSRC KBs. Never from the summary model. `advisory ↗` after the first line.
    - `Workaround`: one sentence from the summary model (only a concrete mitigation the articles name), plus a link to the NVD reference tagged Mitigation when there is one.
    - `KEV due`: CISA's due date, shown as a UTC calendar date, when the CVE is in KEV.
-3. `CVSS 3.1 vector` label, then 8 chips: `AV:N / Network` etc. Chip = Geist Mono 12px value over 10px sans label, background `#161616`. Impact-side chips (C, I, A) at High get background `#1c1010`.
-4. Impact, Exploitability, EPSS, KEV as label-over-number pairs, Geist Mono 18px.
+3. `CVSS 3.1 vector` label, then 8 chips: `AV:N / Network` etc. Chip = Geist Mono 12px value over 11px sans label, background `#161616`. Impact-side chips (C, I, A) at High get background `#1c1010`.
+4. Impact, Exploitability, EPSS, KEV as label-over-number pairs, Geist Mono 20px.
 5. Affected line: version ranges from CPE. Then patch status: `● patched ↗` (link to vendor advisory, or NVD reference tagged Patch), `○ no fix`, or `○ no fix · workaround ↗`.
 6. Links right-aligned: Source, Vendor advisory, NVD, then `Copy`. All new tab.
 

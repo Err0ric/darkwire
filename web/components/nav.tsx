@@ -112,7 +112,7 @@ export function Nav() {
                       "rounded-control border px-1.5 py-1 font-mono text-xs font-medium tracking-[0.06em] focus-visible:border-critical sm:px-2.5",
                       active ? "border-critical text-fg" : "border-accent/60 text-fg-2 hover:border-critical",
                     )
-                  : cn("text-[14px] focus-visible:text-fg sm:text-[15px]", active ? "text-fg" : "text-muted hover:text-fg-2"),
+                  : cn("text-[13px] focus-visible:text-fg sm:text-[15px]", active ? "text-fg" : "text-muted hover:text-fg-2"),
               )}
             >
               {wire ? label.toUpperCase() : label}
@@ -128,7 +128,7 @@ export function Nav() {
           href={`/cves${query()}`}
           aria-current={cvesActive ? "page" : undefined}
           className={cn(
-            "text-[14px] leading-none outline-none focus-visible:text-fg sm:text-[15px]",
+            "text-[13px] leading-none outline-none focus-visible:text-fg sm:text-[15px]",
             cvesActive ? "text-fg" : "text-muted hover:text-fg-2",
           )}
         >

@@ -219,7 +219,7 @@ function RightNow({ items, dots, failed }: { items: FeedItem[]; dots: ReadonlyMa
           ))}
         </ul>
       ) : (
-        <p className="flex h-11 items-center border-b border-hairline text-sm text-muted">
+        <p className="flex h-11 items-center border-b border-hairline text-[13px] text-muted">
           {failed ? "The feed is unreachable right now." : "Nothing critical in the last 48h."}
         </p>
       )}
@@ -262,7 +262,7 @@ function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
   const badgeEl = badge && (
     <span
       className={cn(
-        "inline-flex h-[18px] w-[72px] shrink-0 items-center justify-center rounded-badge border font-mono text-[10px] font-medium tracking-[0.04em] uppercase",
+        "inline-flex h-[18px] w-[72px] shrink-0 items-center justify-center rounded-badge border font-mono text-[11px] font-medium tracking-[0.04em] uppercase",
         BADGE[badge],
       )}
     >
@@ -294,7 +294,7 @@ function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
         {/* The wrapper is not clipped, so the dot can sit in the gutter left of the headline. */}
         <span className="relative block min-w-0 flex-1">
           {dot && <NewDot state={dot} className="top-[7px] -left-[10px] sm:-left-[15px]" />}
-          <span className="block text-sm leading-5 font-medium tracking-[-0.01em] text-fg group-hover:underline sm:truncate">
+          <span className="block text-[15px] leading-5 font-medium tracking-[-0.01em] text-fg group-hover:underline sm:truncate">
             {item.headline}
           </span>
         </span>

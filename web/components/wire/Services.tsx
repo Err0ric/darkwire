@@ -64,7 +64,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
               {...EXTERNAL}
               className="mt-0.5 ml-3.5 line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
             >
-              {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[10px] text-critical-text">↗</span>
+              {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[11px] text-critical-text">↗</span>
             </a>
           </li>
         ))}

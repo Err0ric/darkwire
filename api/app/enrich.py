@@ -9,7 +9,7 @@ import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import epss, kev, nvd
+from app import epss, kev, nvd, summaries
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
@@ -126,6 +126,11 @@ async def run_enrich() -> None:
             counts["resurfaced"] = await roll_up(session)
         except Exception:
             log.exception("enrich: roll-up failed")
+            await session.rollback()
+        try:
+            counts["summaries"] = await summaries.summarize_pending(session)
+        except Exception:
+            log.exception("enrich: summaries failed")
             await session.rollback()
     log.info(
         "enrich: done in %.0fs: %s",

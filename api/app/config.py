@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     enrich_interval_minutes: int = 15
     # Optional. Raises NVD's limit from 5 to 50 requests per 30 s.
     nvd_api_key: str | None = None
+    # Optional. Row summaries are generated with Claude only when this is set.
+    anthropic_api_key: str | None = None
     cors_origins: str = "http://localhost:3000,https://darkwire.tech"
     # Vercel production and preview deployments. Matched against the full Origin.
     cors_origin_regex: str | None = r"https://[a-z0-9-]+\.vercel\.app"

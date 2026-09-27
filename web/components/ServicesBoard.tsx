@@ -215,7 +215,7 @@ function Strip({ hours, name }: { hours: ServiceState[]; name: string }) {
           setActive(next)
         }
       }}
-      className="relative mt-1.5 flex gap-0.5 outline-none"
+      className="relative mt-1.5 flex gap-0.5 outline-none max-md:tap max-md:mt-5"
     >
       {hours.map((h, i) => (
         <span
@@ -258,7 +258,7 @@ function ServiceLine({ s }: { s: ServiceOut }) {
   const panel = `svc-${s.slug}-incidents`
   const incidents = s.incidents ?? []
   return (
-    <li className="-mx-2 px-2 py-2 hover:bg-surface">
+    <li className="-mx-2 px-2 py-2 hover:bg-surface max-md:py-3">
       <p className="flex items-center gap-2.5 text-[15px] leading-5">
         <StateDot state={s.state} />
         <button

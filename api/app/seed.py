@@ -22,9 +22,7 @@ SOURCES: list[dict] = [
     {"name": "SecurityWeek", "feed_url": "https://www.securityweek.com/feed/", "site_url": "https://www.securityweek.com", "stream": Stream.main},
     {"name": "Dark Reading", "feed_url": "https://www.darkreading.com/rss.xml", "site_url": "https://www.darkreading.com", "stream": Stream.main},
     {"name": "Krebs on Security", "feed_url": "https://krebsonsecurity.com/feed/", "site_url": "https://krebsonsecurity.com", "stream": Stream.main},
-    {"name": "CISA", "feed_url": "https://www.cisa.gov/cybersecurity-advisories/all.xml", "site_url": "https://www.cisa.gov/news-events/cybersecurity-advisories", "stream": Stream.main,
-     # 403 to httpx but 200 to curl: looks like TLS fingerprinting. curl_cffi is the likely fix.
-     "enabled": False, "health": Health.disabled},
+    {"name": "CISA", "feed_url": "https://www.cisa.gov/cybersecurity-advisories/all.xml", "site_url": "https://www.cisa.gov/news-events/cybersecurity-advisories", "stream": Stream.main},
     {"name": "The Hacker News", "feed_url": "https://feeds.feedburner.com/TheHackersNews", "site_url": "https://thehackernews.com", "stream": Stream.main},
     {"name": "Rapid7", "feed_url": "https://www.rapid7.com/blog/rss/", "site_url": "https://www.rapid7.com/blog/", "stream": Stream.main},
     {"name": "Unit 42", "feed_url": "https://unit42.paloaltonetworks.com/feed/", "site_url": "https://unit42.paloaltonetworks.com", "stream": Stream.main},

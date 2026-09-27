@@ -108,10 +108,10 @@ Seeded from `api/app/seed.py`. Keep this table and that file in sync. Main feeds
 | Dark Reading | main | | https://www.darkreading.com/rss.xml |
 | Krebs on Security | main | | https://krebsonsecurity.com/feed/ |
 | The Hacker News | main | | https://feeds.feedburner.com/TheHackersNews |
+| CISA | main | | https://www.cisa.gov/cybersecurity-advisories/all.xml |
 | Rapid7 | main | | https://www.rapid7.com/blog/rss/ |
 | Unit 42 | main | | https://unit42.paloaltonetworks.com/feed/ |
 | Palo Alto Networks | main | palo-alto-networks | https://security.paloaltonetworks.com/rss.xml |
-| CISA | main, disabled | | https://www.cisa.gov/cybersecurity-advisories/all.xml |
 | MSRC | enrichment | microsoft | https://api.msrc.microsoft.com/update-guide/rss |
 | EFF | elsewhere | | https://www.eff.org/rss/updates.xml |
 | 404 Media | elsewhere | | https://www.404media.co/rss/ |
@@ -122,7 +122,7 @@ Seeded from `api/app/seed.py`. Keep this table and that file in sync. Main feeds
 | Ars Technica | elsewhere | | https://arstechnica.com/security/feed/ |
 
 - MSRC: the RSS gives one entry per CVE revision and is stored in `msrc_updates`. Product, KBs, fixed builds and the exploited flag come from the Security Update Guide API (`api.msrc.microsoft.com/sug/v2.0`), fetched only for CVEs on the board and refetched when MSRC revises them. Exposed on `/items/{id}` as `msrc`.
-- CISA advisories: disabled (health `disabled`, not counted as failing). The feed returns 403 to httpx but 200 to curl with the same User-Agent. Changing Accept or switching to HTTP/2 made no difference, so it looks like TLS fingerprinting. `curl_cffi` (browser TLS impersonation) is the likely fix if we want advisories back.
+- CISA advisories: some networks get a 403 from cisa.gov (seen on a residential connection; Railway fetches it fine). Locally it may show as failing; that is expected.
 
 NVD, FIRST.org EPSS and the CISA KEV JSON are enrichment APIs, not feeds, and are not in this table.
 

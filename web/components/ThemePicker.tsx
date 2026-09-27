@@ -14,7 +14,7 @@ export function ThemePicker() {
       <SelectPrimitive.Trigger
         aria-label={`Theme: ${theme}`}
         title="Theme"
-        className="relative flex size-5 items-center justify-center rounded-control outline-none after:absolute after:-inset-2 after:content-[''] focus-visible:outline-1 focus-visible:outline-rule"
+        className="max-md:tap relative flex size-5 items-center justify-center rounded-control outline-none after:absolute after:-inset-2 after:content-[''] focus-visible:outline-1 focus-visible:outline-rule"
       >
         <span aria-hidden className="size-2 rounded-full bg-fg-2 ring-1 ring-rule ring-offset-2 ring-offset-bg" />
       </SelectPrimitive.Trigger>

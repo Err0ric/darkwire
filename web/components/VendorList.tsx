@@ -20,7 +20,7 @@ export function VendorList({ vendors }: { vendors: VendorOut[] }) {
           <>
             Your stack: <span className="text-fg-2">{names.join(", ")}</span>{" "}
             <span aria-hidden className="mx-2 text-dim-text">·</span>
-            <Link href={`/wire${query({ tab: "stack" })}`} className="text-fg outline-none hover:underline focus-visible:underline">
+            <Link href={`/wire${query({ tab: "stack" })}`} className="max-md:tap text-fg outline-none hover:underline focus-visible:underline">
               View my stack on the wire <span className="text-critical-text">→</span>
             </Link>
           </>
@@ -36,7 +36,7 @@ export function VendorList({ vendors }: { vendors: VendorOut[] }) {
             <li key={v.slug} className="flex h-12 items-center gap-3 border-b border-hairline hover:bg-surface">
               <Link
                 href={`/vendor/${v.slug}${query()}`}
-                className="group flex min-w-0 flex-1 items-center gap-4 outline-none"
+                className="max-md:tap group flex min-w-0 flex-1 items-center gap-4 outline-none"
               >
                 <span className={cn("flex size-5 shrink-0 items-center justify-center", inStack ? "text-fg" : v.items_7d === 0 ? "text-dim-text" : "text-muted")}>
                   <VendorGlyph vendor={v} />
@@ -59,7 +59,7 @@ export function VendorList({ vendors }: { vendors: VendorOut[] }) {
                 aria-label={`${inStack ? "Remove" : "Add"} ${v.name} ${inStack ? "from" : "to"} my stack`}
                 title={inStack ? "In your stack" : "Add to my stack"}
                 className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-control border outline-none focus-visible:outline-1 focus-visible:outline-fg-2",
+                  "max-md:tap", "flex size-6 shrink-0 items-center justify-center rounded-control border outline-none focus-visible:outline-1 focus-visible:outline-fg-2",
                   inStack ? "border-fg-2 text-fg" : "border-transparent text-dim-text hover:border-rule hover:text-fg-2",
                 )}
               >

@@ -43,7 +43,7 @@ export default async function VendorPage({ params }: { params: Promise<{ slug: s
           <QLink
             href="/wire"
             params={{ vendor: vendor.slug }}
-            className="text-fg-2 underline decoration-outline-medium underline-offset-4 outline-none hover:text-fg"
+            className="max-md:tap text-fg-2 underline decoration-outline-medium underline-offset-4 outline-none hover:text-fg"
           >
             Open on the wire <span className="text-critical-text">→</span>
           </QLink>

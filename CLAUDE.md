@@ -68,6 +68,7 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 - Home has no rail and no feed: one centered block, max 880px; the clock scales with the width and the gaps with the height, so it scales smoothly instead of jumping at breakpoints.
 - Loading: `/`, `/wire`, `/cves` and `/outages` have a `loading.tsx` skeleton (static `--hairline` blocks, `web/components/Skeleton.tsx`) in the page's real shape: same header, row heights (64px wire rows, 48px CVE rows, 44px Right now rows) and columns, so nothing moves when data arrives. Anything filled in after mount (ages, clocks) reserves its space from the first render. Target CLS under 0.05 at every size. Fill the height with rows, never a fixed count. Home is exactly one screen tall with the block vertically centered. Wire loads at least a screenful and scrolls.
 - Kiosk: key `f` (or `?kiosk=1`) hides nav and rail and scales type about 15%. `f` again leaves it.
+- Tap targets: at 390px wide every link, button and input is at least 44x44. Small ones get an invisible `::before` hit area (`max-md:tap`, or `max-md:tap-down` for meta links under a headline, which grows downward only); inputs are 44px tall under 768px. Nothing changes on desktop.
 - Check new work at 1920x1080 and 2560x1440 first, then 1080x1920, 1440x2560 and 390x844.
 
 ## The row (non-negotiable anatomy)

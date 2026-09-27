@@ -22,7 +22,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
   const ok = list.filter((s) => s.state === "operational").length
   const silent = list.length - impacted.length - ok
   const outages = (
-    <Link href={`/outages${query()}`} className="outline-none hover:text-fg-2 focus-visible:text-fg-2">
+    <Link href={`/outages${query()}`} className="max-md:tap outline-none hover:text-fg-2 focus-visible:text-fg-2">
       all outages
     </Link>
   )
@@ -62,7 +62,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
             <a
               href={s.incident?.url ?? s.page}
               {...EXTERNAL}
-              className="mt-0.5 ml-3.5 line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+              className="max-md:tap mt-0.5 ml-3.5 line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
             >
               {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[11px] text-critical-text">↗</span>
             </a>

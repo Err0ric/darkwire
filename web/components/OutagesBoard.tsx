@@ -93,7 +93,7 @@ function ImpactedNow({ services, total, now }: { services: ServiceOut[]; total: 
             <a
               href={s.incident?.url ?? s.page}
               {...EXTERNAL}
-              className="min-w-0 flex-1 text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+              className="max-md:tap min-w-0 flex-1 text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
             >
               {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[11px] text-critical-text">↗</span>
             </a>
@@ -125,7 +125,7 @@ function Group({ name, services }: { name: string; services: ServiceOut[] }) {
           <li key={s.slug} className="-mx-2 px-2 py-2 hover:bg-surface">
             <p className="flex items-center gap-2.5 text-[15px] leading-5">
               <StateDot state={s.state} />
-              <a href={s.page} {...EXTERNAL} className="truncate text-fg outline-none hover:underline focus-visible:underline">
+              <a href={s.page} {...EXTERNAL} className="max-md:tap truncate text-fg outline-none hover:underline focus-visible:underline">
                 {s.name}
               </a>
               {isImpacted(s) && (
@@ -148,7 +148,7 @@ function Stale({ services, now }: { services: ServiceOut[]; now: number | null }
   if (!events.length) return null
   return (
     <details className="group mt-10 text-dim-text">
-      <summary className="flex cursor-pointer list-none items-baseline gap-2 border-b border-rule pb-2.5 text-[13px] font-medium outline-none hover:text-muted focus-visible:text-muted">
+      <summary className="max-md:tap flex cursor-pointer list-none items-baseline gap-2 border-b border-rule pb-2.5 text-[13px] font-medium outline-none hover:text-muted focus-visible:text-muted">
         <span aria-hidden className="inline-block group-open:rotate-90">
           ›
         </span>
@@ -162,7 +162,7 @@ function Stale({ services, now }: { services: ServiceOut[]; now: number | null }
             <a
               href={e.url ?? service.page}
               {...EXTERNAL}
-              className="min-w-0 flex-1 truncate outline-none hover:text-muted focus-visible:text-muted"
+              className="max-md:tap min-w-0 flex-1 truncate outline-none hover:text-muted focus-visible:text-muted"
             >
               {e.title ?? "Status page"}
             </a>

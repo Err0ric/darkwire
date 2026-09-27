@@ -379,7 +379,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                   onClick={() => apply({ tab })}
                   aria-pressed={filters.tab === tab}
                   className={cn(
-                    "relative shrink-0 pb-[18px] text-[15px] leading-5 whitespace-nowrap outline-none focus-visible:text-fg",
+                    "max-md:tap", "relative shrink-0 pb-[18px] text-[15px] leading-5 whitespace-nowrap outline-none focus-visible:text-fg",
                     filters.tab === tab ? "text-fg" : "text-muted hover:text-fg-2",
                   )}
                 >
@@ -398,7 +398,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 value={filters.vendor || ALL_VENDORS}
                 onValueChange={(v) => apply({ vendor: v === ALL_VENDORS ? "" : v })}
               >
-                <SelectTrigger aria-label="Vendor" className="h-[30px] px-0 text-[15px]">
+                <SelectTrigger aria-label="Vendor" className="h-[30px] px-0 text-[15px] max-md:tap">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-h-80">
@@ -418,7 +418,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 placeholder="Search or CVE ID"
                 aria-label="Search headlines or CVE IDs"
                 className={cn(
-                  "h-[30px] min-w-0 flex-1",
+                  "h-[30px] min-w-0 flex-1 max-md:h-11",
                   stack.length ? "@min-[1060px]:w-[200px] @min-[1060px]:flex-none" : "@min-[940px]:w-[200px] @min-[940px]:flex-none",
                 )}
               />
@@ -434,7 +434,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                   window.scrollTo({ top: 0 })
                   flush()
                 }}
-                className="mt-2 h-7 rounded-control border border-rule bg-bg px-3 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+                className="max-md:tap mt-2 h-7 rounded-control border border-rule bg-bg px-3 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
               >
                 {pending.length} new ↑
               </button>
@@ -488,7 +488,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 {items.length} of {total} in the last {windowText}
               </span>
               {items.length < total && (
-                <button type="button" onClick={showMore} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
+                <button type="button" onClick={showMore} className="max-md:tap text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
                   Show more
                 </button>
               )}
@@ -567,7 +567,7 @@ function Count({
           aria-pressed={active}
           title={active ? "Clear the severity filter" : "Show this severity over the last 24 hours"}
           className={cn(
-            "relative outline-none hover:text-fg-2 focus-visible:text-fg-2",
+            "max-md:tap", "relative outline-none hover:text-fg-2 focus-visible:text-fg-2",
             active && "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg",
           )}
         >

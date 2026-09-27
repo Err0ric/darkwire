@@ -297,6 +297,35 @@ html[data-theme="high-contrast"] {
   }
 }
 
+/* Tap targets: an invisible ::before at least 44x44, centered on the element, so small links and
+   buttons are easy to hit on a phone without changing how they look. Used as max-md:tap. The
+   down variant grows below only (meta links sit right under a headline). */
+@utility tap {
+  position: relative;
+  &::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    translate: -50% -50%;
+  }
+}
+
+@utility tap-down {
+  position: relative;
+  &::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: -2px;
+    width: max(100%, 44px);
+    height: 44px;
+    translate: -50% 0;
+  }
+}
+
 /* Page chrome that full-height layouts (home) subtract. Kiosk hides the nav and zooms. */
 :root {
   --nav-h: 60px;

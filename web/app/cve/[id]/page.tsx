@@ -35,7 +35,7 @@ export default async function CvePage({ params }: { params: Promise<{ id: string
   return (
     <main className="flex-1 page-frame pb-24">
       <div className="@container pt-6 min-[1200px]:max-w-[1200px] md:pt-[33px]">
-        <QLink href="/cves" className="text-[13px] text-muted outline-none hover:text-fg-2 focus-visible:text-fg-2">
+        <QLink href="/cves" className="max-md:tap text-[13px] text-muted outline-none hover:text-fg-2 focus-visible:text-fg-2">
           ← CVEs
         </QLink>
         <div className="mt-4 border-t border-rule">

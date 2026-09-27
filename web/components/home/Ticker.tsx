@@ -167,7 +167,7 @@ export function Ticker({ items }: { items: FeedItem[] }) {
           href={current.primary_url}
           {...EXTERNAL}
           aria-label={current.headline}
-          className="ticker-fade block min-w-0 truncate text-left text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+          className="max-md:tap ticker-fade block min-w-0 truncate text-left text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
         >
           <span ref={text} aria-hidden className="whitespace-pre" />
         </a>

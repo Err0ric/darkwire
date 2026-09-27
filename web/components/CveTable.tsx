@@ -162,7 +162,7 @@ export function CveTable({ rows, initial }: { rows: CveRow[]; initial: CveFilter
           onKeyDown={(e) => e.key === "Escape" && apply({ q: "" })}
           placeholder="CVE ID, vendor, product, description"
           aria-label="Search CVEs by ID, vendor, product or description"
-          className="h-[30px] w-full md:w-[300px]"
+          className="h-[30px] w-full max-md:h-11 md:w-[300px]"
         />
         <div className="flex flex-wrap gap-2" role="group" aria-label="Filters">
           <Chip on={filters.kev} onClick={() => apply({ kev: !filters.kev })}>
@@ -196,7 +196,7 @@ export function CveTable({ rows, initial }: { rows: CveRow[]; initial: CveFilter
                     type="button"
                     onClick={() => by(c.key)}
                     className={cn(
-                      "inline-flex items-center gap-1.5 outline-none focus-visible:text-fg",
+                      "max-md:tap", "inline-flex items-center gap-1.5 outline-none focus-visible:text-fg",
                       sort?.key === c.key ? "text-fg" : "text-muted hover:text-fg-2",
                     )}
                   >
@@ -251,7 +251,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
       aria-pressed={on}
       onClick={onClick}
       className={cn(
-        "h-[30px] rounded-control border px-3 text-[13px] outline-none focus-visible:border-muted",
+        "max-md:tap", "h-[30px] rounded-control border px-3 text-[13px] outline-none focus-visible:border-muted",
         on ? "border-muted bg-hairline text-fg" : "border-rule text-muted hover:text-fg-2",
       )}
     >
@@ -281,7 +281,7 @@ function Row({ row: r, expanded, onToggle }: { row: CveRow; expanded: boolean; o
       <td className={cn(CELL, "py-2")}>
         <Link
           href={`/cve/${r.id}`}
-          className="block font-mono text-xs leading-4 text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+          className="max-md:tap block font-mono text-xs leading-4 text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
         >
           {r.id}
         </Link>

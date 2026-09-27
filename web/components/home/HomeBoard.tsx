@@ -121,7 +121,7 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
 
         <Link
           href={`/wire${query()}`}
-          className="mt-[clamp(24px,3.6vh,48px)] inline-flex h-10 items-center gap-2.5 rounded-control border border-accent px-6 font-mono text-[13px] font-medium tracking-[0.08em] text-fg outline-none hover:border-critical focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="max-md:tap mt-[clamp(24px,3.6vh,48px)] inline-flex h-10 items-center gap-2.5 rounded-control border border-accent px-6 font-mono text-[13px] font-medium tracking-[0.08em] text-fg outline-none hover:border-critical focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           OPEN WIRE <span className="text-critical-text">→</span>
         </Link>
@@ -131,14 +131,14 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
             ["/vendors", "Vendors"],
             ["/outages", "Outages"],
           ].map(([href, label]) => (
-            <Link key={href} href={`${href}${query()}`} className="outline-none hover:text-fg-2 focus-visible:text-fg-2">
+            <Link key={href} href={`${href}${query()}`} className="max-md:tap outline-none hover:text-fg-2 focus-visible:text-fg-2">
               {label}
             </Link>
           ))}
         </nav>
         <Link
           href={`/vendors${query()}`}
-          className="mt-[clamp(20px,3vh,36px)] text-[13px] text-muted underline decoration-rule underline-offset-[5px] outline-none hover:text-fg-2 focus-visible:text-fg-2"
+          className="max-md:tap mt-[clamp(20px,3vh,36px)] text-[13px] text-muted underline decoration-rule underline-offset-[5px] outline-none hover:text-fg-2 focus-visible:text-fg-2"
         >
           Pick your vendors to filter everything to your stack →
         </Link>
@@ -274,7 +274,7 @@ function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
     <li className="border-b border-hairline hover:bg-surface">
       <Link
         href={`/item/${item.id}${query()}`}
-        className="group block py-3 outline-none focus-visible:bg-surface sm:flex sm:h-11 sm:items-center sm:py-0"
+        className="max-md:tap group block py-3 outline-none focus-visible:bg-surface sm:flex sm:h-11 sm:items-center sm:py-0"
       >
         {/* Wide: score · bar · badge · headline · tag · age on one line. Narrow: headline, then the rest, no bar. */}
         <span className="hidden w-10 shrink-0 pl-1 sm:block">{score}</span>

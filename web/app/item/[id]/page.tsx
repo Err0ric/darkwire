@@ -29,7 +29,7 @@ export default async function Item({ params }: { params: Promise<{ id: string }>
   return (
     <main className="flex-1 page-frame pb-24">
       <div className="@container pt-6 min-[1200px]:max-w-[1200px] md:pt-[33px]">
-        <QLink href="/wire" className="text-[13px] text-muted outline-none hover:text-fg-2 focus-visible:text-fg-2">
+        <QLink href="/wire" className="max-md:tap text-[13px] text-muted outline-none hover:text-fg-2 focus-visible:text-fg-2">
           ← The wire
         </QLink>
         <div className="mt-4 border-t border-rule">

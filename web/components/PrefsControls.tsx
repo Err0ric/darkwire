@@ -11,7 +11,7 @@ export function PrefsControls() {
     return (
       <span className="whitespace-nowrap">
         remembered ·{" "}
-        <button type="button" onClick={reset} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
+        <button type="button" onClick={reset} className="max-md:tap text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
           reset
         </button>
       </span>
@@ -23,7 +23,7 @@ export function PrefsControls() {
       type="button"
       onClick={() => setRemember(true)}
       title="Keep your stack and theme in this browser only. Nothing else is stored."
-      className="whitespace-nowrap outline-none hover:text-fg-2 focus-visible:text-fg-2"
+      className="max-md:tap whitespace-nowrap outline-none hover:text-fg-2 focus-visible:text-fg-2"
     >
       remember on this browser
     </button>

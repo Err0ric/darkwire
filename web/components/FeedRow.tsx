@@ -106,7 +106,7 @@ export function FeedRow({
           <a
             href={item.primary_url}
             {...EXTERNAL}
-            className="line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] text-fg outline-none focus-visible:underline one-line-rows:block one-line-rows:truncate"
+            className="max-md:tap line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] text-fg outline-none focus-visible:underline one-line-rows:block one-line-rows:truncate"
           >
             {item.headline}
           </a>
@@ -140,7 +140,7 @@ export function FeedRow({
           aria-expanded={expanded}
           aria-controls={detailId}
           aria-label={expanded ? "Collapse" : "Expand"}
-          className="relative ml-3 flex size-5 shrink-0 items-center justify-center outline-none after:absolute after:-inset-2 after:content-[''] focus-visible:outline-1 focus-visible:outline-rule md:ml-[25px] md:size-3"
+          className="max-md:tap relative ml-3 flex size-5 shrink-0 items-center justify-center outline-none after:absolute after:-inset-2 after:content-[''] focus-visible:outline-1 focus-visible:outline-rule md:ml-[25px] md:size-3"
         >
           <ChevronDown
             className={cn("size-3", expanded ? "rotate-180 text-critical-text" : "text-chevron")}
@@ -191,7 +191,7 @@ function MetaLine({ item, pinned = false, inStack = false }: { item: FeedItem; p
   } else {
     for (const s of item.sources.slice(0, MAX_SOURCES)) {
       parts.push(
-        <a key={s.url} href={s.url} {...EXTERNAL} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
+        <a key={s.url} href={s.url} {...EXTERNAL} className="max-md:tap-down text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
           {s.name}
         </a>,
       )
@@ -337,7 +337,7 @@ function Age({ iso, clock = false, className }: { iso: string; clock?: boolean; 
 // Every section renders only when it has data: no dashes, blanks, "unknown" or placeholders.
 // Plain news expands to its summary (when there is one) and its source link, nothing else.
 
-const LINK = "outline-none hover:text-fg focus-visible:text-fg"
+const LINK = "max-md:tap outline-none hover:text-fg focus-visible:text-fg"
 
 export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
   const d = detail.state === "ready" ? detail.item : null

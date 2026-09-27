@@ -31,7 +31,7 @@ export function Elsewhere({ elsewhere }: { elsewhere: ElsewhereItem[] }) {
       <ul className="mt-3">
         {elsewhere.map((e) => (
           <li key={e.id} className="-mx-2 mb-1.5 px-2 py-1 hover:bg-surface">
-            <a href={e.url} {...EXTERNAL} className="line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
+            <a href={e.url} {...EXTERNAL} className="max-md:tap line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
               {e.headline}
             </a>
             <p className="mt-1 text-[11px] min-[2200px]:text-[12px] leading-4 text-dim-text">
@@ -71,7 +71,7 @@ export function MostActive({
                 onClick={() => onVendor(v.slug)}
                 aria-pressed={on}
                 className={cn(
-                  "relative outline-none hover:text-fg focus-visible:text-fg",
+                  "max-md:tap", "relative outline-none hover:text-fg focus-visible:text-fg",
                   on ? "text-fg after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg" : "text-fg-2",
                 )}
               >
@@ -106,7 +106,7 @@ export function AddedToKev({ kev, query = "" }: { kev: KevRow[]; query?: string 
       <ul className="mt-2.5">
         {kev.map((k) => {
           const title = `Added ${k.date_added}${k.product ? ` · ${k.product}` : ""}`
-          const cls = "shrink-0 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+          const cls = "max-md:tap shrink-0 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
           const itemId = k.item_id
           return (
             <li key={k.cve_id} className="-mx-2 flex h-6 items-center justify-between gap-3 px-2 hover:bg-surface">
@@ -191,7 +191,7 @@ export function LastSevenDays({
                   onClick={() => onSeverity(key)}
                   aria-pressed={on}
                   title={on ? "Clear the severity filter" : `Show ${label.toLowerCase()} rows from the last 7 days`}
-                  className="group flex h-full w-full items-center outline-none focus-visible:outline-1 focus-visible:outline-rule"
+                  className="max-md:tap group flex h-full w-full items-center outline-none focus-visible:outline-1 focus-visible:outline-rule"
                 >
                   {row}
                 </button>

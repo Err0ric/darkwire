@@ -13,7 +13,6 @@ import { usePrefs } from "@/lib/prefs"
 
 const LINKS = [
   { href: "/wire", label: "Wire" },
-  { href: "/cves", label: "CVEs" },
   { href: "/vendors", label: "Vendors" },
   { href: "/outages", label: "Outages" },
 ]
@@ -66,18 +65,20 @@ export function Nav() {
   const dot = syncState(sync.status, sync.failing, now)
   // Home leads with a large wordmark of its own; the nav's would repeat it.
   const home = pathname === "/"
+  const ownClock = OWN_CLOCK.has(pathname)
+  const cvesActive = pathname === "/cves" || pathname.startsWith("/cve/")
   const label = sync.failing ? "Sync unavailable" : minutes !== null ? syncedLabel(minutes) : ""
 
   return (
     <header data-chrome className="flex h-15 items-center page-frame">
       {!home && (
-        <Link href={`/${query()}`} className="mr-4 flex items-center gap-2 outline-none focus-visible:outline-1 focus-visible:outline-rule sm:mr-6 md:mr-10">
+        <Link href={`/${query()}`} className="mr-3 flex items-center gap-2 outline-none focus-visible:outline-1 focus-visible:outline-rule sm:mr-6 md:mr-10">
           <SyncDot state={dot} className="size-1.5" />
-          <span className="text-lg leading-none font-bold tracking-[-0.01em] text-fg">darkwire</span>
+          <span className="text-base leading-none font-bold tracking-[-0.01em] text-fg sm:text-lg">darkwire</span>
         </Link>
       )}
 
-      <nav aria-label="Main" className="flex min-w-0 items-center gap-3.5 sm:gap-6">
+      <nav aria-label="Main" className="flex min-w-0 items-center gap-3 sm:gap-6">
         {LINKS.map(({ href, label }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`)
           return (
@@ -96,16 +97,30 @@ export function Nav() {
         })}
       </nav>
 
-      <div className="ml-auto flex shrink-0 items-center gap-4 pl-3">
-        {now !== null && !OWN_CLOCK.has(pathname) && (
-          <time
-            dateTime={new Date(now).toISOString()}
-            title="Coordinated Universal Time"
-            className="hidden font-mono text-xs leading-none text-dim min-[1200px]:block"
-          >
-            {utcHHMM(new Date(now))} UTC
-          </time>
-        )}
+      <div className="ml-auto flex shrink-0 items-center gap-3 pl-5 sm:gap-4">
+        {/* CVEs is a quiet link at the start of the status group. The UTC slot keeps its width on
+            pages with their own clock (/ and /wire), so CVEs sits in the same spot everywhere. */}
+        <Link
+          href={`/cves${query()}`}
+          aria-current={cvesActive ? "page" : undefined}
+          className={cn(
+            "text-[14px] leading-none outline-none focus-visible:text-fg sm:text-[15px]",
+            cvesActive ? "text-fg" : "text-muted hover:text-fg-2",
+          )}
+        >
+          CVEs
+        </Link>
+        <span aria-hidden className={cn("-mx-1.5 hidden text-dim min-[1200px]:block", ownClock && "invisible")}>
+          ·
+        </span>
+        <time
+          dateTime={now !== null ? new Date(now).toISOString() : undefined}
+          title="Coordinated Universal Time"
+          aria-hidden={ownClock || undefined}
+          className={cn("hidden w-[70px] font-mono text-xs leading-none text-dim min-[1200px]:block", ownClock && "invisible")}
+        >
+          {now !== null ? `${utcHHMM(new Date(now))} UTC` : ""}
+        </time>
         <p className="hidden text-[15px] leading-none text-muted sm:block" aria-live="polite">
           {label}
         </p>

@@ -99,7 +99,9 @@ class MsrcDetail(ORM):
 
 
 class Action(BaseModel):
-    fixed: list[str] = []
+    """Model-read from the articles. Workaround sentence only: fixed versions, CVSS, KEV and
+    patch status never come from the model."""
+
     workaround: str | None = None
 
 

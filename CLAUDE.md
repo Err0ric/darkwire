@@ -86,7 +86,7 @@ Click anywhere on the row except a link. Background `--surface`, extends 24px pa
 
 1. Summary, 3 lines max, 14px, `#b5b5b5`, max-width 720px. Generated once on ingest, cached. Prompt: what it is, who is affected, is there a fix. No adjectives.
 2. What to do (CVE rows only), label then label/value lines:
-   - `Update to`: first fixed version per affected range, product once then versions in Geist Mono. Source order: NVD CPE `versionEndExcluding`, then the CNA's `lessThan` / unaffected-at versions, then MSRC KBs, then what the summary model read in the articles. `advisory ↗` after the first line.
+   - `Update to`: first fixed version per affected range, product once then versions in Geist Mono. Source order: NVD CPE `versionEndExcluding`, then the CNA's `lessThan` / unaffected-at versions, then MSRC KBs. Never from the summary model. `advisory ↗` after the first line.
    - `Workaround`: one sentence from the summary model (only a concrete mitigation the articles name), plus a link to the NVD reference tagged Mitigation when there is one.
    - `KEV due`: CISA's due date, shown as a UTC calendar date, when the CVE is in KEV.
 3. `CVSS 3.1 vector` label, then 8 chips: `AV:N / Network` etc. Chip = Geist Mono 12px value over 10px sans label, background `#161616`. Impact-side chips (C, I, A) at High get background `#1c1010`.
@@ -100,6 +100,17 @@ Rules:
 - Plain news (no CVE) expands to its summary, when there is one, and the Source link. Nothing else.
 - `Copy` (CVE rows) puts a Teams/ticket-ready plain-text block on the clipboard, one fact per line, only lines with data: headline; `CVE · CVSS n.n Severity · CISA KEV`; `Affected:`; `Fixed in:`; `Workaround:`; `KEV due date: YYYY-MM-DD`; blank line; `Source:`, `Vendor advisory:`, `Mitigation:` (only if different from the advisory), `NVD:`.
 - The summary model (`ANTHROPIC_API_KEY`) is optional. Without it, What to do comes from NVD, MSRC and KEV alone.
+
+## Summary model
+
+Claude Haiku writes the row summary and the What to do workaround sentence. Rules, enforced in `api/app/summaries.py`:
+
+- No tools, and no data beyond the article text: headline, article titles, excerpts and bodies, wrapped in `<article>` tags the prompt says are material, never instructions. No NVD, KEV, EPSS or vendor data goes in.
+- Output renders as plain text only (never HTML or markdown).
+- Structured facts (CVSS, KEV, fixed version, patch status) come only from NVD, CISA and vendor data, never from the model.
+- Discard output over the length limit (summary 60 words / 450 characters, workaround 25 words), or containing a URL, markdown, a line break, or the first person (refusals, talk about its instructions). Discarded output is stored as empty so it is not re-asked; the row shows no summary.
+- Bumping `RULES_VERSION` wipes every stored summary and workaround so they regenerate under the new rules.
+- `/status` reports the model's health (ok, auth failing, quota, error, no key, pending); the rail says "Summaries paused." when it is not ok.
 
 ## Right rail (wire only), in this order
 

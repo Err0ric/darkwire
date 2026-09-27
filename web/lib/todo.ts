@@ -4,7 +4,7 @@
 import type { ItemDetail } from "@/lib/api"
 
 export interface FixLine {
-  product: string | null // null when the text already names it (model or KB lines)
+  product: string | null // null when MSRC names no product
   versions: string[]
 }
 
@@ -16,7 +16,7 @@ export interface Todo {
   kevDue: Date | null
 }
 
-/** Fixed versions: NVD / CNA ranges first, then MSRC's KBs, then what the articles say. */
+/** Fixed versions: NVD / CNA ranges, else MSRC's KBs. Never from the summary model. */
 function fixes(d: ItemDetail): FixLine[] {
   const nvd = d.cve?.fixed_versions ?? []
   if (nvd.length) {
@@ -26,7 +26,7 @@ function fixes(d: ItemDetail): FixLine[] {
   }
   const kbs = d.msrc?.kbs ?? []
   if (kbs.length) return [{ product: d.msrc?.product ?? null, versions: kbs.map((k) => `KB${k.kb.replace(/^KB/i, "")}`) }]
-  return (d.action?.fixed ?? []).map((text) => ({ product: null, versions: [text] }))
+  return []
 }
 
 export function whatToDo(d: ItemDetail): Todo | null {

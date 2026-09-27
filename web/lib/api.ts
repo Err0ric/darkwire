@@ -96,8 +96,8 @@ export interface MsrcDetail {
 
 export interface ItemDetail extends FeedItem {
   summary: string | null
-  /** Read from the articles by the summary model, CVE rows only. */
-  action: { fixed: string[]; workaround: string | null } | null
+  /** Workaround read from the articles by the summary model, CVE rows only. Never versions. */
+  action: { workaround: string | null } | null
   patch_status: PatchStatus
   patch_url: string | null
   first_seen_at: string

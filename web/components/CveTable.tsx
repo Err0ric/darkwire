@@ -6,6 +6,7 @@ import { ChevronDown } from "lucide-react"
 import { cn } from "cn"
 
 import { BAR_FILL, Expanded, PATCH, type Detail } from "@/components/FeedRow"
+import { PAGE_COUNTS } from "@/components/PageHeader"
 import { Input } from "@/components/ui/input"
 import { getItem, type CveRow } from "@/lib/api"
 import type { CveFilters, Fix, Sev } from "@/lib/cve-filters"
@@ -142,7 +143,7 @@ export function CveTable({ rows, initial }: { rows: CveRow[]; initial: CveFilter
 
   return (
     <>
-      <p className="mt-[3px] text-[15px] leading-5 text-muted">
+      <p className={PAGE_COUNTS}>
         {filtered ? (
           <>
             <span className="text-fg">{shown.length}</span> of {rows.length}

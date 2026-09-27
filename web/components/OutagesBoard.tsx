@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { cn } from "cn"
 
+import { PageHeader } from "@/components/PageHeader"
 import { byImpact, HourStrip, isImpacted, StateDot } from "@/components/ServiceBits"
 import { SiteFooter } from "@/components/SiteFooter"
 import { getServices, type ServiceOut, type ServicesOut } from "@/lib/api"
@@ -34,26 +35,23 @@ export function OutagesBoard({ initial }: { initial: ServicesOut | null }) {
 
   return (
     <main className="flex-1 page-frame pb-16">
-      <header className="pt-6 md:pt-[33px]">
-        <h1 className="text-[36px] leading-[44px] font-bold tracking-[-0.02em] text-fg">Outages</h1>
-        <p className="mt-[3px] text-[15px] leading-5 text-muted">
-          {data ? (
-            <>
-              <span className="text-fg">{all.length}</span> services ·{" "}
-              {impacted.length ? (
-                <>
-                  <span className="text-fg">{impacted.length}</span> impacted
-                </>
-              ) : (
-                "all operational"
-              )}
-              {checked && now !== null && <> · checked {age(checked, now)} ago</>}
-            </>
-          ) : (
-            "The API is unreachable right now."
-          )}
-        </p>
-      </header>
+      <PageHeader title="Outages">
+        {data ? (
+          <>
+            <span className="text-fg">{all.length}</span> services ·{" "}
+            {impacted.length ? (
+              <>
+                <span className="text-fg">{impacted.length}</span> impacted
+              </>
+            ) : (
+              "all operational"
+            )}
+            {checked && now !== null && <> · checked {age(checked, now)} ago</>}
+          </>
+        ) : (
+          "The API is unreachable right now."
+        )}
+      </PageHeader>
 
       {data && <ImpactedNow services={impacted} total={all.length} now={now} />}
 

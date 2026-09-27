@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { SiteFooter } from "@/components/SiteFooter"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AddedToKev, Elsewhere, LastSevenDays, MostActive, SourcesLine } from "@/components/wire/Rail"
+import { PAGE_HEADER } from "@/components/PageHeader"
 import { Services } from "@/components/wire/Services"
 import { WireClock } from "@/components/wire/WireClock"
 import { useFitCount } from "@/lib/fit"
@@ -318,7 +319,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
         </aside>
 
         <div className="@container min-w-0 flex-1 min-[2200px]:w-(--feed-w) min-[2200px]:flex-none">
-          <header className="pt-6 md:pt-[33px]">
+          <header className={PAGE_HEADER}>
             {/* The live clock is the heading; the date and UTC line sits on its baseline. */}
             <WireClock />
             <p className="mt-[3px] flex flex-wrap gap-x-4 text-[15px] leading-5 text-muted md:gap-x-0">

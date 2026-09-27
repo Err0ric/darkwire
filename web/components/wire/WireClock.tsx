@@ -1,5 +1,8 @@
 "use client"
 
+import { cn } from "cn"
+
+import { PAGE_TITLE } from "@/components/PageHeader"
 import { hms, useClock, utcHHMM, zoneName } from "@/lib/clock"
 
 /** The wire's heading: the live clock HH:MM:SS (seconds dim) in Geist Mono at the old title's
@@ -14,7 +17,7 @@ export function WireClock() {
   return (
     <div className="flex flex-wrap items-baseline gap-x-4">
       <h1 className="sr-only">The wire</h1>
-      <p className="h-9 font-mono text-[28px] leading-9 font-bold tracking-[-0.02em] text-fg tabular-nums min-[1200px]:h-11 min-[1200px]:text-[36px] min-[1200px]:leading-[44px]">
+      <p className={cn(PAGE_TITLE, "font-mono tabular-nums")}>
         {now && (
           <time dateTime={now.toISOString()}>
             {hm}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { connection } from "next/server"
 
+import { PageHeader } from "@/components/PageHeader"
 import { SiteFooter } from "@/components/SiteFooter"
 import { VendorList } from "@/components/VendorList"
 import { getVendors } from "@/lib/api"
@@ -15,18 +16,15 @@ export default async function Vendors() {
 
   return (
     <main className="flex-1 page-frame pb-24">
-      <header className="pt-6 md:pt-[33px]">
-        <h1 className="text-[36px] leading-[44px] font-bold tracking-[-0.02em] text-fg">Vendors</h1>
-        <p className="mt-[3px] text-[15px] leading-5 text-muted">
-          {vendors ? (
-            <>
-              <span className="text-fg">{vendors.length}</span> vendors · rows in the last 7 days
-            </>
-          ) : (
-            "The API is unreachable right now."
-          )}
-        </p>
-      </header>
+      <PageHeader title="Vendors">
+        {vendors ? (
+          <>
+            <span className="text-fg">{vendors.length}</span> vendors · rows in the last 7 days
+          </>
+        ) : (
+          "The API is unreachable right now."
+        )}
+      </PageHeader>
 
       {vendors && <VendorList vendors={vendors} />}
       <SiteFooter className="mt-16" />

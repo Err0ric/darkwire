@@ -8,7 +8,7 @@ import { VendorGlyph } from "@/components/VendorGlyph"
 import type { VendorOut } from "@/lib/api"
 import { usePrefs } from "@/lib/prefs"
 
-/** Vendors with 7-day counts; each links to the wire and can be added to your stack. */
+/** Vendors with 7-day counts; each links to its page (/vendor/[slug]) and can be added to your stack. */
 export function VendorList({ vendors }: { vendors: VendorOut[] }) {
   const { stack, toggleVendor, query } = usePrefs()
   const names = vendors.filter((v) => stack.includes(v.slug)).map((v) => v.name)
@@ -35,7 +35,7 @@ export function VendorList({ vendors }: { vendors: VendorOut[] }) {
           return (
             <li key={v.slug} className="flex h-12 items-center gap-3 border-b border-hairline">
               <Link
-                href={`/wire${query({ vendor: v.slug })}`}
+                href={`/vendor/${v.slug}${query()}`}
                 className="group flex min-w-0 flex-1 items-center gap-4 outline-none"
               >
                 <span className={cn("flex size-5 shrink-0 items-center justify-center", inStack ? "text-fg" : v.items_7d === 0 ? "text-dim-text" : "text-muted")}>

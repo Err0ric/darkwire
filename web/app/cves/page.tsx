@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { connection } from "next/server"
 
 import { CveTable } from "@/components/CveTable"
+import { PageHeader } from "@/components/PageHeader"
 import { SiteFooter } from "@/components/SiteFooter"
 import { getCves, type CveRow } from "@/lib/api"
 import { parseFilters } from "@/lib/cve-filters"
@@ -29,10 +30,7 @@ export default async function Cves({ searchParams }: { searchParams: Promise<Rec
 
   return (
     <main className="flex-1 page-frame pb-24">
-      <header className="pt-6 md:pt-[33px]">
-        <h1 className="text-[36px] leading-[44px] font-bold tracking-[-0.02em] text-fg">CVEs</h1>
-        {!rows && <p className="mt-[3px] text-[15px] leading-5 text-muted">The API is unreachable right now.</p>}
-      </header>
+      <PageHeader title="CVEs">{rows ? undefined : "The API is unreachable right now."}</PageHeader>
       {rows && <CveTable rows={rows} initial={parseFilters(params)} />}
       <SiteFooter className="mt-16" />
     </main>

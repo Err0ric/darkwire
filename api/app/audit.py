@@ -34,7 +34,11 @@ async def board(client: httpx.AsyncClient, api: str) -> tuple[dict[str, bool], s
     urls: dict[str, bool] = {}
     offset = 0
     while True:
-        page = (await client.get(f"{api}/feed", params={"limit": 200, "offset": offset, "all_sources": "true"})).json()
+        r = await client.get(f"{api}/feed", params={"limit": 200, "offset": offset, "all_sources": "true"})
+        if r.status_code == 403:
+            raise SystemExit("The API refused all_sources (403): export AUDIT_TOKEN with the Railway value.")
+        r.raise_for_status()
+        page = r.json()
         for item in page["items"]:
             for s in item["sources"]:
                 urls[s["url"]] = s["url"] == item["primary_url"]

@@ -312,7 +312,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
         >
           <div className="flex flex-col gap-10">
             <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
-            <AddedToKev kev={kev} />
+            <AddedToKev kev={kev} query={prefs.query()} />
             <MostActive active={active} onVendor={(slug) => apply({ vendor: slug })} />
             <SourcesLine status={status} />
           </div>
@@ -509,7 +509,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
               <Services data={services} />
             </div>
             <div className="order-3 min-[1200px]:order-2 min-[2200px]:hidden">
-              <AddedToKev kev={kev} />
+              <AddedToKev kev={kev} query={prefs.query()} />
             </div>
             <div className="order-4 min-[1200px]:order-3 min-[2200px]:hidden">
               <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />

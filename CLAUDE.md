@@ -141,7 +141,7 @@ Sections:
 - Services (see Services).
 - Elsewhere. Five most recent from the policy/privacy/culture pool (EFF, 404 Media, Citizen Lab, Lawfare, Wired, TechCrunch Security, Ars). Headline 13px, clamped to 2 lines + `source · age` 11px. No vendor, no score.
 - Most active this week. Vendor + count.
-- Added to KEV. CVE ID + vendor, last 7 days.
+- Added to KEV. From CISA's catalog, not the board: entries with `dateAdded` in the last 7 days, newest first, CVE ID + CISA's vendor. A CVE with a row on the board links to it (scrolled to and expanded when it is on the current wire view, else `/item/[id]`); any other links to its NVD page in a new tab. No link may 404.
 - Last 7 days. Four 3px bars: Critical, High, Medium, Low. Each row with a count filters the wire to that severity over the last 7 days (`?severity=critical`, combinable with tab, vendor, search and stack; old CVEs excluded, so the list matches the count). The active row is underlined like the active tab; clicking it again clears the filter. Zero rows are not clickable. The header's "N critical" and "N high" are 24-hour counts, so they set the filter with a 24-hour window (`?severity=critical&window=24h`) and the row count matches the number clicked. The footer line names the active window.
 - Sources line: "Sources: NVD, CISA KEV, vendor PSIRTs, N feeds. All healthy. Rows update every minute." (or "N failing.", plus "Summaries paused." when the model is not ok).
 
@@ -161,7 +161,8 @@ The nav shows the current UTC time ("19:08 UTC", 12px mono `--dim`) before "Sync
 - Skip at ingest: ads (title, URL or first paragraph says sponsored, sponsored by, partner content, webinar, virtual event) and anything dated more than 1 hour in the future. The ad count per run is in `/status`. Some THN sponsored posts carry no marker in the feed and still get through.
 - CVE attachment: an article gets only the CVE IDs it ties to its headline: IDs in the title; all when it names three or fewer; IDs in the lead paragraph unless the lead lists a whole bulletin (more than three); the first N when the headline counts them ("Two ... Zero-Days", "2 exploited zero-days"); for exploitation headlines, the IDs in sentences about exploitation or KEV that name three or fewer; IDs mentioned more than once; else the first. Across a cluster the tied IDs are unioned, and a count in one outlet's title fills from another's bulletin list up to that count. A bulletin listed in passing ("the six other flaws ...") does not attach.
 - Patch status: "patched" needs an NVD reference tagged Patch, or an explicit fixed version (NVD's CPE upper bound, the CNA's "unaffected at", MSRC KBs), AND no headline or lead paragraph in the cluster saying unpatched / no patch / not yet fixed. A CNA "affected before X" range alone, or a vendor advisory link alone, is not a fix ("unverified"). When coverage says unpatched: "no fix" if the vendor data has no explicit fix, "unverified" if it does (they disagree).
-- Enrichment: NVD API for vector, base, impact, exploitability, CPE, reference tags. FIRST.org for EPSS. CISA KEV JSON for KEV. Cache all of it.
+- Enrichment: NVD API for vector, base, impact, exploitability, CPE, reference tags. FIRST.org for EPSS. CISA KEV JSON for KEV, polled hourly (inside the 15-minute enrich pass). Cache all of it.
+- Vendor · product on `/cves` come as a pair from one source: the first CPE with a product (its vendor field, shown with the seeded vendor's name when it matches), else the CNA's affected list, else the KEV catalog; the row's vendor tag only when none of those say. A Google article about a Windows bug is still Microsoft · Windows.
 - Elsewhere is assigned per feed, not per article.
 - Timezone: viewer's local, fall back to UTC. Never hardcode PT.
 

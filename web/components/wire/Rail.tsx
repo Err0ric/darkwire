@@ -66,23 +66,50 @@ export function MostActive({ active, onVendor }: { active: VendorOut[]; onVendor
   )
 }
 
-export function AddedToKev({ kev }: { kev: KevRow[] }) {
+/** Scroll to a row on the current wire view and expand it. False when it is not on screen. */
+function openRow(itemId: number): boolean {
+  const row = document.getElementById(`row-${itemId}`)
+  if (!row) return false
+  row.scrollIntoView({ block: "center" })
+  const toggle = row.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')
+  toggle?.click()
+  return true
+}
+
+/** CISA's catalog additions of the last 7 days, newest first. A CVE with a row on the board links
+ * to that row (scrolled to and expanded when it is on this view, else its permalink); any other
+ * CVE links to NVD. `query` carries the stack and theme on internal links. */
+export function AddedToKev({ kev, query = "" }: { kev: KevRow[]; query?: string }) {
   return (
     <Section title="Added to KEV">
       <ul className="mt-2.5">
-        {kev.map((k) => (
-          <li key={k.cve_id} className="flex h-6 items-center justify-between gap-3">
-            <a
-              href={`https://nvd.nist.gov/vuln/detail/${k.cve_id}`}
-              {...EXTERNAL}
-              title={`Added ${k.date_added}${k.product ? ` · ${k.product}` : ""}`}
-              className="shrink-0 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
-            >
-              {k.cve_id}
-            </a>
-            <span className="truncate text-muted">{k.vendor}</span>
-          </li>
-        ))}
+        {kev.map((k) => {
+          const title = `Added ${k.date_added}${k.product ? ` · ${k.product}` : ""}`
+          const cls = "shrink-0 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+          const itemId = k.item_id
+          return (
+            <li key={k.cve_id} className="flex h-6 items-center justify-between gap-3">
+              {itemId !== null ? (
+                <a
+                  href={`/item/${itemId}${query}`}
+                  title={title}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+                    if (openRow(itemId)) e.preventDefault()
+                  }}
+                  className={cls}
+                >
+                  {k.cve_id}
+                </a>
+              ) : (
+                <a href={`https://nvd.nist.gov/vuln/detail/${k.cve_id}`} {...EXTERNAL} title={`${title} · NVD`} className={cls}>
+                  {k.cve_id}
+                </a>
+              )}
+              <span className="truncate text-muted">{k.vendor}</span>
+            </li>
+          )
+        })}
         {kev.length === 0 && <li className="text-dim">No additions this week.</li>}
       </ul>
     </Section>

@@ -88,8 +88,9 @@ export function FeedRow({
 
   return (
     <article
+      id={`row-${item.id}`}
       className={cn(
-        "border-b border-hairline",
+        "scroll-mt-12 border-b border-hairline",
         fresh && "animate-row-in",
         expanded && "-mx-4 bg-surface px-4 md:-mx-6 md:px-6",
       )}

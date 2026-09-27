@@ -1,3 +1,4 @@
+import re
 from enum import Enum
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -5,7 +6,7 @@ from sqlalchemy import asc, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import Cve, Item, ItemCve, Vendor
+from app.models import Cve, Item, ItemCve, KevEntry, Vendor
 from app.product_names import display_name
 from app.schemas import CveRow, VendorRef
 from app.throttle import cap, heavy_limit, read_limit
@@ -40,19 +41,33 @@ def _cna_name(name: str | None) -> str | None:
     return display_name(name.replace(" ", "_")) if name.islower() else name
 
 
-def _vendor_product(cpes: list | None, cna: list | None) -> tuple[str | None, str | None]:
-    """Vendor and product for a CVE not tagged to a vendor: the first CPE match
-    (cpe:2.3:a:vendor:product:...), else the CNA's affected list. None when neither says."""
+def _norm(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def _vendor_product(
+    cpes: list | None, cna: list | None, known: dict[str, str]
+) -> tuple[str | None, str | None]:
+    """Vendor and product as a pair from one source: the first CPE match with a product
+    (cpe:2.3:o:microsoft:windows_10_1607:... -> Microsoft, Windows 10 1607), else the CNA's
+    affected list. The vendor always comes from the same entry as the product, never from the
+    row's tag (a Google article about a Windows bug is still Microsoft's CVE). `known` maps
+    normalized seeded vendor slugs/names to their display names."""
+    def vendor_name(raw: str | None) -> str | None:
+        if not raw or raw in ("*", "-"):
+            return None
+        return known.get(_norm(raw)) or display_name(raw)
+
     for match in cpes or []:
         criteria = match.get("criteria", "") if isinstance(match, dict) else str(match)
         parts = criteria.split(":")
         if len(parts) > 4 and parts[4] not in ("*", "-"):
-            return (display_name(parts[3]) if parts[3] not in ("*", "-") else None), display_name(parts[4])
+            return vendor_name(parts[3]), display_name(parts[4])
     for a in cna or []:
         for d in (a.get("affectedData") or []) if isinstance(a, dict) else []:
             vendor, product = _cna_name(d.get("vendor")), _cna_name(d.get("product"))
             if vendor or product:
-                return vendor, product
+                return (known.get(_norm(vendor)) or vendor) if vendor else None, product
     return None, None
 
 
@@ -98,15 +113,38 @@ async def cves(
     stmt = stmt.limit(limit).offset(offset)
 
     rows = (await session.execute(stmt)).all()
+    known: dict[str, str] = {}
+    for sv in (await session.scalars(select(Vendor))).all():
+        for key in (sv.slug, sv.name, *(sv.aliases or [])):
+            known.setdefault(_norm(key), sv.name)
+    kev_names = {
+        k.cve_id: (k.vendor, k.product)
+        for k in (
+            await session.execute(
+                select(KevEntry.cve_id, KevEntry.vendor, KevEntry.product).where(
+                    KevEntry.cve_id.in_([c.id for c, *_ in rows])
+                )
+            )
+        ).all()
+    }
     out = []
     for cve, item_id, v, cna in rows:
-        vendor_name, product = _vendor_product(cve.cpes, cna)
+        vendor_name, product = _vendor_product(cve.cpes, cna, known)
+        kv = kev_names.get(cve.id, (None, None))[0]
+        if vendor_name and kv and _norm(kv) == _norm(vendor_name) and _norm(vendor_name) not in known:
+            vendor_name = kv  # CISA's casing ("MikroTik") over a CPE slug's ("Mikrotik")
+        if not vendor_name and not product and cve.id in kev_names:
+            # CISA's catalog names vendor and product for every KEV entry.
+            kv, kp = kev_names[cve.id]
+            vendor_name, product = (known.get(_norm(kv)) or kv) if kv else None, kp
+        if not vendor_name and not product and v:
+            vendor_name = v.name  # only the row's tag is known
         out.append(
             CveRow(
                 id=cve.id,
                 description=cve.description,
                 vendor=VendorRef.model_validate(v) if v else None,
-                vendor_name=v.name if v else vendor_name,
+                vendor_name=vendor_name,
                 product=product,
                 cvss=float(cve.base_score) if cve.base_score is not None else None,
                 severity=cve.base_severity,

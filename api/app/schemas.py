@@ -119,7 +119,7 @@ class CveRow(BaseModel):
     id: str
     description: str | None
     vendor: VendorRef | None
-    # The tagged vendor's name, else the vendor from CPE / the CNA's affected list.
+    # From the same source as product: CPE, else the CNA, else the KEV catalog; the row tag last.
     vendor_name: str | None
     product: str | None
     cvss: float | None

@@ -1,4 +1,4 @@
-"""CISA Known Exploited Vulnerabilities catalog, refreshed daily."""
+"""CISA Known Exploited Vulnerabilities catalog, refreshed hourly."""
 
 import logging
 from datetime import UTC, date, datetime, timedelta
@@ -19,7 +19,7 @@ URLS = [
     # CISA's own GitHub mirror, for networks where cisa.gov answers 403.
     "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json",
 ]
-EVERY = timedelta(hours=24)
+EVERY = timedelta(hours=1)  # CISA adds entries through the day
 
 
 def _date(value: str | None) -> date | None:

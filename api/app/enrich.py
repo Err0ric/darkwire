@@ -1,4 +1,4 @@
-"""Enrichment pass: KEV (daily), NVD (new CVEs + change feed), EPSS (daily), then roll the
+"""Enrichment pass: KEV (hourly), NVD (new CVEs + change feed), EPSS (daily), then roll the
 results up onto items. Runs on its own schedule, separate from RSS ingest."""
 
 import logging

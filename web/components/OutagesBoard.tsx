@@ -97,8 +97,12 @@ function ImpactedNow({ services, total, now }: { services: ServiceOut[]; total: 
             >
               {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[11px] text-critical-text">↗</span>
             </a>
-            {s.incident?.started_at && now !== null && (
-              <span className="shrink-0 font-mono text-xs text-muted">{age(s.incident.started_at, now)}</span>
+            {/* The age slot is reserved from the first render: filling it in after mount must not
+                narrow the title (on a phone that re-wraps it and shifts the grid below). */}
+            {s.incident?.started_at && (
+              <span className="w-[4ch] shrink-0 text-right font-mono text-xs text-muted">
+                {now !== null ? age(s.incident.started_at, now) : ""}
+              </span>
             )}
           </li>
         ))}

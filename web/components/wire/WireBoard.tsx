@@ -325,6 +325,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
             <p className="mt-[3px] flex flex-wrap gap-x-4 text-[15px] leading-5 text-muted md:gap-x-0">
               {counts ? (
                 <>
+                  <span className="whitespace-nowrap text-muted md:mr-2">Last 24h:</span>
                   <Count
                     n={counts.critical_24h}
                     active={filters.severity === "critical" && filters.window === "24h"}
@@ -334,17 +335,17 @@ export function WireBoard({ initial }: { initial: WireData }) {
                   </Count>
                   <Count
                     n={counts.high_24h}
-                    slash
+                    sep="slash"
                     active={filters.severity === "high" && filters.window === "24h"}
                     onClick={() => apply(toggle24h("high"))}
                   >
                     high
                   </Count>
-                  <Count n={counts.kev_added_7d} slash>
-                    added to KEV this week
+                  <Count n={counts.articles_24h} sep="slash">
+                    articles
                   </Count>
-                  <Count n={counts.articles_24h} slash>
-                    articles in the last 24h
+                  <Count n={counts.kev_added_7d} sep="dot">
+                    added to KEV this week
                   </Count>
                 </>
               ) : (
@@ -533,15 +534,16 @@ export function WireBoard({ initial }: { initial: WireData }) {
 
 function Count({
   n,
-  slash = false,
+  sep,
   active = false,
   onClick,
   children,
 }: {
   n: number
-  slash?: boolean
+  /** Before this count: "/" between the 24h counts, "·" before the weekly one. */
+  sep?: "slash" | "dot"
   active?: boolean
-  /** Critical and high filter the wire to that severity (last 7 days); again clears it. */
+  /** Critical and high filter the wire to that severity over the last 24h; again clears it. */
   onClick?: () => void
   children: ReactNode
 }) {
@@ -553,9 +555,9 @@ function Count({
   )
   return (
     <span className="whitespace-nowrap">
-      {slash && (
-        <span aria-hidden className="mx-[13px] hidden text-outline-medium md:inline">
-          /
+      {sep && (
+        <span aria-hidden className={cn("hidden md:inline", sep === "slash" ? "mx-[13px] text-outline-medium" : "mx-2 text-dim")}>
+          {sep === "slash" ? "/" : "·"}
         </span>
       )}
       {onClick ? (
@@ -563,7 +565,7 @@ function Count({
           type="button"
           onClick={onClick}
           aria-pressed={active}
-          title={active ? "Clear the severity filter" : "Show this severity over the last 7 days"}
+          title={active ? "Clear the severity filter" : "Show this severity over the last 24 hours"}
           className={cn(
             "relative outline-none hover:text-fg-2 focus-visible:text-fg-2",
             active && "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg",

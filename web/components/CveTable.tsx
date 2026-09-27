@@ -16,7 +16,7 @@ import { useNow } from "@/lib/time"
 // a header click sorts by that column (the default order breaks ties). A row click expands the
 // wire's expanded row in place; the CVE ID is the /cve/[id] permalink.
 
-type Key = "cve" | "description" | "vendor" | "cvss" | "epss" | "kev" | "patch" | "published"
+type Key = "cve" | "vendor" | "cvss" | "epss" | "kev" | "patch" | "published"
 const SEV_CHIPS: [Sev, string][] = [
   ["critical", "Critical"],
   ["high", "High"],
@@ -60,7 +60,6 @@ const VALUE: Record<Key, (r: CveRow) => string | number | null> = {
     const [, year, num] = r.id.split("-")
     return Number(year) * 1e8 + Number(num)
   },
-  description: (r) => r.description?.toLowerCase() ?? null,
   vendor: (r) => [r.vendor_name, r.product].filter(Boolean).join(" ").toLowerCase() || null,
   cvss: (r) => r.cvss,
   epss: (r) => r.epss,
@@ -71,7 +70,7 @@ const VALUE: Record<Key, (r: CveRow) => string | number | null> = {
 
 // Text columns start ascending; numbers and dates start with the biggest / newest.
 const FIRST_ORDER: Record<Key, "asc" | "desc"> = {
-  cve: "desc", description: "asc", vendor: "asc", cvss: "desc", epss: "desc", kev: "desc", patch: "asc", published: "desc",
+  cve: "desc", vendor: "asc", cvss: "desc", epss: "desc", kev: "desc", patch: "asc", published: "desc",
 }
 
 /** KEV first, then CVSS descending, then newest. */
@@ -84,9 +83,8 @@ function byDefault(a: CveRow, b: CveRow): number {
 }
 
 const COLUMNS: { key: Key; label: string; width?: string }[] = [
-  { key: "cve", label: "CVE", width: "w-[152px]" },
-  { key: "description", label: "Description" },
-  { key: "vendor", label: "Vendor · Product", width: "w-[248px]" },
+  { key: "vendor", label: "Vendor", width: "w-[220px]" },
+  { key: "cve", label: "CVE / Description" },
   { key: "cvss", label: "CVSS", width: "w-[124px]" },
   { key: "epss", label: "EPSS", width: "w-[72px]" },
   { key: "kev", label: "KEV", width: "w-[52px]" },
@@ -183,7 +181,7 @@ export function CveTable({ rows, initial }: { rows: CveRow[]; initial: CveFilter
       </div>
 
       <div className="-mx-4 mt-5 overflow-x-auto md:-mx-6">
-        <table className="w-full min-w-[1240px] table-fixed border-collapse text-left">
+        <table className="w-full min-w-[1060px] table-fixed border-collapse text-left">
           <thead>
             <tr className="border-b border-rule">
               {COLUMNS.map((c) => (
@@ -273,20 +271,22 @@ function Row({ row: r, expanded, onToggle }: { row: CveRow; expanded: boolean; o
   return (
     <tr
       onClick={clickable ? onClick : undefined}
-      className={cn("h-11 text-sm", clickable && "cursor-pointer", expanded ? "bg-surface" : "border-b border-hairline")}
+      className={cn("h-12 text-sm", clickable && "cursor-pointer", expanded ? "bg-surface" : "border-b border-hairline")}
     >
-      <td className={cn(CELL, "font-mono text-xs whitespace-nowrap")}>
-        <Link href={`/cve/${r.id}`} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
+      <td className={cn(CELL, "py-2")} title={[r.vendor_name, r.product].filter(Boolean).join(" · ") || undefined}>
+        <span className="block truncate leading-4 text-fg">{r.vendor_name}</span>
+        <span className="mt-0.5 block truncate text-xs leading-4 text-muted">{r.product}</span>
+      </td>
+      <td className={cn(CELL, "py-2")}>
+        <Link
+          href={`/cve/${r.id}`}
+          className="block font-mono text-xs leading-4 text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+        >
           {r.id}
         </Link>
-      </td>
-      <td className={cn(CELL, "truncate text-fg")} title={r.description ?? undefined}>
-        {r.description}
-      </td>
-      <td className={cn(CELL, "truncate")} title={[r.vendor_name, r.product].filter(Boolean).join(" · ") || undefined}>
-        {r.vendor_name && <span className="text-fg-2">{r.vendor_name}</span>}
-        {r.vendor_name && r.product && <span className="text-dim"> · </span>}
-        {r.product && <span className="text-muted">{r.product}</span>}
+        <span className="mt-0.5 block truncate text-[13px] leading-4 text-fg-2" title={r.description ?? undefined}>
+          {r.description}
+        </span>
       </td>
       <td className={CELL}>
         {r.cvss !== null && (

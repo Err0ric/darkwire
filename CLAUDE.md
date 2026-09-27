@@ -22,7 +22,7 @@ Reference mockups: `/design-refs/home.png` and `/design-refs/wire.png`. Match th
 | `/cves` | Sortable table: CVE, vendor, product, CVSS, EPSS, KEV, published. |
 | `/vendor/[slug]` | Everything tagged to one vendor. |
 | `/item/[id]`, `/cve/[id]` | Permalinks that open the expanded row. |
-| `/outages` | About 20 third-party services grouped Cloud, Identity, Collaboration, Dev: name, status dot, 24 hourly cells (gray ok, amber degraded, red major, `--rule` no data; the CVSS bar's cell), current incident and link. Nav link "Outages". |
+| `/outages` | One-screen dashboard of about 20 third-party services. Header, then "Impacted now": one full-width line per impacted service (dot, name, `degraded`/`major` in their tokens, full incident title linking to the vendor page, age), major first then most recent; "All N services operational." in `--muted` when none. Then the four groups (Cloud, Identity, Collaboration, Dev) as columns separated only by gap: 4 from 1600px, 2x2 from 1200px, stacked below. Each group: 13px/500 label over a hairline, "24h … now" once, then per service a name line (dot, name, state word only when impacted) and the 24-cell strip at full column width (gray ok, amber degraded, red major, `--rule` no data). The strip follows the same 72h stale rule as the status. Stale events stay collapsed, full width, below. No scroll at 1920x1080 or 2560x1440 with up to 2 impacted services. Nav link "Outages". |
 | `/sources` | Every feed we ingest, how tagging works, what KEV and EPSS mean. Plain, not a pitch. |
 | `/feed.xml`, `/feed.json` | Our own output for other people's tools. |
 

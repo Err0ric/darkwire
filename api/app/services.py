@@ -40,6 +40,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import jobstate
 from app.db import SessionLocal
 from app.models import ServiceHour, ServiceStatus
 
@@ -401,6 +402,37 @@ async def store(
         existing.worst = state
 
 
+REPAIR_STATE = "service_hours_stale_v1"
+
+
+async def repair_hours_once(session: AsyncSession) -> None:
+    """One time: hours stored before the 72h stale rule were colored by events that were already
+    stale. For a service that now reads operational with only stale events open, clear the
+    impact from every hour that began 72h or more after the last update of all of them."""
+    if await jobstate.get(session, REPAIR_STATE):
+        return
+    fixed = 0
+    for row in (await session.scalars(select(ServiceStatus))).all():
+        if row.state != OPERATIONAL or not row.stale:
+            continue
+        updated = [_ts(e.get("updated_at")) for e in row.stale]
+        if any(u is None for u in updated):
+            continue
+        stale_from = max(updated) + STALE_AFTER
+        for h in (
+            await session.scalars(
+                select(ServiceHour).where(
+                    ServiceHour.slug == row.slug, ServiceHour.worst.in_([DEGRADED, MAJOR]), ServiceHour.hour >= _hour(stale_from)
+                )
+            )
+        ).all():
+            h.worst = OPERATIONAL
+            fixed += 1
+    await jobstate.put(session, REPAIR_STATE, datetime.now(UTC).isoformat())
+    await session.commit()
+    log.info("services: repaired %d hours colored by stale events", fixed)
+
+
 async def poll() -> None:
     now = datetime.now(UTC)
     async with httpx.AsyncClient(
@@ -422,6 +454,7 @@ async def poll() -> None:
             await store(session, svc, readings, error, now)
         await session.execute(delete(ServiceHour).where(ServiceHour.hour < _hour(now) - HISTORY))
         await session.commit()
+        await repair_hours_once(session)
     impacted = [f"{s.slug}={split(r, now)[0].state}" for s, r, _ in results if r and split(r, now)[0].state != OPERATIONAL]
     log.info("services: polled %d, %s", len(results), ", ".join(impacted) or "all operational")
 

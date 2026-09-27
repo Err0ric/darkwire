@@ -38,8 +38,8 @@ export function StateDot({ state, className }: { state: ServiceState; className?
   )
 }
 
-/** 24 cells, one per hour, oldest on the left. */
-export function HourStrip({ hours, className }: { hours: ServiceState[]; className?: string }) {
+/** 24 cells, one per hour, oldest on the left. `stretch` spreads them over the full width. */
+export function HourStrip({ hours, stretch = false, className }: { hours: ServiceState[]; stretch?: boolean; className?: string }) {
   const impacted = hours.filter((h) => h === "degraded" || h === "major").length
   return (
     <span
@@ -48,7 +48,7 @@ export function HourStrip({ hours, className }: { hours: ServiceState[]; classNa
       className={cn("flex shrink-0 gap-0.5", className)}
     >
       {hours.map((h, i) => (
-        <span key={i} className={cn("h-2.5 w-[5px]", CELL[h])} />
+        <span key={i} className={cn("h-2.5", stretch ? "min-w-0 flex-1" : "w-[5px]", CELL[h])} />
       ))}
     </span>
   )

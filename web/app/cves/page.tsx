@@ -3,14 +3,28 @@ import { connection } from "next/server"
 
 import { CveTable } from "@/components/CveTable"
 import { SiteFooter } from "@/components/SiteFooter"
-import { getCves } from "@/lib/api"
+import { getCves, type CveRow } from "@/lib/api"
 
 export const metadata: Metadata = { title: "CVEs" }
+
+// The API serves at most 100 rows a request: read up to 500 in pages.
+const PAGE = 100
+const MAX_ROWS = 500
+
+async function allCves(): Promise<CveRow[]> {
+  const rows: CveRow[] = []
+  for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
+    const page = await getCves({ sort: "published", order: "desc", limit: PAGE, offset })
+    rows.push(...page)
+    if (page.length < PAGE) break
+  }
+  return rows
+}
 
 // Every CVE on the board, newest first; the table sorts client-side.
 export default async function Cves() {
   await connection()
-  const rows = await getCves({ sort: "published", order: "desc", limit: 500 }).catch(() => null)
+  const rows = await allCves().catch(() => null)
 
   return (
     <main className="flex-1 px-4 pb-24 md:px-12">

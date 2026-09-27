@@ -265,7 +265,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
     if (fit === null || items.length >= total || fit <= items.length || loadedRef.current >= fit) return
     loadedRef.current = fit
     const f = filtersRef.current
-    getFeed({ ...feedQuery(f, stackRef.current), limit: Math.min(200, fit), offset: 0 })
+    getFeed({ ...feedQuery(f, stackRef.current), limit: Math.min(100, fit), offset: 0 })
       .then((page) => {
         if (f !== filtersRef.current) return
         setItems((prev) => (page.items.length > prev.length ? page.items : prev))

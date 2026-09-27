@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
+import { headers } from "next/headers"
 
 import { AutoUpdate } from "@/components/AutoUpdate"
 import { Kiosk } from "@/components/Kiosk"
@@ -49,12 +50,14 @@ export const viewport: Viewport = {
   themeColor: "#b91c1c",
 }
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // The CSP nonce from proxy.ts, for the one inline script of our own.
+  const nonce = (await headers()).get("x-nonce") ?? undefined
   return (
     // data-theme is set by the head script before paint, so the server markup never has it.
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="flex min-h-full flex-col">
         <PrefsProvider>

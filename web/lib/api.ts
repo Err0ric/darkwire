@@ -186,13 +186,21 @@ export class ApiError extends Error {
 
 type Query = Record<string, string | number | boolean | null | undefined>
 
+/** Server-rendered requests identify themselves to the API (X-SSR-Token) so they skip the
+ * per-IP limit: Vercel's servers share IPs across visitors. API_SERVER_TOKEN is server-only
+ * (no NEXT_PUBLIC_), so it never reaches the browser; unset, nothing is sent. */
+function serverToken(): Record<string, string> {
+  const token = typeof window === "undefined" ? process.env.API_SERVER_TOKEN : undefined
+  return token ? { "X-SSR-Token": token } : {}
+}
+
 async function get<T>(path: string, query: Query = {}, init?: RequestInit): Promise<T> {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined && value !== null && value !== "") params.set(key, String(value))
   }
   const qs = params.size ? `?${params}` : ""
-  const res = await fetch(`${API_URL}${path}${qs}`, { cache: "no-store", ...init })
+  const res = await fetch(`${API_URL}${path}${qs}`, { cache: "no-store", ...init, headers: { ...serverToken(), ...init?.headers } })
   if (!res.ok) throw new ApiError(res.status, path)
   return res.json() as Promise<T>
 }

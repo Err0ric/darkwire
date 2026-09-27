@@ -41,6 +41,6 @@ async def kev(
         )
     ).all()
     return [
-        KevRow(cve_id=k.cve_id, vendor=k.vendor, product=k.product, date_added=k.date_added, item_id=item_id)
+        KevRow(cve_id=k.cve_id, vendor=k.vendor, product=k.product, date_added=k.date_added, due_date=k.due_date, item_id=item_id)
         for k, item_id in rows
     ]

@@ -185,6 +185,7 @@ class KevRow(BaseModel):
     vendor: str | None
     product: str | None
     date_added: date
+    due_date: date | None  # CISA's remediation deadline
     item_id: int | None  # a row on the board for this CVE, if any
 
 

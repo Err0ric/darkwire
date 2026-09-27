@@ -259,6 +259,7 @@ export interface KevRow {
   vendor: string | null
   product: string | null
   date_added: string // YYYY-MM-DD
+  due_date: string | null // YYYY-MM-DD, CISA's remediation deadline
   item_id: number | null
 }
 

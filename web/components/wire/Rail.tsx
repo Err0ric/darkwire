@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import { cn } from "cn"
 
 import type { ElsewhereItem, KevRow, Severity, Status, VendorOut } from "@/lib/api"
+import { DUE_WINDOW_DAYS } from "@/lib/kev"
 import { age, useNow } from "@/lib/time"
 
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const
@@ -59,10 +60,11 @@ export function MostActive({
   vendor: string
   onVendor: (slug: string) => void
 }) {
+  const top = Math.max(1, ...active.map((v) => v.items_7d))
   return (
     <Section title="Most active this week">
       <ul className="mt-2.5">
-        {active.map((v) => {
+        {active.map((v, i) => {
           const on = vendor === v.slug
           return (
             <li key={v.slug} className="-mx-2 flex h-6 items-center justify-between px-2 hover:bg-surface">
@@ -71,13 +73,21 @@ export function MostActive({
                 onClick={() => onVendor(v.slug)}
                 aria-pressed={on}
                 className={cn(
-                  "max-md:tap", "relative outline-none hover:text-fg focus-visible:text-fg",
-                  on ? "text-fg after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg" : "text-fg-2",
+                  "max-md:tap", "w-28 shrink-0 truncate text-left outline-none hover:text-fg focus-visible:text-fg",
+                  on ? "text-fg" : "text-fg-2",
                 )}
               >
-                {v.name}
+                {/* Names take a fixed column so the bars line up; the active one is underlined. */}
+                <span className={cn("relative", on && "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg")}>{v.name}</span>
               </button>
-              <span className="font-mono text-xs text-muted">{v.items_7d}</span>
+              {/* A thin bar scaled to the most active vendor. */}
+              <span aria-hidden className="mr-3 h-[3px] min-w-6 flex-1 bg-rule">
+                <span
+                  className={cn("block h-full", i === 0 ? "bg-fg-2" : "bg-medium")}
+                  style={{ width: `${(v.items_7d / top) * 100}%` }}
+                />
+              </span>
+              <span className="w-6 text-right font-mono text-xs text-muted">{v.items_7d}</span>
             </li>
           )
         })}
@@ -100,7 +110,41 @@ function openRow(itemId: number): boolean {
 /** CISA's catalog additions of the last 7 days, newest first. A CVE with a row on the board links
  * to that row (scrolled to and expanded when it is on this view, else its permalink); any other
  * CVE links to NVD. `query` carries the stack and theme on internal links. */
-export function AddedToKev({ kev, query = "" }: { kev: KevRow[]; query?: string }) {
+/** "due Oct 16" in mono, --critical-text within 7 days of CISA's deadline; "overdue" after it. */
+function DueDate({ due, now }: { due: string | null; now: number | null }) {
+  if (!due || now === null) return <span className="w-[74px] shrink-0" />
+  const day = 86_400_000
+  const days = Math.floor(Date.parse(due) / day) - Math.floor(now / day)
+  const label = days < 0 ? "overdue" : `due ${new Date(due + "T00:00:00Z").toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" })}`
+  return (
+    <span
+      title={`CISA due date ${due}`}
+      className={cn("w-[74px] shrink-0 text-right font-mono text-xs whitespace-nowrap", days <= DUE_WINDOW_DAYS ? "text-critical-text" : "text-dim-text")}
+    >
+      {label}
+    </span>
+  )
+}
+
+/** CISA's catalog additions of the last 7 days, newest first: CVE ID, vendor, CISA due date.
+ * A CVE with a row on the board links to that row (scrolled to and expanded when it is on this
+ * view, else its permalink); any other CVE links to NVD. `query` carries the stack and theme on
+ * internal links. When the week has more additions than rows shown, "+N more" opens the wire's
+ * KEV tab. */
+export function AddedToKev({
+  kev,
+  total,
+  query = "",
+  onMore,
+}: {
+  kev: KevRow[]
+  /** The header's "added to KEV this week" count. */
+  total?: number
+  query?: string
+  onMore?: () => void
+}) {
+  const now = useNow()
+  const more = total !== undefined ? total - kev.length : 0
   return (
     <Section title="Added to KEV">
       <ul className="mt-2.5">
@@ -109,7 +153,7 @@ export function AddedToKev({ kev, query = "" }: { kev: KevRow[]; query?: string 
           const cls = "max-md:tap shrink-0 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
           const itemId = k.item_id
           return (
-            <li key={k.cve_id} className="-mx-2 flex h-6 items-center justify-between gap-3 px-2 hover:bg-surface">
+            <li key={k.cve_id} className="-mx-2 flex h-6 items-center gap-3 px-2 hover:bg-surface">
               {itemId !== null ? (
                 <a
                   href={`/item/${itemId}${query}`}
@@ -127,11 +171,19 @@ export function AddedToKev({ kev, query = "" }: { kev: KevRow[]; query?: string 
                   {k.cve_id}
                 </a>
               )}
-              <span className="truncate text-muted">{k.vendor}</span>
+              <span className="min-w-0 flex-1 truncate text-muted">{k.vendor}</span>
+              <DueDate due={k.due_date} now={now} />
             </li>
           )
         })}
         {kev.length === 0 && <li className="text-dim-text">No additions this week.</li>}
+        {more > 0 && onMore && (
+          <li className="-mx-2 flex h-6 items-center px-2">
+            <button type="button" onClick={onMore} className="max-md:tap text-dim-text outline-none hover:text-fg-2 focus-visible:text-fg-2">
+              +{more} more
+            </button>
+          </li>
+        )}
       </ul>
     </Section>
   )

@@ -268,6 +268,10 @@ html[data-theme="high-contrast"] {
   --feed-w: clamp(880px, 48vw, 1200px);
   --col-gap: clamp(48px, 3.5vw, 96px);
   --block-w: calc(2 * var(--rail-w) + var(--feed-w) + 2 * var(--col-gap));
+  /* The wire's left (stats) rail is narrower; its feed takes the difference, so the block's
+     width and centering stay the same. */
+  --left-rail-w: clamp(260px, 12vw, 300px);
+  --wire-feed-w: calc(var(--feed-w) + var(--rail-w) - var(--left-rail-w));
 }
 
 @utility page-frame {

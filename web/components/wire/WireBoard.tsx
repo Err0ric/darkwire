@@ -418,7 +418,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
           ref={leftRail}
           data-chrome
           aria-label="This week"
-          className="sticky mt-[103px] hidden w-(--rail-w) shrink-0 text-[13px] min-[2200px]:block"
+          className="sticky mt-[103px] hidden w-(--left-rail-w) shrink-0 text-[13px] min-[2200px]:block"
         >
           <div className="flex flex-col gap-10">
             <MostActive
@@ -433,12 +433,12 @@ export function WireBoard({ initial }: { initial: WireData }) {
               severity={railSeverity}
               onSeverity={onRailSeverity}
             />
-            <AddedToKev kev={kev} query={prefs.query()} />
+            <AddedToKev kev={kev} total={counts?.kev_added_7d} query={prefs.query()} onMore={() => apply({ tab: "kev" })} />
             <SourcesLine status={status} />
           </div>
         </aside>
 
-        <div className="@container min-w-0 flex-1 min-[2200px]:w-(--feed-w) min-[2200px]:flex-none">
+        <div className="@container min-w-0 flex-1 min-[2200px]:w-(--wire-feed-w) min-[2200px]:flex-none">
           <header className={PAGE_HEADER}>
             {/* One row: the counts on the left, the clock on the right, its right edge on the
                 feed's. Under 1200px the clock line goes under the counts, left-aligned. */}
@@ -709,7 +709,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
               />
             </div>
             <div className="order-3 min-[1200px]:order-4 min-[2200px]:hidden">
-              <AddedToKev kev={kev} query={prefs.query()} />
+              <AddedToKev kev={kev} total={counts?.kev_added_7d} query={prefs.query()} onMore={() => apply({ tab: "kev" })} />
             </div>
             <div className="order-1 min-[1200px]:order-5 min-[2200px]:order-2">
               <Elsewhere elsewhere={elsewhere} />

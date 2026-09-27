@@ -7,10 +7,10 @@ export default function WireLoading() {
     <main className="flex-1 page-frame pb-24">
       <Loading label="the wire" />
       <div className="min-[1200px]:flex min-[1200px]:items-start min-[1200px]:gap-12 min-[2200px]:gap-(--col-gap)">
-        <aside className="mt-[103px] hidden w-(--rail-w) shrink-0 min-[2200px]:block">
+        <aside className="mt-[103px] hidden w-(--left-rail-w) shrink-0 min-[2200px]:block">
           <SkeletonRail />
         </aside>
-        <div className="min-w-0 flex-1 min-[2200px]:w-(--feed-w) min-[2200px]:flex-none">
+        <div className="min-w-0 flex-1 min-[2200px]:w-(--wire-feed-w) min-[2200px]:flex-none">
           {/* The one-line header: counts left, clock right. */}
           <div className="flex h-7 items-center justify-between pt-6 md:mt-[33px] md:pt-0" aria-hidden>
             <Bar className="h-3 w-[460px] max-w-[70%]" />

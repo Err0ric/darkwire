@@ -137,19 +137,24 @@ async def find_title_cluster(
 
 async def refresh_exploited(session: AsyncSession) -> None:
     """items.exploited: a headline in the cluster says zero-day / actively exploited / in the
-    wild, and the row has no CVE. Recomputed for every main row, so it clears once a CVE lands."""
+    wild, and the row has no CVE. Recomputed for every main row, so it clears once a CVE lands.
+    items.exploitation: any headline is about exploitation at all, CVE or not (staleness)."""
     await session.execute(text(r"""
-        UPDATE items i SET exploited = flagged
+        UPDATE items i SET exploited = f.flagged, exploitation = f.about
         FROM (
             SELECT i2.id,
                    NOT EXISTS (SELECT 1 FROM item_cves c WHERE c.item_id = i2.id)
                    AND EXISTS (
                        SELECT 1 FROM item_sources s WHERE s.item_id = i2.id
                        AND s.title ~* '\y(zero[- ]days?|0-days?|actively exploited|in the wild)\y'
-                   ) AS flagged
+                   ) AS flagged,
+                   EXISTS (
+                       SELECT 1 FROM item_sources s WHERE s.item_id = i2.id
+                       AND s.title ~* '\y(zero[- ]days?|0-days?|exploit(s|ed|ing|ation)?|in the wild|under attack|under active attack)\y'
+                   ) AS about
             FROM items i2 WHERE i2.stream = 'main'
         ) f
-        WHERE f.id = i.id AND i.exploited IS DISTINCT FROM f.flagged
+        WHERE f.id = i.id AND (i.exploited IS DISTINCT FROM f.flagged OR i.exploitation IS DISTINCT FROM f.about)
     """))
 
 

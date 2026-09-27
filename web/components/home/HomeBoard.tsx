@@ -9,6 +9,7 @@ import { PrefsControls } from "@/components/PrefsControls"
 import { getFeed, getStatus, type FeedItem, type Status, type Tab } from "@/lib/api"
 import { useRowsIn } from "@/lib/fit"
 import { usePrefs } from "@/lib/prefs"
+import { isImportant } from "@/lib/kev"
 import { useUnseen } from "@/lib/unseen"
 
 // Home shows as many rows as fit the screen. Load a generous first page, more on tall screens.
@@ -127,7 +128,7 @@ export function HomeBoard({
         setItems(page.items)
         setPinned(pins.items)
         setFresh(new Set(incoming.map((i) => i.id)))
-        void addUnseen(incoming.length, incoming.some((i) => !i.stale && (i.severity === "critical" || i.kev)))
+        void addUnseen(incoming.length, incoming.some(isImportant))
       } catch {
         setFailed(true)
       }

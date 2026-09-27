@@ -20,6 +20,10 @@ function Section({ title, aside, children, className }: { title: string; aside?:
   )
 }
 
+
+// Model not usable (no key, bad key, out of quota, failing): new rows arrive without summaries.
+const SUMMARIES_PAUSED: ReadonlySet<string> = new Set(["no_key", "auth_failing", "quota", "error"])
+
 export function Elsewhere({ elsewhere }: { elsewhere: ElsewhereItem[] }) {
   const now = useNow()
   return (
@@ -117,6 +121,7 @@ export function Stats({
         <p className="leading-[19px] text-muted">
           Sources: NVD, CISA KEV, vendor PSIRTs, {status.sources_total} feeds.{" "}
           {status.sources_failing === 0 ? "All healthy." : `${status.sources_failing} failing.`}
+          {SUMMARIES_PAUSED.has(status.summaries.state) && " Summaries paused."}
           <br />
           <span className="mt-2 inline-block">Refreshes every {status.sync.interval_minutes} minutes.</span>
         </p>

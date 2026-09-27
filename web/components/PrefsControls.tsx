@@ -1,28 +1,24 @@
 "use client"
 
-import { ThemePicker } from "@/components/ThemePicker"
 import { usePrefs } from "@/lib/prefs"
 
-/** Theme picker, then "remember on this browser" (off by default) or "remembered · reset". */
+/** The footer's only control, and only once there is something to keep: a stack, or a
+ * browser that already remembers. "remember on this browser" (off by default) or
+ * "remembered · reset". */
 export function PrefsControls() {
+  const { remember, setRemember, reset, stack } = usePrefs()
+  if (remember) {
+    return (
+      <span className="whitespace-nowrap">
+        remembered ·{" "}
+        <button type="button" onClick={reset} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
+          reset
+        </button>
+      </span>
+    )
+  }
+  if (!stack.length) return null
   return (
-    <>
-      <ThemePicker />
-      <Remember />
-    </>
-  )
-}
-
-function Remember() {
-  const { remember, setRemember, reset } = usePrefs()
-  return remember ? (
-    <span className="whitespace-nowrap">
-      remembered ·{" "}
-      <button type="button" onClick={reset} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
-        reset
-      </button>
-    </span>
-  ) : (
     <button
       type="button"
       onClick={() => setRemember(true)}

@@ -7,6 +7,7 @@ import { Bug, ChevronDown, FileText, FlaskConical, Newspaper, ShieldAlert, type 
 import { VendorGlyph } from "@/components/VendorGlyph"
 import { getItem, type Category, type FeedItem, type ItemDetail, type PatchStatus, type Severity } from "@/lib/api"
 import { IMPACT_METRICS, parseVector } from "@/lib/cvss"
+import { kevDueIn, URGENT_DAYS } from "@/lib/kev"
 import { kevDate, ticketText, whatToDo, type Todo } from "@/lib/todo"
 import { age, useNow } from "@/lib/time"
 
@@ -186,7 +187,7 @@ function MetaLine({ item, pinned = false, inStack = false }: { item: FeedItem; p
     }
     parts.push(CATEGORY_LABEL[item.category])
   }
-  if (item.kev) parts.push(<span key="kev" className="text-critical">KEV</span>)
+  if (item.kev) parts.push(<KevMark key="kev" item={item} />)
   else if (item.exploited) parts.push(<span key="exploited" className="text-critical">EXPLOITED</span>)
   if (pinned) parts.push(<span key="pinned" className="text-dim">pinned</span>)
   if (inStack) parts.push(<span key="stack" className="text-dim">your stack</span>)
@@ -203,9 +204,26 @@ function MetaLine({ item, pinned = false, inStack = false }: { item: FeedItem; p
   )
 }
 
-// An old CVE (published >90 days ago, not newly in KEV) keeps its score but reads quieter.
+/** "KEV", or "KEV due in 5d" within a week of CISA's deadline: red in full at 2 days or less,
+ * "KEV overdue" for a week after it. */
+function KevMark({ item }: { item: FeedItem }) {
+  const now = useNow()
+  const days = now === null ? null : kevDueIn(item, now)
+  if (days === null) return <span className="text-critical">KEV</span>
+  if (days < 0) return <span className="text-critical">KEV overdue</span>
+  const when = days === 0 ? "due today" : `due in ${days}d`
+  return days <= URGENT_DAYS ? (
+    <span className="text-critical">KEV {when}</span>
+  ) : (
+    <span>
+      <span className="text-critical">KEV</span> <span className="text-fg-2">{when}</span>
+    </span>
+  )
+}
+
+// An old CVE (over 90 days, not in KEV, nothing about exploitation) keeps its score but reads quieter.
 const STALE = "opacity-40"
-const STALE_TITLE = "Older CVE: published over 90 days ago and not newly added to KEV"
+const STALE_TITLE = "Older CVE: published over 90 days ago, not in KEV, no reported exploitation"
 
 function Score({ item, className }: { item: FeedItem; className?: string }) {
   if (item.cvss === null) return <span className={className} />

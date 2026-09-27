@@ -57,9 +57,22 @@ class FetchResult:
 
 @dataclass
 class Stored:
-    added: int = 0
+    """What one fetch did with its entries. Every entry lands in exactly one bucket."""
+
+    entries: int = 0
+    added: int = 0  # kept: became a new row
+    merged: int = 0  # kept: joined an existing row
+    seen: int = 0  # already stored from an earlier fetch
     skipped_ads: int = 0
     skipped_future: int = 0
+    too_old: int = 0  # older than RETENTION
+    invalid: int = 0  # no link or title
+
+    def counts(self) -> dict:
+        return {
+            "entries": self.entries, "kept": self.added, "merged": self.merged, "seen": self.seen,
+            "ads": self.skipped_ads, "future": self.skipped_future, "too_old": self.too_old, "invalid": self.invalid,
+        }
 
 
 @dataclass
@@ -163,12 +176,14 @@ async def link_cves(session: AsyncSession, item: Item, cves: list[str]) -> None:
 async def ingest_source(
     session: AsyncSession, source: Source, entries: list, matcher: VendorMatcher, now: datetime
 ) -> Stored:
-    stored = Stored()
+    stored = Stored(entries=len(entries))
     articles = []
     for a in (to_article(e, now) for e in entries):
-        if a is None or a.published_at < now - RETENTION:
-            continue
-        if a.published_at > now + FUTURE_TOLERANCE:
+        if a is None:
+            stored.invalid += 1
+        elif a.published_at < now - RETENTION:
+            stored.too_old += 1
+        elif a.published_at > now + FUTURE_TOLERANCE:
             stored.skipped_future += 1
         elif is_ad(a.title, a.url, a.excerpt):
             stored.skipped_ads += 1
@@ -182,6 +197,7 @@ async def ingest_source(
 
     for a in articles:
         if a.url in seen:
+            stored.seen += 1
             continue
         seen.add(a.url)
         link = ItemSource(
@@ -219,6 +235,7 @@ async def ingest_source(
             if cluster.category == Category.news:
                 cluster.category = category
             await link_cves(session, cluster, cves)
+            stored.merged += 1
         else:
             # cve_id starts as the first CVE mentioned; enrichment re-points it at the highest-scored one.
             item = Item(
@@ -328,13 +345,20 @@ async def run_ingest() -> None:
                             stored = Stored()
                             result.error = f"store: {type(e).__name__}: {e}"[:500]
                     _mark(source, result, now)
+                    if result.error:
+                        source.last_counts = {"error": result.error}
+                    elif result.not_modified:
+                        source.last_counts = {"not_modified": True}
+                    elif source.stream != Stream.enrichment:
+                        source.last_counts = stored.counts()
                     await session.commit()
                     run.items_added += stored.added
                     run.skipped_ads += stored.skipped_ads
                     status = result.error or ("304" if result.not_modified else f"{len(result.entries)} entries")
                     log.info(
-                        "ingest: %s: %s, %d new, %d ads skipped, %d future skipped%s",
-                        source.name, status, stored.added, stored.skipped_ads, stored.skipped_future, note,
+                        "ingest: %s: %s, %d new, %d merged, %d seen, %d ads, %d future, %d too old%s",
+                        source.name, status, stored.added, stored.merged, stored.seen,
+                        stored.skipped_ads, stored.skipped_future, stored.too_old, note,
                     )
 
                 details = await msrc.fetch_details(session, client)

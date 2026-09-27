@@ -52,6 +52,17 @@ def _num(v) -> float | None:
     return float(v) if v is not None else None
 
 
+def _one_per_outlet(sources: list[ItemSource]) -> list[SourceLink]:
+    """One link per outlet, to its newest article in the cluster, in first-seen order."""
+    far = datetime.min.replace(tzinfo=UTC)
+    newest: dict[str, ItemSource] = {}
+    for s in sources:
+        cur = newest.get(s.source.name)
+        if cur is None or (s.published_at or far) > (cur.published_at or far):
+            newest[s.source.name] = s
+    return [SourceLink(name=n, url=s.url, published_at=s.published_at) for n, s in newest.items()]
+
+
 def _feed_fields(item: Item) -> dict:
     return {
         "id": item.id,
@@ -63,13 +74,11 @@ def _feed_fields(item: Item) -> dict:
         "cvss": _num(item.cvss),
         "severity": item.severity,
         "kev": item.kev,
+        "kev_due_date": item.cve.kev_due_date if item.cve and item.cve.kev else None,
         "exploited": item.exploited,
-        "stale": is_stale(item.cve, datetime.now(UTC)),
+        "stale": is_stale(item, datetime.now(UTC)),
         "epss": item.epss,
-        "sources": [
-            SourceLink(name=s.source.name, url=s.url, published_at=s.published_at)
-            for s in item.sources
-        ],
+        "sources": _one_per_outlet(item.sources),
         "last_event_at": item.last_event_at,
         "last_event_kind": item.last_event_kind,
     }

@@ -39,8 +39,9 @@ export interface FeedItem {
   cvss: number | null
   severity: Severity | null
   kev: boolean
+  kev_due_date: string | null // CISA deadline, midnight UTC, when in KEV
   exploited: boolean // headline says exploited / zero-day and no CVE is known yet
-  stale: boolean // CVE published >90 days ago and not newly in KEV: dimmed, left out of totals
+  stale: boolean // CVE >90 days old, not in KEV, no exploitation headline: dimmed, left out of totals
   epss: number | null
   sources: SourceLink[]
   last_event_at: string
@@ -131,7 +132,11 @@ export interface SourceStatus {
   health: Health
   last_ok_at: string | null
   last_error: string | null
+  /** Last fetch: kept / merged / seen / ads / future / too_old / invalid, or not_modified / error. */
+  last_counts: Record<string, number | boolean | string> | null
 }
+
+export type SummariesState = "ok" | "auth_failing" | "quota" | "error" | "no_key" | "pending"
 
 export interface SyncStatus {
   last_started_at: string | null
@@ -166,6 +171,7 @@ export interface Status {
   sources_disabled: number
   sources: SourceStatus[]
   counts: Counts
+  summaries: { state: SummariesState; at: string | null; detail: string | null }
 }
 
 export class ApiError extends Error {

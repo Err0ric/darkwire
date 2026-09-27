@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import { cn } from "cn"
 
+import { ThemePicker } from "@/components/ThemePicker"
 import { getStatus, type Status } from "@/lib/api"
 import { usePrefs } from "@/lib/prefs"
 
@@ -100,9 +101,12 @@ export function Nav() {
         })}
       </nav>
 
-      <p className="ml-auto hidden text-[15px] leading-none text-muted sm:block" aria-live="polite">
-        {label}
-      </p>
+      <div className="ml-auto flex items-center gap-4">
+        <p className="hidden text-[15px] leading-none text-muted sm:block" aria-live="polite">
+          {label}
+        </p>
+        <ThemePicker />
+      </div>
     </header>
   )
 }

@@ -4,11 +4,15 @@ Runs at the end of each enrichment pass so CVE rows are summarized with their NV
 (affected versions, fix status). Never regenerated. Without ANTHROPIC_API_KEY it does nothing
 and the expanded row simply has no summary. actions_pending() reads fixed versions and
 workarounds out of the articles for the "What to do" block, same model, same rules.
+
+Every pass records the model's health in job_state ("summaries_health"): ok, auth_failing,
+quota, error, or no_key. /status reports it and the rail says "summaries paused" when not ok.
 """
 
 import asyncio
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
 import anthropic
@@ -16,6 +20,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app import jobstate
 from app.config import get_settings
 from app.models import Cve, Item, ItemCve, ItemSource, PatchStatus, Stream
 
@@ -26,6 +31,7 @@ PER_RUN = 40
 CONCURRENCY = 4
 # A CVE row waits this long for NVD before being summarized from the articles alone.
 NVD_GRACE = timedelta(hours=2)
+HEALTH = "summaries_health"
 
 SYSTEM = """You write the summary under a headline on darkwire, a board of security news and CVEs read by security engineers.
 
@@ -108,10 +114,109 @@ def _ready(item: Item, cve: Cve | None, now: datetime) -> bool:
     return cve is None or cve.fetched_at is not None or now - item.first_seen_at > NVD_GRACE
 
 
+# ---------------------------------------------------------------- health
+
+
+def _classify(e: anthropic.APIError) -> str:
+    """Map an API failure onto the health states /status reports."""
+    if isinstance(e, anthropic.AuthenticationError | anthropic.PermissionDeniedError):
+        return "auth_failing"
+    if isinstance(e, anthropic.RateLimitError):
+        return "quota"
+    message = str(getattr(e, "message", e)).lower()
+    if isinstance(e, anthropic.BadRequestError) and ("credit" in message or "billing" in message):
+        return "quota"
+    return "error"
+
+
+async def record_health(session: AsyncSession, state: str, detail: str | None = None) -> None:
+    await jobstate.put(
+        session, HEALTH, json.dumps({"state": state, "at": datetime.now(UTC).isoformat(), "detail": detail})
+    )
+    await session.commit()
+
+
+async def health(session: AsyncSession) -> dict:
+    """{"state", "at", "detail"}. no_key is read live; "pending" means a key but no pass yet."""
+    if not get_settings().anthropic_api_key:
+        return {"state": "no_key", "at": None, "detail": None}
+    raw = await jobstate.get(session, HEALTH)
+    if not raw:
+        return {"state": "pending", "at": None, "detail": None}
+    data = json.loads(raw)
+    return {"state": data.get("state", "error"), "at": data.get("at"), "detail": data.get("detail")}
+
+
+# ---------------------------------------------------------------- calls
+
+
+async def _run(
+    session: AsyncSession,
+    items: list[Item],
+    call: Callable[[anthropic.AsyncAnthropic, Item], Awaitable[anthropic.types.Message]],
+    parse: Callable[[anthropic.types.Message], object | None],
+    label: str,
+) -> list[object | None]:
+    """Call the model once per item, CONCURRENCY at a time. The first auth, quota or connection
+    failure stops the pass (the rest wait for the next one) and is recorded as the health state."""
+    key = get_settings().anthropic_api_key
+    sem = asyncio.Semaphore(CONCURRENCY)
+    stop = asyncio.Event()
+    failure: list[tuple[str, str]] = []
+    successes = 0
+
+    async with anthropic.AsyncAnthropic(api_key=key, max_retries=3) as client:
+
+        async def one(item: Item) -> object | None:
+            nonlocal successes
+            if stop.is_set():
+                return None
+            async with sem:
+                if stop.is_set():
+                    return None
+                try:
+                    msg = await call(client, item)
+                except anthropic.APIConnectionError as e:
+                    log.warning("%s: connection error, stopping: %s", label, e)
+                    failure.append(("error", f"connection: {e}"))
+                    stop.set()
+                    return None
+                except anthropic.APIStatusError as e:
+                    state = _classify(e)
+                    if state == "error":
+                        log.warning("%s: item %d failed: HTTP %d", label, item.id, e.status_code)
+                        failure.append(("error", f"HTTP {e.status_code}"))
+                        return None
+                    log.warning("%s: %s, stopping (%s)", label, state, e.message)
+                    failure.append((state, e.message[:200]))
+                    stop.set()
+                    return None
+            successes += 1
+            return parse(msg)
+
+        results = await asyncio.gather(*(one(i) for i in items))
+
+    # Auth and quota outrank a one-off error; any success with no hard failure is ok.
+    hard = next((f for f in failure if f[0] in ("auth_failing", "quota")), None)
+    if hard:
+        await record_health(session, *hard)
+    elif successes:
+        await record_health(session, "ok")
+    elif failure:
+        await record_health(session, *failure[0])
+    return results
+
+
+def _text(msg: anthropic.types.Message) -> str | None:
+    if msg.stop_reason not in ("end_turn", "max_tokens"):
+        return None
+    text = " ".join(b.text for b in msg.content if b.type == "text").strip()
+    return text or None
+
+
 async def summarize_pending(session: AsyncSession) -> int | None:
     """Summarize up to PER_RUN items that have none. None when skipped (no key)."""
-    key = get_settings().anthropic_api_key
-    if not key:
+    if not get_settings().anthropic_api_key:
         return None
     now = datetime.now(UTC)
     items = (
@@ -127,47 +232,16 @@ async def summarize_pending(session: AsyncSession) -> int | None:
     if not todo:
         return 0
 
-    sem = asyncio.Semaphore(CONCURRENCY)
-    stop = asyncio.Event()
-
-    async with anthropic.AsyncAnthropic(api_key=key, max_retries=3) as client:
-
-        async def one(item: Item) -> str | None:
-            if stop.is_set():
-                return None
-            async with sem:
-                if stop.is_set():
-                    return None
-                try:
-                    msg = await client.messages.create(
-                        model=MODEL,
-                        max_tokens=300,
-                        system=SYSTEM,
-                        messages=[{"role": "user", "content": _material(item, item.cve)}],
-                    )
-                except (anthropic.AuthenticationError, anthropic.PermissionDeniedError, anthropic.NotFoundError) as e:
-                    log.warning("summaries: %s, stopping (%s)", type(e).__name__, e.message)
-                    stop.set()
-                    return None
-                except anthropic.RateLimitError:
-                    log.info("summaries: rate limited, the rest wait for the next pass")
-                    stop.set()
-                    return None
-                except anthropic.APIStatusError as e:
-                    log.warning("summaries: item %d failed: HTTP %d", item.id, e.status_code)
-                    return None
-                except anthropic.APIConnectionError as e:
-                    log.warning("summaries: connection error, stopping: %s", e)
-                    stop.set()
-                    return None
-            if msg.stop_reason not in ("end_turn", "max_tokens"):
-                log.info("summaries: item %d stopped with %s, left empty", item.id, msg.stop_reason)
-                return None
-            text = " ".join(b.text for b in msg.content if b.type == "text").strip()
-            return text or None
-
-        results = await asyncio.gather(*(one(i) for i in todo))
-
+    results = await _run(
+        session,
+        todo,
+        lambda client, item: client.messages.create(
+            model=MODEL, max_tokens=300, system=SYSTEM,
+            messages=[{"role": "user", "content": _material(item, item.cve)}],
+        ),
+        _text,
+        "summaries",
+    )
     written = 0
     for item, text in zip(todo, results, strict=True):
         if text:
@@ -180,8 +254,7 @@ async def summarize_pending(session: AsyncSession) -> int | None:
 async def actions_pending(session: AsyncSession) -> int | None:
     """Read fixed versions and workarounds out of the articles for CVE rows, once each.
     None when skipped (no key). Stored even when empty so an item is asked only once."""
-    key = get_settings().anthropic_api_key
-    if not key:
+    if not get_settings().anthropic_api_key:
         return None
     now = datetime.now(UTC)
     items = (
@@ -197,38 +270,21 @@ async def actions_pending(session: AsyncSession) -> int | None:
     if not todo:
         return 0
 
-    sem = asyncio.Semaphore(CONCURRENCY)
-    stop = asyncio.Event()
+    def parse(msg: anthropic.types.Message) -> dict | None:
+        if msg.stop_reason != "end_turn":
+            return None
+        return _parse_action(" ".join(b.text for b in msg.content if b.type == "text"))
 
-    async with anthropic.AsyncAnthropic(api_key=key, max_retries=3) as client:
-
-        async def one(item: Item) -> dict | None:
-            if stop.is_set():
-                return None
-            async with sem:
-                if stop.is_set():
-                    return None
-                try:
-                    msg = await client.messages.create(
-                        model=MODEL,
-                        max_tokens=400,
-                        system=ACTION_SYSTEM,
-                        messages=[{"role": "user", "content": _action_material(item, item.cve)}],
-                    )
-                except (anthropic.RateLimitError, anthropic.AuthenticationError, anthropic.PermissionDeniedError,
-                        anthropic.NotFoundError, anthropic.APIConnectionError) as e:
-                    log.info("actions: %s, the rest wait for the next pass", type(e).__name__)
-                    stop.set()
-                    return None
-                except anthropic.APIStatusError as e:
-                    log.warning("actions: item %d failed: HTTP %d", item.id, e.status_code)
-                    return None
-            if msg.stop_reason != "end_turn":
-                return None
-            return _parse_action(" ".join(b.text for b in msg.content if b.type == "text"))
-
-        results = await asyncio.gather(*(one(i) for i in todo))
-
+    results = await _run(
+        session,
+        todo,
+        lambda client, item: client.messages.create(
+            model=MODEL, max_tokens=400, system=ACTION_SYSTEM,
+            messages=[{"role": "user", "content": _action_material(item, item.cve)}],
+        ),
+        parse,
+        "actions",
+    )
     written = 0
     for item, action in zip(todo, results, strict=True):
         if action is not None:

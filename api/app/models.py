@@ -98,6 +98,9 @@ class Source(Base):
     # Conditional GET validators from the last 200 response.
     etag: Mapped[str | None] = mapped_column(Text)
     last_modified: Mapped[str | None] = mapped_column(Text)
+    # What the last fetch did with each entry: {"entries", "kept", "merged", "seen", "ads",
+    # "future", "too_old", "invalid"}. Null until the first fetch after migration 0010.
+    last_counts: Mapped[dict | None] = mapped_column(JSONB)
 
     vendor: Mapped[Vendor | None] = relationship()
 
@@ -162,6 +165,9 @@ class Item(Base):
     kev: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # A headline says zero-day / actively exploited / in the wild, and no CVE is known yet.
     exploited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Any headline in the cluster is about exploitation (exploit, exploited, zero-day, in the
+    # wild, under attack), CVE or not. Keeps an old CVE from being dimmed.
+    exploitation: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     epss: Mapped[float | None] = mapped_column(Float)
     patch_status: Mapped[PatchStatus] = mapped_column(
         _enum(PatchStatus, "patch_status"),

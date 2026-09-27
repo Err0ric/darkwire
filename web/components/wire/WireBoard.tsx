@@ -18,6 +18,7 @@ import {
   type FeedItem,
 } from "@/lib/api"
 import { usePrefs } from "@/lib/prefs"
+import { isImportant } from "@/lib/kev"
 import { useUnseen } from "@/lib/unseen"
 import { feedQuery, stackCriticalQuery, TABS, type Filters, type WireData, type WireTab } from "@/lib/wire"
 
@@ -164,7 +165,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
       setFresh(new Set(incoming.map((i) => i.id)))
       // With a stack, only its rows count toward the unseen title and dot.
       const counted = mine.length ? incoming.filter((i) => i.vendor && mine.includes(i.vendor.slug)) : incoming
-      void addUnseen(counted.length, counted.some((i) => !i.stale && (i.severity === "critical" || i.kev)))
+      void addUnseen(counted.length, counted.some(isImportant))
     }
     const timer = setInterval(poll, POLL_MS)
     return () => clearInterval(timer)

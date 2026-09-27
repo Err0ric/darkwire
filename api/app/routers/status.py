@@ -9,7 +9,8 @@ from app.db import get_session
 from app.ingest import next_run_at
 from app.staleness import not_stale
 from app.models import Health, Item, ItemSource, KevEntry, Severity, Source, Stream, SyncRun
-from app.schemas import Counts, SourceStatus, Status, SyncStatus
+from app.schemas import Counts, SourceStatus, Status, SummariesStatus, SyncStatus
+from app.summaries import health
 
 router = APIRouter(tags=["status"])
 
@@ -68,6 +69,7 @@ async def status(session: AsyncSession = Depends(get_session)) -> Status:
         sources_failing=sum(s.health == Health.failing for s in enabled),
         sources_disabled=len(sources) - len(enabled),
         sources=[SourceStatus.model_validate(s) for s in sources],
+        summaries=SummariesStatus(**await health(session)),
         counts=Counts(
             critical_24h=by_severity.get(Severity.critical, 0),
             high_24h=by_severity.get(Severity.high, 0),

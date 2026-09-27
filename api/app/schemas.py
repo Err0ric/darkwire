@@ -38,8 +38,9 @@ class FeedItem(BaseModel):
     cvss: float | None
     severity: Severity | None
     kev: bool
+    kev_due_date: datetime | None  # CISA remediation deadline when the row's CVE is in KEV
     exploited: bool  # headline says exploited / zero-day and no CVE is known yet
-    stale: bool  # CVE published >90 days ago and not newly in KEV: dimmed, left out of totals
+    stale: bool  # CVE >90 days old, not in KEV, no exploitation headline: dimmed, left out of totals
     epss: float | None
     sources: list[SourceLink]
     last_event_at: datetime
@@ -139,6 +140,15 @@ class SourceStatus(ORM):
     health: Health
     last_ok_at: datetime | None
     last_error: str | None
+    # Last fetch: {"entries", "kept", "merged", "seen", "ads", "future", "too_old", "invalid"},
+    # or {"not_modified": true} / {"error": ...}. Null before the first fetch.
+    last_counts: dict | None
+
+
+class SummariesStatus(BaseModel):
+    state: str  # ok | auth_failing | quota | error | no_key | pending
+    at: datetime | None
+    detail: str | None
 
 
 class SyncStatus(BaseModel):
@@ -182,3 +192,4 @@ class Status(BaseModel):
     sources_disabled: int
     sources: list[SourceStatus]
     counts: Counts
+    summaries: SummariesStatus

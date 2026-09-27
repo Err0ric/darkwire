@@ -68,6 +68,10 @@ export interface CveDetail {
   kev_added_at: string | null
   // When enrichment last ran. Null means kev / scores are defaults, not checked facts.
   fetched_at: string | null
+  nvd_status: string | null
+  affected: string | null // "PAN-OS 10.2.0 before 10.2.9-h1, ..."
+  patch_status: PatchStatus | null
+  patch_url: string | null
 }
 
 export interface MsrcDetail {

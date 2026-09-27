@@ -1,10 +1,11 @@
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     ARRAY,
     Boolean,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -125,7 +126,13 @@ class Cve(Base):
     kev_added_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     kev_due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     nvd_raw: Mapped[dict | None] = mapped_column(JSONB)
+    # When NVD was last fetched for this CVE (also set when NVD has no record yet).
     fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    nvd_status: Mapped[str | None] = mapped_column(String(32))  # Analyzed, Awaiting Analysis, NOT_FOUND, ...
+    # Derived on enrichment: human-readable affected ranges and patch status with its link.
+    affected: Mapped[str | None] = mapped_column(Text)
+    patch_status: Mapped[PatchStatus | None] = mapped_column(_enum(PatchStatus, "patch_status"))
+    patch_url: Mapped[str | None] = mapped_column(Text)
 
 
 class Item(Base):
@@ -169,6 +176,16 @@ class Item(Base):
     sources: Mapped[list["ItemSource"]] = relationship(
         back_populates="item", order_by="ItemSource.published_at", cascade="all, delete-orphan"
     )
+
+
+class ItemCve(Base):
+    """Every CVE an item's articles mention. items.cve_id is the one shown on the row."""
+
+    __tablename__ = "item_cves"
+
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
+    cve_id: Mapped[str] = mapped_column(ForeignKey("cves.id", ondelete="CASCADE"), primary_key=True, index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class ItemSource(Base):
@@ -224,3 +241,27 @@ class MsrcUpdate(Base):
     fixed_builds: Mapped[list | None] = mapped_column(JSONB)  # [{"product": ..., "build": ...}]
     # Null means "fetch details next run". Reset when MSRC revises the entry.
     details_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class KevEntry(Base):
+    """CISA Known Exploited Vulnerabilities catalog, the whole list."""
+
+    __tablename__ = "kev_entries"
+
+    cve_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    vendor: Mapped[str | None] = mapped_column(String(255))
+    product: Mapped[str | None] = mapped_column(String(255))
+    name: Mapped[str | None] = mapped_column(Text)
+    date_added: Mapped[date] = mapped_column(Date, index=True)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    ransomware: Mapped[str | None] = mapped_column(String(32))  # Known / Unknown
+
+
+class JobState(Base):
+    """Small key/value store for scheduled jobs: last KEV fetch, NVD change window, ..."""
+
+    __tablename__ = "job_state"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

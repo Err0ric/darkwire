@@ -408,24 +408,7 @@ function Patch({ status, url }: { status: PatchStatus | null; url: string | null
   )
 }
 
-/** Version ranges from NVD CPE matches, else the MSRC product name. Null when unknown. */
+/** Affected ranges as computed by the API from NVD, else the MSRC product. Null when unknown. */
 function affected(d: ItemDetail): string | null {
-  const ranges: string[] = []
-  for (const m of (d.cve?.cpes ?? []) as Record<string, unknown>[]) {
-    if (m.vulnerable === false || typeof m.criteria !== "string") continue
-    const parts = m.criteria.split(":")
-    const product = (parts[4] ?? "").replace(/_/g, " ")
-    const version = parts[5] && !["*", "-"].includes(parts[5]) ? parts[5] : null
-    const from = (m.versionStartIncluding ?? m.versionStartExcluding) as string | undefined
-    const before = m.versionEndExcluding as string | undefined
-    const through = m.versionEndIncluding as string | undefined
-    let text = product
-    if (version) text += ` ${version}`
-    else if (from && before) text += ` ${from} before ${before}`
-    else if (before) text += ` before ${before}`
-    else if (through) text += ` through ${through}`
-    if (text && !ranges.includes(text)) ranges.push(text)
-  }
-  if (ranges.length) return ranges.length > 3 ? `${ranges.slice(0, 3).join(", ")} +${ranges.length - 3}` : ranges.join(", ")
-  return d.msrc?.product ?? null
+  return d.cve?.affected ?? d.msrc?.product ?? null
 }

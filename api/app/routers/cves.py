@@ -5,7 +5,7 @@ from sqlalchemy import asc, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import Cve, Item, Vendor
+from app.models import Cve, Item, ItemCve, Vendor
 from app.schemas import CveRow, VendorRef
 
 router = APIRouter(tags=["cves"])
@@ -54,10 +54,10 @@ async def cves(
 ) -> list[CveRow]:
     # Several rows can share a CVE (coverage >48h apart). Use the most recent one.
     latest = (
-        select(Item.id, Item.cve_id, Item.vendor_id)
-        .where(Item.cve_id.is_not(None))
-        .distinct(Item.cve_id)
-        .order_by(Item.cve_id, Item.last_event_at.desc())
+        select(Item.id, ItemCve.cve_id, Item.vendor_id)
+        .join(ItemCve, ItemCve.item_id == Item.id)
+        .distinct(ItemCve.cve_id)
+        .order_by(ItemCve.cve_id, Item.last_event_at.desc())
         .subquery()
     )
     stmt = (

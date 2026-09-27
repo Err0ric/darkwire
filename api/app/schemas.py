@@ -67,6 +67,10 @@ class CveDetail(ORM):
     kev_added_at: datetime | None
     # When enrichment last ran. Null means kev / scores are defaults, not checked facts.
     fetched_at: datetime | None
+    nvd_status: str | None
+    affected: str | None  # "PAN-OS 10.2.0 before 10.2.9-h1, ..." from CPE, else the CNA's ranges
+    patch_status: PatchStatus | None
+    patch_url: str | None
 
 
 class MsrcDetail(ORM):

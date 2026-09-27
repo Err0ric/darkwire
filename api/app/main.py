@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db import SessionLocal, engine
+from app.enrich import schedule as schedule_enrich
 from app.ingest import scheduler, start_scheduler
 from app.routers import cves, feed, status, vendors
 from app.seed import seed
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI):
     async with SessionLocal() as session:
         await seed(session)
     if get_settings().ingest_enabled:
+        schedule_enrich(scheduler)
         start_scheduler()
     yield
     if scheduler.running:

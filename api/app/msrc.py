@@ -15,7 +15,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Item, MsrcUpdate
+from app.models import ItemCve, MsrcUpdate
 from app.tagging import clean_text, extract_cves
 
 log = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ async def fetch_details(session: AsyncSession, client: httpx.AsyncClient) -> int
             select(MsrcUpdate.cve_id)
             .where(
                 MsrcUpdate.details_fetched_at.is_(None),
-                MsrcUpdate.cve_id.in_(select(Item.cve_id).where(Item.cve_id.is_not(None))),
+                MsrcUpdate.cve_id.in_(select(ItemCve.cve_id)),
             )
             .limit(DETAILS_PER_RUN)
         )

@@ -43,7 +43,7 @@ export default async function RowReview() {
         <h1 className="mt-10 text-[13px] font-medium text-fg">Row review</h1>
         <p className="mt-1 text-xs text-muted">
           Live rows from {process.env.NEXT_PUBLIC_API_URL ?? "the local API"}: {rows.map((r) => r.why).join(" · ")}.
-          Scores, vectors and EPSS stay empty until NVD / EPSS / KEV enrichment lands.
+          Scores, vectors, EPSS and KEV come from NVD, FIRST and CISA; rows without a CVE stay unscored.
         </p>
         <div className="mt-6 border-t border-rule">
           {rows.map((r) => (

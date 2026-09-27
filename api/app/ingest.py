@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 import feedparser
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import delete, exists, select
+from sqlalchemy import delete, exists, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -22,7 +22,7 @@ from sqlalchemy.orm import selectinload
 from app import msrc
 from app.config import get_settings
 from app.db import SessionLocal
-from app.models import Category, Cve, Health, Item, ItemSource, Source, Stream, SyncRun, Vendor
+from app.models import Category, Cve, Health, Item, ItemCve, ItemSource, Source, Stream, SyncRun, Vendor
 from app.tagging import (
     VendorMatcher,
     clean_text,
@@ -134,12 +134,27 @@ async def find_cve_cluster(session: AsyncSession, cves: list[str], published: da
         select(Item)
         .where(
             Item.stream == Stream.main,
-            Item.cve_id.in_(cves),
+            Item.id.in_(select(ItemCve.item_id).where(ItemCve.cve_id.in_(cves))),
             Item.last_event_at.between(published - CVE_CLUSTER_WINDOW, published + CVE_CLUSTER_WINDOW),
         )
         .options(selectinload(Item.sources).selectinload(ItemSource.source))
         .order_by(Item.last_event_at.desc())
         .limit(1)
+    )
+
+
+async def link_cves(session: AsyncSession, item: Item, cves: list[str]) -> None:
+    """Record every CVE an item's articles mention, after the ones it already has."""
+    if not cves:
+        return
+    await session.flush()
+    last = await session.scalar(
+        select(func.coalesce(func.max(ItemCve.position), -1)).where(ItemCve.item_id == item.id)
+    )
+    await session.execute(
+        insert(ItemCve)
+        .values([{"item_id": item.id, "cve_id": c, "position": last + 1 + i} for i, c in enumerate(cves)])
+        .on_conflict_do_nothing()
     )
 
 
@@ -182,6 +197,9 @@ async def ingest_source(
             continue
 
         cves = extract_cves(a.title, a.text)
+        if cves:
+            # Placeholder rows so the FKs hold. Enrichment fills them in.
+            await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
         vendor_id = source.vendor_id or matcher.match(a.title, a.excerpt)
         category = guess_category(a.title, a.excerpt, bool(cves))
 
@@ -196,17 +214,16 @@ async def ingest_source(
                 cluster.vendor_id = vendor_id or cluster.vendor_id
             if cluster.category == Category.news:
                 cluster.category = category
+            await link_cves(session, cluster, cves)
         else:
-            if cves:
-                # Placeholder rows so the FK holds. Enrichment fills them later.
-                await session.execute(
-                    insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing()
-                )
-            session.add(Item(
+            # cve_id starts as the first CVE mentioned; enrichment re-points it at the highest-scored one.
+            item = Item(
                 stream=Stream.main, headline=a.title, primary_url=a.url,
                 vendor_id=vendor_id, category=category, cve_id=cves[0] if cves else None,
                 last_event_at=a.published_at, last_event_kind="published", sources=[link],
-            ))
+            )
+            session.add(item)
+            await link_cves(session, item, cves)
             stored.added += 1
         # Flush per article so the next one can cluster onto it.
         await session.flush()
@@ -230,7 +247,7 @@ def _mark(source: Source, result: FetchResult, now: datetime) -> None:
 
 async def prune(session: AsyncSession, now: datetime) -> int:
     dropped = await session.execute(delete(Item).where(Item.last_event_at < now - RETENTION))
-    await session.execute(delete(Cve).where(~exists().where(Item.cve_id == Cve.id)))
+    await session.execute(delete(Cve).where(~exists().where(ItemCve.cve_id == Cve.id)))
     return dropped.rowcount or 0
 
 

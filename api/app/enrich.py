@@ -1,0 +1,149 @@
+"""Enrichment pass: KEV (daily), NVD (new CVEs + change feed), EPSS (daily), then roll the
+results up onto items. Runs on its own schedule, separate from RSS ingest."""
+
+import logging
+from collections import defaultdict
+from datetime import UTC, datetime, time, timedelta
+
+import httpx
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app import epss, kev, nvd
+from app.config import get_settings
+from app.db import SessionLocal
+from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
+
+log = logging.getLogger(__name__)
+
+JOB_ID = "enrich"
+USER_AGENT = "darkwire/0.1 (+https://darkwire.tech)"
+
+
+async def apply_kev(session: AsyncSession) -> None:
+    """cves.kev from the catalog. KEV overrides MSRC's exploited flag."""
+    if not await session.scalar(select(KevEntry.cve_id).limit(1)):
+        return  # catalog never loaded: leave kev untouched rather than clear it
+    rows = dict((await session.execute(select(KevEntry.cve_id, KevEntry.date_added))).all())
+    cves = (await session.scalars(select(Cve))).all()
+    for c in cves:
+        added = rows.get(c.id)
+        kev_at = datetime.combine(added, time.min, tzinfo=UTC) if added else None
+        if c.kev != bool(added) or c.kev_added_at != kev_at:
+            c.kev, c.kev_added_at = bool(added), kev_at
+    await session.execute(
+        update(MsrcUpdate)
+        .where(MsrcUpdate.cve_id.in_(select(KevEntry.cve_id)), MsrcUpdate.exploited.is_not(True))
+        .values(exploited=True)
+    )
+    await session.commit()
+
+
+async def roll_up(session: AsyncSession) -> int:
+    """Copy CVE facts onto items. Returns items whose last_event_at moved."""
+    links = (
+        await session.execute(
+            select(ItemCve.item_id, ItemCve.position, Cve)
+            .join(Cve, Cve.id == ItemCve.cve_id)
+            .join(Item, Item.id == ItemCve.item_id)
+            .where(Item.stream == Stream.main)
+            .order_by(ItemCve.item_id, ItemCve.position)
+        )
+    ).all()
+    by_item: dict[int, list[Cve]] = defaultdict(list)
+    for item_id, _, cve in links:
+        by_item[item_id].append(cve)
+    if not by_item:
+        return 0
+    items = {i.id: i for i in (await session.scalars(select(Item).where(Item.id.in_(list(by_item))))).all()}
+    msrc = {
+        m.cve_id: m
+        for m in (
+            await session.scalars(select(MsrcUpdate).where(MsrcUpdate.cve_id.in_({c.id for cs in by_item.values() for c in cs})))
+        ).all()
+    }
+
+    resurfaced = 0
+    for item_id, cves in by_item.items():
+        item = items[item_id]
+        scored = [c for c in cves if c.base_score is not None]
+        # Highest score wins; ties go to the CVE mentioned first. Unscored rows keep the first mention.
+        primary = max(scored, key=lambda c: (c.base_score, -cves.index(c))) if scored else cves[0]
+        kev_dates = [c.kev_added_at for c in cves if c.kev and c.kev_added_at]
+
+        status, url = primary.patch_status, primary.patch_url
+        m = msrc.get(primary.id)
+        if m and m.kbs and status in (None, PatchStatus.unverified, PatchStatus.no_fix):
+            status, url = PatchStatus.patched, m.url  # Microsoft shipped a KB for it
+        url = url or (m.url if m else None)
+
+        # Resurface on real events only: KEV added after the row's last event, or a score change.
+        # The first score a row ever gets is not an event.
+        event, kind = item.last_event_at, item.last_event_kind
+        if kev_dates and not item.kev and max(kev_dates) > event:
+            event, kind = max(kev_dates), "kev_added"
+        if item.cvss is not None and primary.base_score is not None and primary.base_score != item.cvss:
+            changed_at = primary.last_modified_at or datetime.now(UTC)
+            if changed_at > event:
+                event, kind = changed_at, "cvss_changed"
+        if event != item.last_event_at:
+            resurfaced += 1
+
+        item.cve_id = primary.id
+        item.cvss = primary.base_score
+        item.severity = primary.base_severity
+        item.kev = bool(kev_dates) or any(c.kev for c in cves)
+        item.epss = primary.epss
+        item.patch_status = status or PatchStatus.unverified
+        item.patch_url = url
+        item.last_event_at, item.last_event_kind = event, kind
+    await session.commit()
+    return resurfaced
+
+
+async def run_enrich() -> None:
+    started = datetime.now(UTC)
+    counts: dict[str, int | None] = {}
+    async with SessionLocal() as session, httpx.AsyncClient(
+        headers={"User-Agent": USER_AGENT}, follow_redirects=True, timeout=30
+    ) as client:
+        client_nvd = nvd.Nvd(client)
+        steps = [
+            ("kev", lambda: kev.refresh(session, client)),
+            ("nvd_new", lambda: nvd.fetch_new(session, client_nvd)),
+            ("nvd_changed", lambda: nvd.sync_changes(session, client_nvd)),
+            ("epss", lambda: epss.refresh(session, client)),
+        ]
+        for name, step in steps:
+            try:
+                counts[name] = await step()
+            except Exception:
+                log.exception("enrich: %s failed", name)
+                await session.rollback()
+                counts[name] = None
+        try:
+            await apply_kev(session)
+            counts["resurfaced"] = await roll_up(session)
+        except Exception:
+            log.exception("enrich: roll-up failed")
+            await session.rollback()
+    log.info(
+        "enrich: done in %.0fs: %s",
+        (datetime.now(UTC) - started).total_seconds(),
+        ", ".join(f"{k}={v}" for k, v in counts.items()),
+    )
+
+
+def schedule(scheduler) -> None:
+    interval = get_settings().enrich_interval_minutes
+    scheduler.add_job(
+        run_enrich,
+        "interval",
+        minutes=interval,
+        id=JOB_ID,
+        # Give the first ingest a head start so there are CVEs to enrich.
+        next_run_time=datetime.now(UTC) + timedelta(seconds=45),
+        max_instances=1,
+        coalesce=True,
+    )
+    log.info("scheduler: enrich every %d min", interval)

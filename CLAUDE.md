@@ -179,9 +179,14 @@ Feed audit: `python -m app.audit [--api URL] [--feed NAME] [-v]` in `/api` re-fe
 ## Motion (all respect prefers-reduced-motion)
 
 - Wordmark dot pulses 2.4s while live. Solid if last sync > 30 min. Gray if fetch failing.
-- Status line clock ticks seconds.
-- New rows fade in from top over 300ms with a 1px `--critical` left edge that fades over 10s.
+- Home clock ticks seconds.
+- New rows (see Live updates) fade in from the top over 300ms and get a 6px `--critical` dot just left of the headline, inside the gutter, so the headline does not shift. The dot fades in over 300ms, pulses opacity 1 -> 0.3 -> 1 three times on the 2.4s cycle (about 7.5s), then holds solid at 60%. At 10 minutes it fades out over 1s. Expanding the row clears it at once.
+- A row that arrived while the tab was hidden gets a solid dot; its three pulses start on the next visibilitychange to visible, so a returning viewer sees them.
+- More than 5 new rows in one poll: only the top 5 pulse; the rest get the solid dot (fade in to 60%).
+- No dots on first page load: everything on screen at load is baseline. Same behavior for Right now rows on `/`.
+- Reduced motion: a solid 60% dot, no pulse, gone at 10 minutes.
 - Bar cells fill left to right, 25ms per cell, on first paint and for new rows.
+- Home ticker crossfades every 8s; static under reduced motion. Nothing scrolls.
 - Nothing else moves. No hover lifts, no bounce, no parallax, no background effects.
 
 ## Live updates

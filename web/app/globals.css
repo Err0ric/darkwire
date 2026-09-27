@@ -168,7 +168,7 @@ html[data-theme="high-contrast"] {
   animation: cell-fill 150ms ease-out both;
 }
 
-/* New rows: fade in from the top over 300ms; a 1px critical left edge fades over 10s. */
+/* New rows: fade in from the top over 300ms. */
 @keyframes row-in {
   from {
     opacity: 0;
@@ -176,19 +176,51 @@ html[data-theme="high-contrast"] {
   }
 }
 
-@keyframes edge-fade {
-  from {
-    box-shadow: inset 1px 0 0 var(--critical);
-  }
-  to {
-    box-shadow: inset 1px 0 0 transparent;
-  }
+@utility animate-row-in {
+  animation: row-in 300ms ease-out both;
 }
 
-@utility animate-row-in {
-  animation:
-    row-in 300ms ease-out both,
-    edge-fade 10s linear both;
+/* New-row dot (lib/dots.tsx). Arrive: fade in 300ms, three 2.4s pulses (1 -> 0.3 -> 1), settle
+   at 60%; 7.8s in all. Return: the same pulses for a dot that waited while the tab was hidden.
+   Solid: fade in to 60%, no pulse. The resting opacity is 60% (also under reduced motion). */
+@keyframes dot-arrive {
+  0% { opacity: 0; }
+  3.85% { opacity: 1; }
+  19.23% { opacity: 0.3; }
+  34.62% { opacity: 1; }
+  50% { opacity: 0.3; }
+  65.38% { opacity: 1; }
+  80.77% { opacity: 0.3; }
+  96.15% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+@keyframes dot-return {
+  0% { opacity: 1; }
+  16% { opacity: 0.3; }
+  32% { opacity: 1; }
+  48% { opacity: 0.3; }
+  64% { opacity: 1; }
+  80% { opacity: 0.3; }
+  96% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+@keyframes dot-solid {
+  from { opacity: 0; }
+  to { opacity: 0.6; }
+}
+
+@utility animate-dot-arrive {
+  animation: dot-arrive 7.8s ease-in-out both;
+}
+
+@utility animate-dot-return {
+  animation: dot-return 7.5s ease-in-out both;
+}
+
+@utility animate-dot-solid {
+  animation: dot-solid 300ms ease-out both;
 }
 
 /* Page chrome that full-height layouts (home) subtract. Kiosk hides the nav and zooms. */

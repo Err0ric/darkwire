@@ -52,10 +52,18 @@ async def cves(
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> list[CveRow]:
+    # Several rows can share a CVE (coverage >48h apart). Use the most recent one.
+    latest = (
+        select(Item.id, Item.cve_id, Item.vendor_id)
+        .where(Item.cve_id.is_not(None))
+        .distinct(Item.cve_id)
+        .order_by(Item.cve_id, Item.last_event_at.desc())
+        .subquery()
+    )
     stmt = (
-        select(Cve, Item.id, Vendor)
-        .outerjoin(Item, Item.cve_id == Cve.id)
-        .outerjoin(Vendor, Vendor.id == Item.vendor_id)
+        select(Cve, latest.c.id, Vendor)
+        .outerjoin(latest, latest.c.cve_id == Cve.id)
+        .outerjoin(Vendor, Vendor.id == latest.c.vendor_id)
     )
     if vendor:
         stmt = stmt.where(Vendor.slug == vendor)

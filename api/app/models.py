@@ -91,6 +91,9 @@ class Source(Base):
     last_ok_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Conditional GET validators from the last 200 response.
+    etag: Mapped[str | None] = mapped_column(Text)
+    last_modified: Mapped[str | None] = mapped_column(Text)
 
     vendor: Mapped[Vendor | None] = relationship()
 
@@ -136,8 +139,9 @@ class Item(Base):
         ForeignKey("vendors.id", ondelete="SET NULL"), index=True
     )
     category: Mapped[Category] = mapped_column(_enum(Category, "category"), default=Category.news)
+    # Not unique: coverage of the same CVE more than 48h apart starts a new row.
     cve_id: Mapped[str | None] = mapped_column(
-        ForeignKey("cves.id", ondelete="SET NULL"), unique=True
+        ForeignKey("cves.id", ondelete="SET NULL"), index=True
     )
     cvss: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
     severity: Mapped[Severity | None] = mapped_column(_enum(Severity, "severity"))

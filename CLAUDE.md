@@ -22,6 +22,7 @@ Reference mockups: `/design-refs/home.png` and `/design-refs/wire.png`. Match th
 | `/cves` | Sortable table: CVE, vendor, product, CVSS, EPSS, KEV, published. |
 | `/vendor/[slug]` | Everything tagged to one vendor. |
 | `/item/[id]`, `/cve/[id]` | Permalinks that open the expanded row. |
+| `/outages` | About 20 third-party services grouped Cloud, Identity, Collaboration, Dev: name, status dot, 24 hourly cells (gray ok, amber degraded, red major, `--rule` no data; the CVSS bar's cell), current incident and link. Nav link "Outages". |
 | `/sources` | Every feed we ingest, how tagging works, what KEV and EPSS mean. Plain, not a pitch. |
 | `/feed.xml`, `/feed.json` | Our own output for other people's tools. |
 

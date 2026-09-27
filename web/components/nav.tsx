@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/wire", label: "Wire" },
   { href: "/cves", label: "CVEs" },
   { href: "/vendors", label: "Vendors" },
+  { href: "/outages", label: "Outages" },
 ]
 
 const STATUS_POLL_MS = 60_000
@@ -82,7 +83,7 @@ export function Nav() {
         <span className="text-lg leading-none font-bold tracking-[-0.01em] text-fg">darkwire</span>
       </Link>
 
-      <nav aria-label="Main" className="ml-6 flex items-center gap-6 md:ml-10">
+      <nav aria-label="Main" className="ml-5 flex min-w-0 items-center gap-4 sm:ml-6 sm:gap-6 md:ml-10">
         {LINKS.map(({ href, label }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`)
           return (
@@ -91,7 +92,7 @@ export function Nav() {
               href={`${href}${query()}`}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "text-[15px] leading-none outline-none focus-visible:text-fg",
+                "text-[14px] leading-none outline-none focus-visible:text-fg sm:text-[15px]",
                 active ? "text-fg" : "text-muted hover:text-fg-2",
               )}
             >
@@ -101,7 +102,7 @@ export function Nav() {
         })}
       </nav>
 
-      <div className="ml-auto flex items-center gap-4">
+      <div className="ml-auto flex shrink-0 items-center gap-4 pl-3">
         <p className="hidden text-[15px] leading-none text-muted sm:block" aria-live="polite">
           {label}
         </p>

@@ -13,7 +13,7 @@ function Section({ title, aside, children, className }: { title: string; aside?:
     <section className={className}>
       <div className="flex items-baseline justify-between">
         <h2 className="text-[13px] font-medium text-fg">{title}</h2>
-        {aside && <span className="text-[11px] text-dim">{aside}</span>}
+        {aside && <span className="text-[11px] min-[2200px]:text-[12px] text-dim">{aside}</span>}
       </div>
       {children}
     </section>
@@ -34,7 +34,7 @@ export function Elsewhere({ elsewhere }: { elsewhere: ElsewhereItem[] }) {
             <a href={e.url} {...EXTERNAL} className="line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
               {e.headline}
             </a>
-            <p className="mt-1 text-[11px] leading-4 text-dim">
+            <p className="mt-1 text-[11px] min-[2200px]:text-[12px] leading-4 text-dim">
               {e.source}
               {e.published_at && now !== null && <> · {age(e.published_at, now)}</>}
             </p>

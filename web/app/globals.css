@@ -232,9 +232,16 @@ html[data-theme="high-contrast"] {
   animation: dot-solid 300ms ease-out both;
 }
 
-/* One frame for the nav and every page: 16px gutters, 48px from 768px, and from 2200px wide a
-   centered block as wide as the wire's three columns (300 + 64 + 1100 + 64 + 300 = 1828px).
-   Extra width goes to equal outer margins. */
+/* One frame for the nav and every page: 16px gutters, 48px from 768px. From 2200px wide it is
+   a centered block as wide as the wire's three fluid columns (rail | gap | feed | gap | rail),
+   with at least 48px outer margins; extra width goes to equal outer margins. */
+:root {
+  --rail-w: clamp(300px, 15vw, 380px);
+  --feed-w: clamp(880px, 48vw, 1200px);
+  --col-gap: clamp(48px, 3.5vw, 96px);
+  --block-w: calc(2 * var(--rail-w) + var(--feed-w) + 2 * var(--col-gap));
+}
+
 @utility page-frame {
   width: 100%;
   margin-inline: auto;
@@ -243,7 +250,7 @@ html[data-theme="high-contrast"] {
     padding-inline: 3rem;
   }
   @media (min-width: 2200px) {
-    max-width: calc(1828px + 6rem);
+    max-width: calc(var(--block-w) + 6rem);
   }
 }
 

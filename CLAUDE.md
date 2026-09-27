@@ -56,8 +56,8 @@ Layout: no boxes, no cards, no panel borders. Separate regions with background t
 
 Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x1440 landscape; secondary: 1080x1920 and 1440x2560 portrait; plus 390px phones. Wider screens (3440) just work and are not tuned for.
 
-- One container on every page (`page-frame`): nav and content share the same gutters (16px mobile, 48px from 768px) and left edge. From 2200px wide it is a centered block 1828px wide (the wire's 300 + 64 + 1100 + 64 + 300); extra width goes to equal outer margins. The nav's wordmark lines up with the left rail's left edge and its right end (Synced, theme dot) with the right rail's right edge; pages without rails left-align to the same block.
-- The feed column fills what the rail leaves from 1200 to 2199px, and is capped at 1100px and centered from 2200px, so the data columns (CVE ID, score, bar, badge, age, chevron) stay near the headline instead of across dead space. Inside it the headline absorbs width; the data columns stay fixed. Under a 760px feed the CVE ID column drops out; under 940px the wire's tabs and filters split onto two lines (container queries on the feed column).
+- One container on every page (`page-frame`): nav and content share the same gutters (16px mobile, 48px from 768px) and left edge. From 2200px wide it is a centered block as wide as the wire's fluid columns: rails `clamp(300px, 15vw, 380px)`, feed `clamp(880px, 48vw, 1200px)`, gaps `clamp(48px, 3.5vw, 96px)` (`--rail-w`, `--feed-w`, `--col-gap` in `globals.css`), with outer margins of at least 48px; extra width goes to equal outer margins. The nav's wordmark lines up with the left rail's left edge and its right end (Synced, theme dot) with the right rail's right edge; pages without rails left-align to the same block.
+- The feed column fills what the rail leaves from 1200 to 2199px, and takes `--feed-w` from 2200px, so the data columns (CVE ID, score, bar, badge, age, chevron) stay near the headline instead of across dead space. Inside it the headline absorbs width; the data columns stay fixed. Under a 760px feed the CVE ID column drops out; under 940px the wire's tabs and filters split onto two lines (container queries on the feed column).
 - Wire rail: see "Wire rails". Under 1200px (so 1080px portrait) it stacks below the feed, at most 640px wide, and the Services block moves to the top of the feed, under the counts, so an outage is seen without scrolling.
 - Home has no rail and no feed: one centered block, max 880px; the clock scales with the width and the gaps with the height, so it scales smoothly instead of jumping at breakpoints.
 - Fill the height with rows, never a fixed count. Home is exactly one screen tall with the block vertically centered. Wire loads at least a screenful and scrolls.
@@ -130,7 +130,7 @@ Third-party status for the rail and `/outages`, from each vendor's official sour
 
 Three layouts by viewport width:
 
-- 2200px and wider: three columns in one centered block, 64px apart. Left rail 300px: Most active this week, Last 7 days, Added to KEV, Sources line. Feed flexible, max 1100px. Right rail 300px: Services, Elsewhere.
+- 2200px and wider: three fluid columns in one centered block (rails `--rail-w`, feed `--feed-w`, gaps `--col-gap`, 40px between rail sections; rail item text 13px, rail meta 12px). Left rail: Most active this week, Last 7 days, Added to KEV, Sources line. Right rail: Services, Elsewhere.
 - 1200 to 2199px: feed plus one 340px right rail, 48px apart: Services, Most active this week, Last 7 days, Added to KEV, Elsewhere, Sources line.
 - Under 1200px: the rail stacks below the feed: Elsewhere, Most active, Added to KEV, Last 7 days, Sources line (Services sits above the feed).
 

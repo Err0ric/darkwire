@@ -297,18 +297,17 @@ export function WireBoard({ initial }: { initial: WireData }) {
 
   return (
     <main className="flex-1 page-frame pb-24">
-      {/* Rail beside the feed from 1000px, stacked below it under that; three columns
-          (feed | Elsewhere | stats) from 2200px. The feed is fluid; no page cap. */}
       {/* Under 1200px: feed, then the rail stacked below it. 1200-2199px: feed plus one 340px
-          rail on the right, 48px apart. 2200px+: one centered block (page-frame), stats rail 300
-          | 64 | feed (max 1100) | 64 | Services and Elsewhere 300. Rails are sticky and start level
-          with the tabs row. The rail sections are placed with CSS order per range. */}
-      <div className="min-[1200px]:flex min-[1200px]:items-start min-[1200px]:gap-12 min-[2200px]:gap-16">
+          rail on the right, 48px apart. 2200px+: one centered block (page-frame): stats rail |
+          gap | feed | gap | Services and Elsewhere, all fluid (--rail-w, --feed-w, --col-gap in
+          globals.css). Rails are sticky and start level with the tabs row. The rail sections
+          are placed with CSS order per range. */}
+      <div className="min-[1200px]:flex min-[1200px]:items-start min-[1200px]:gap-12 min-[2200px]:gap-(--col-gap)">
         <aside
           ref={leftRail}
           data-chrome
           aria-label="This week"
-          className="sticky mt-[133px] hidden w-[300px] shrink-0 text-[13px] min-[2200px]:block"
+          className="sticky mt-[133px] hidden w-(--rail-w) shrink-0 text-[13px] min-[2200px]:block"
         >
           <div className="flex flex-col gap-10">
             <MostActive active={active} vendor={filters.vendor} onVendor={(slug) => apply({ vendor: filters.vendor === slug ? "" : slug })} />
@@ -318,7 +317,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
           </div>
         </aside>
 
-        <div className="@container min-w-0 flex-1 min-[2200px]:max-w-[1100px]">
+        <div className="@container min-w-0 flex-1 min-[2200px]:w-(--feed-w) min-[2200px]:flex-none">
           <header className="pt-6 md:pt-[33px]">
             {/* The live clock is the heading; the date and UTC line sits on its baseline. */}
             <WireClock />
@@ -500,7 +499,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
           data-chrome
           aria-label="Context"
           ref={rightRail}
-          className="mt-16 text-[13px] min-[1200px]:sticky min-[1200px]:mt-[133px] min-[1200px]:w-[340px] min-[1200px]:shrink-0 min-[2200px]:w-[300px]"
+          className="mt-16 text-[13px] min-[1200px]:sticky min-[1200px]:mt-[133px] min-[1200px]:w-[340px] min-[1200px]:shrink-0 min-[2200px]:w-(--rail-w)"
         >
           {/* Orders: under 1200 Elsewhere, Most active, Added to KEV, Last 7 days, Sources (Services
               sits above the feed). 1200-2199 Services, Most active, Last 7 days, Added to KEV,

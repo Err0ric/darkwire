@@ -35,7 +35,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
           {" · "}
           {silent ? `${ok} operational · ${silent} not reporting` : `all ${ok} operational`}
         </p>
-        <span className="text-[11px] text-dim">{outages}</span>
+        <span className="text-[11px] min-[2200px]:text-[12px] text-dim">{outages}</span>
       </section>
     )
   }
@@ -44,7 +44,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
     <section aria-label="Services">
       <div className="flex items-baseline justify-between">
         <h2 className="text-[13px] font-medium text-fg">Services</h2>
-        <span className="text-[11px] text-dim">{outages}</span>
+        <span className="text-[11px] min-[2200px]:text-[12px] text-dim">{outages}</span>
       </div>
       <ul className="mt-3">
         {impacted.map((s) => (
@@ -56,7 +56,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
                 {s.state === "major" ? "major outage" : "degraded"}
               </span>
               {s.incident?.started_at && now !== null && (
-                <span className="ml-auto font-mono text-[11px] text-dim">{age(s.incident.started_at, now)}</span>
+                <span className="ml-auto font-mono text-[11px] min-[2200px]:text-[12px] text-dim">{age(s.incident.started_at, now)}</span>
               )}
             </p>
             <a

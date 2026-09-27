@@ -162,6 +162,8 @@ Seeded from `api/app/seed.py`. Keep this table and that file in sync. Main feeds
 
 NVD, FIRST.org EPSS and the CISA KEV JSON are enrichment APIs, not feeds, and are not in this table.
 
+Feed audit: `python -m app.audit [--api URL] [--feed NAME] [-v]` in `/api` re-fetches each feed and labels every entry with the ingest rules: kept, merged, elsewhere, ad, future-dated, too old, invalid, or not on board. `/status` carries each source's counts from its last fetch in `last_counts`.
+
 ## Motion (all respect prefers-reduced-motion)
 
 - Wordmark dot pulses 2.4s while live. Solid if last sync > 30 min. Gray if fetch failing.

@@ -63,7 +63,7 @@ def _one_per_outlet(sources: list[ItemSource]) -> list[SourceLink]:
     return [SourceLink(name=n, url=s.url, published_at=s.published_at) for n, s in newest.items()]
 
 
-def _feed_fields(item: Item) -> dict:
+def _feed_fields(item: Item, all_sources: bool = False) -> dict:
     return {
         "id": item.id,
         "headline": item.headline,
@@ -78,7 +78,11 @@ def _feed_fields(item: Item) -> dict:
         "exploited": item.exploited,
         "stale": is_stale(item, datetime.now(UTC)),
         "epss": item.epss,
-        "sources": _one_per_outlet(item.sources),
+        "sources": (
+            [SourceLink(name=s.source.name, url=s.url, published_at=s.published_at) for s in item.sources]
+            if all_sources
+            else _one_per_outlet(item.sources)
+        ),
         "last_event_at": item.last_event_at,
         "last_event_kind": item.last_event_kind,
     }
@@ -95,6 +99,7 @@ async def feed(
     since: datetime | None = Query(None, description="only rows with an event after this time"),
     pinned: bool = Query(False, description="only Critical or KEV rows with an event in the last 48h"),
     critical: bool = Query(False, description="only Critical or KEV rows (old CVEs excluded)"),
+    all_sources: bool = Query(False, description="every article, not one per outlet (feed audit)"),
     session: AsyncSession = Depends(get_session),
 ) -> FeedPage:
     where = [Item.stream == Stream.main]
@@ -135,7 +140,7 @@ async def feed(
         .limit(limit)
         .offset(offset)
     )
-    return FeedPage(items=[FeedItem(**_feed_fields(i)) for i in rows], total=total or 0)
+    return FeedPage(items=[FeedItem(**_feed_fields(i, all_sources)) for i in rows], total=total or 0)
 
 
 @router.get("/items/{item_id}", response_model=ItemDetail)
@@ -160,7 +165,7 @@ async def item_detail(item_id: int, session: AsyncSession = Depends(get_session)
 
 @router.get("/elsewhere", response_model=list[ElsewhereItem])
 async def elsewhere(
-    limit: int = Query(5, ge=1, le=50), session: AsyncSession = Depends(get_session)
+    limit: int = Query(5, ge=1, le=500), session: AsyncSession = Depends(get_session)
 ) -> list[ElsewhereItem]:
     rows = await session.scalars(
         select(Item)

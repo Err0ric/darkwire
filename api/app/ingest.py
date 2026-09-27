@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import dedupe, jobstate, msrc
+from app import cleanup, dedupe, jobstate, msrc
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Category, Cve, Health, Item, ItemCve, ItemSource, Source, Stream, SyncRun, Vendor
@@ -340,7 +340,8 @@ async def run_ingest() -> None:
                 details = await msrc.fetch_details(session, client)
                 await session.commit()
 
-            # Own session: a failure here must not roll back (and expire) this run's objects.
+            # One-time maintenance, each in its own session: a failure here must not roll
+            # back (and expire) this run's objects. Retried next run until it succeeds.
             try:
                 async with SessionLocal() as once, httpx.AsyncClient(
                     timeout=FETCH_TIMEOUT, follow_redirects=True, headers={"User-Agent": USER_AGENT}
@@ -348,6 +349,11 @@ async def run_ingest() -> None:
                     await reextract_once(once, client, sources, matcher, now)
             except Exception:
                 log.exception("ingest: re-extraction failed, retried next run")
+            try:
+                async with SessionLocal() as once:
+                    await cleanup.retag_once(once, matcher)
+            except Exception:
+                log.exception("ingest: cleanup failed, retried next run")
             await dedupe.refresh_exploited(session)
             dropped = await prune(session, now)
             failing = [by_id[r.source_id].name for r in results if r.error]

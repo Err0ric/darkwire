@@ -19,9 +19,8 @@ async def status(session: AsyncSession = Depends(get_session)) -> Status:
     day_ago = now - timedelta(hours=24)
 
     last_run = await session.scalar(select(SyncRun).order_by(SyncRun.started_at.desc()).limit(1))
-    sources = (
-        await session.scalars(select(Source).where(Source.enabled).order_by(Source.stream, Source.name))
-    ).all()
+    sources = (await session.scalars(select(Source).order_by(Source.stream, Source.name))).all()
+    enabled = [s for s in sources if s.enabled]
 
     by_severity = dict(
         (
@@ -43,12 +42,14 @@ async def status(session: AsyncSession = Depends(get_session)) -> Status:
             last_started_at=last_run.started_at if last_run else None,
             last_finished_at=last_run.finished_at if last_run else None,
             last_ok=last_run.ok if last_run else None,
+            skipped_ads=last_run.skipped_ads if last_run else None,
             next_run_at=next_run_at(),
             interval_minutes=get_settings().ingest_interval_minutes,
         ),
-        sources_total=len(sources),
-        sources_ok=sum(s.health == Health.ok for s in sources),
-        sources_failing=sum(s.health == Health.failing for s in sources),
+        sources_total=len(enabled),
+        sources_ok=sum(s.health == Health.ok for s in enabled),
+        sources_failing=sum(s.health == Health.failing for s in enabled),
+        sources_disabled=len(sources) - len(enabled),
         sources=[SourceStatus.model_validate(s) for s in sources],
         counts=Counts(
             critical_24h=by_severity.get(Severity.critical, 0),

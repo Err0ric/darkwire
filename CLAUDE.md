@@ -89,14 +89,16 @@ Click anywhere on the row except a link. Background `--surface`, extends 24px pa
 - Merged stream. A CVE with no article is a row with headline = CVE description, meta = `NVD · CVE published · no coverage yet`. When an article arrives, the row updates in place.
 - Dedupe: cluster by CVE ID first; else normalized-title similarity > 0.85 within 48h, same vendor. One row per cluster. Primary source = vendor PSIRT if present, else earliest.
 - Sort by last significant event (published, KEV added, PoC published, CVSS changed), not first-seen.
-- Vendor tagging: `vendors(slug, name, aliases[], domain, logo_path)`. Match aliases against title + first paragraph, case-insensitive, word boundaries. Nightly job lists untagged articles.
+- Vendor tagging: `vendors(slug, name, aliases[], domain, logo_path)`. Match aliases, case-insensitive, word boundaries. A title match wins (earliest, then longest alias). With no title match, the first paragraph must mention the vendor 2+ times or the article stays untagged. The vendor name is not an alias unless listed, so ambiguous names use qualified aliases ("Intel CPU", "Arm Cortex", never bare "Intel" or "Arm"). A vendor feed tags its own vendor. 56 vendors, list in `api/app/seed.py`. Nightly job lists untagged articles.
+- Category: classify from the title first; the first paragraph only if the title matches nothing. A CVE with no keyword is vulnerability. Otherwise default to news, never guess breach.
+- Skip at ingest: ads (title, URL or first paragraph says sponsored, sponsored by, partner content, webinar, virtual event) and anything dated more than 1 hour in the future. The ad count per run is in `/status`. Some THN sponsored posts carry no marker in the feed and still get through.
 - Enrichment: NVD API for vector, base, impact, exploitability, CPE, reference tags. FIRST.org for EPSS. CISA KEV JSON for KEV. Cache all of it.
 - Elsewhere is assigned per feed, not per article.
 - Timezone: viewer's local, fall back to UTC. Never hardcode PT.
 
 ## Sources
 
-Seeded from `api/app/seed.py`. Keep this table and that file in sync. Main feeds become rows. Elsewhere feeds only appear in the rail. A vendor feed is linked to its vendor and wins primary-source selection.
+Seeded from `api/app/seed.py`. Keep this table and that file in sync. Main feeds become rows. Elsewhere feeds only appear in the rail. Enrichment feeds never become rows; their entries are stored keyed by CVE and attached to rows about that CVE. A vendor feed is linked to its vendor and wins primary-source selection.
 
 | Name | Stream | Vendor | Feed URL |
 |---|---|---|---|
@@ -105,11 +107,12 @@ Seeded from `api/app/seed.py`. Keep this table and that file in sync. Main feeds
 | SecurityWeek | main | | https://www.securityweek.com/feed/ |
 | Dark Reading | main | | https://www.darkreading.com/rss.xml |
 | Krebs on Security | main | | https://krebsonsecurity.com/feed/ |
-| CISA | main | | https://www.cisa.gov/cybersecurity-advisories/all.xml |
 | The Hacker News | main | | https://feeds.feedburner.com/TheHackersNews |
-| MSRC | main | microsoft | https://api.msrc.microsoft.com/update-guide/rss |
 | Rapid7 | main | | https://www.rapid7.com/blog/rss/ |
-| Unit 42 | main | palo-alto-networks | https://unit42.paloaltonetworks.com/feed/ |
+| Unit 42 | main | | https://unit42.paloaltonetworks.com/feed/ |
+| Palo Alto Networks | main | palo-alto-networks | https://security.paloaltonetworks.com/rss.xml |
+| CISA | main, disabled | | https://www.cisa.gov/cybersecurity-advisories/all.xml |
+| MSRC | enrichment | microsoft | https://api.msrc.microsoft.com/update-guide/rss |
 | EFF | elsewhere | | https://www.eff.org/rss/updates.xml |
 | 404 Media | elsewhere | | https://www.404media.co/rss/ |
 | Citizen Lab | elsewhere | | https://citizenlab.ca/feed/ |
@@ -117,6 +120,9 @@ Seeded from `api/app/seed.py`. Keep this table and that file in sync. Main feeds
 | Wired | elsewhere | | https://www.wired.com/feed/category/security/latest/rss |
 | TechCrunch | elsewhere | | https://techcrunch.com/category/security/feed/ |
 | Ars Technica | elsewhere | | https://arstechnica.com/security/feed/ |
+
+- MSRC: the RSS gives one entry per CVE revision and is stored in `msrc_updates`. Product, KBs, fixed builds and the exploited flag come from the Security Update Guide API (`api.msrc.microsoft.com/sug/v2.0`), fetched only for CVEs on the board and refetched when MSRC revises them. Exposed on `/items/{id}` as `msrc`.
+- CISA advisories: disabled (health `disabled`, not counted as failing). The feed returns 403 to httpx but 200 to curl with the same User-Agent. Changing Accept or switching to HTTP/2 made no difference, so it looks like TLS fingerprinting. `curl_cffi` (browser TLS impersonation) is the likely fix if we want advisories back.
 
 NVD, FIRST.org EPSS and the CISA KEV JSON are enrichment APIs, not feeds, and are not in this table.
 

@@ -49,9 +49,9 @@ CATEGORY_RULES: list[tuple[Category, re.Pattern[str]]] = [
         r"RCE", r"remote code execution", r"patch(?:es|ed)?", r"bugs?", r"security updates?",
         r"CVE-\d{4}-\d{4,7}", r"privilege escalation", r"authentication bypass",
     )),
+    # Kept narrow: "exposed" or "compromised" in ordinary prose is not a breach.
     (Category.breach, _words(
-        r"breach(?:es|ed)?", r"data leaks?", r"leaked", r"stolen data", r"hacked", r"exposed",
-        r"compromised", r"cyberattacks?", r"intrusion",
+        r"(?:data )?breach(?:es|ed)?", r"data leaks?", r"leaked data", r"stolen data", r"hacked",
     )),
     (Category.ransomware, _words(r"ransomware", r"extortion", r"LockBit", r"Akira", r"Cl0p", r"Black Basta")),
     (Category.advisory, _words(r"advisor(?:y|ies)", r"guidance", r"bulletins?", r"alerts?", r"ICS")),
@@ -63,11 +63,21 @@ CATEGORY_RULES: list[tuple[Category, re.Pattern[str]]] = [
 
 
 def guess_category(title: str, excerpt: str, has_cve: bool) -> Category:
+    """Title first. The first paragraph is only consulted when the title matches nothing."""
     for text in (title, excerpt):
         for category, pattern in CATEGORY_RULES:
             if pattern.search(text):
                 return category
     return Category.vulnerability if has_cve else Category.news
+
+
+AD_TEXT = _words(r"sponsored", r"sponsored by", r"partner content", r"webinars?", r"virtual events?")
+AD_URL = re.compile(r"/(?:sponsored|partner-content|webinars?|events)(?:/|-|$)", re.IGNORECASE)
+
+
+def is_ad(title: str, url: str, excerpt: str) -> bool:
+    """Sponsored posts, partner content, webinars and event promos."""
+    return bool(AD_TEXT.search(title) or AD_URL.search(url) or AD_TEXT.search(excerpt))
 
 
 @dataclass(frozen=True)
@@ -76,27 +86,40 @@ class _VendorPattern:
     pattern: re.Pattern[str]
 
 
+BODY_MIN_MENTIONS = 2
+
+
 class VendorMatcher:
-    """Aliases on word boundaries, case-insensitive. Title beats first paragraph,
-    earlier match beats later, longer alias beats shorter (so "IOS XE" beats "iOS")."""
+    """Aliases on word boundaries, case-insensitive.
+
+    A title match wins: earliest match, longer alias on a tie (so "IOS XE" beats "iOS").
+    With no title match, the first paragraph must mention a vendor at least twice;
+    most mentions wins, then earliest.
+    """
 
     def __init__(self, vendors: list[Vendor]):
         self._patterns = []
         for v in vendors:
-            aliases = sorted({a for a in [v.name, *v.aliases] if a}, key=len, reverse=True)
+            aliases = sorted({a for a in v.aliases if a}, key=len, reverse=True)
             if aliases:
                 self._patterns.append(_VendorPattern(v.id, _words(*map(re.escape, aliases))))
 
     def match(self, title: str, excerpt: str) -> int | None:
-        best: tuple[int, int, int] | None = None
+        best: tuple[int, int] | None = None
         best_id = None
-        for field, text in enumerate((title, excerpt)):
-            for p in self._patterns:
-                m = p.pattern.search(text)
-                if m:
-                    key = (field, m.start(), -len(m.group(0)))
-                    if best is None or key < best:
-                        best, best_id = key, p.vendor_id
-            if best_id is not None:
-                return best_id
-        return None
+        for p in self._patterns:
+            m = p.pattern.search(title)
+            if m:
+                key = (m.start(), -len(m.group(0)))
+                if best is None or key < best:
+                    best, best_id = key, p.vendor_id
+        if best_id is not None:
+            return best_id
+
+        for p in self._patterns:
+            hits = list(p.pattern.finditer(excerpt))
+            if len(hits) >= BODY_MIN_MENTIONS:
+                key = (-len(hits), hits[0].start())
+                if best is None or key < best:
+                    best, best_id = key, p.vendor_id
+        return best_id

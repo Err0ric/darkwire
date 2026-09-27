@@ -1,5 +1,7 @@
 """Scheduled ingest: fetch every feed, cluster articles into rows, drop what is too old.
 
+Enrichment feeds (MSRC) never become rows; they are handed to their handler in ENRICHERS.
+
 No enrichment yet. cvss, severity, kev, epss and patch_status stay null until the
 NVD / KEV / EPSS jobs exist.
 """
@@ -17,10 +19,18 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app import msrc
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Category, Cve, Health, Item, ItemSource, Source, Stream, SyncRun, Vendor
-from app.tagging import VendorMatcher, clean_text, extract_cves, first_paragraph, guess_category
+from app.tagging import (
+    VendorMatcher,
+    clean_text,
+    extract_cves,
+    first_paragraph,
+    guess_category,
+    is_ad,
+)
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +39,8 @@ USER_AGENT = "darkwire/0.1 (+https://darkwire.tech)"
 FETCH_TIMEOUT = 15.0
 RETENTION = timedelta(days=14)
 CVE_CLUSTER_WINDOW = timedelta(hours=48)
+FUTURE_TOLERANCE = timedelta(hours=1)
+ENRICHERS = {**msrc.ENRICHERS}
 
 scheduler = AsyncIOScheduler(timezone=UTC)
 
@@ -41,6 +53,13 @@ class FetchResult:
     etag: str | None = None
     last_modified: str | None = None
     error: str | None = None
+
+
+@dataclass
+class Stored:
+    added: int = 0
+    skipped_ads: int = 0
+    skipped_future: int = 0
 
 
 @dataclass
@@ -93,7 +112,7 @@ def to_article(entry, now: datetime) -> Article | None:
         title=title,
         excerpt=first_paragraph(raw),
         text=clean_text(raw),
-        published_at=min(published, now),  # some feeds post-date entries
+        published_at=published,
     )
 
 
@@ -126,15 +145,24 @@ async def find_cve_cluster(session: AsyncSession, cves: list[str], published: da
 
 async def ingest_source(
     session: AsyncSession, source: Source, entries: list, matcher: VendorMatcher, now: datetime
-) -> int:
-    articles = [a for a in (to_article(e, now) for e in entries) if a and a.published_at >= now - RETENTION]
+) -> Stored:
+    stored = Stored()
+    articles = []
+    for a in (to_article(e, now) for e in entries):
+        if a is None or a.published_at < now - RETENTION:
+            continue
+        if a.published_at > now + FUTURE_TOLERANCE:
+            stored.skipped_future += 1
+        elif is_ad(a.title, a.url, a.excerpt):
+            stored.skipped_ads += 1
+        else:
+            articles.append(a)
     if not articles:
-        return 0
+        return stored
     seen = set(
         await session.scalars(select(ItemSource.url).where(ItemSource.url.in_([a.url for a in articles])))
     )
 
-    added = 0
     for a in articles:
         if a.url in seen:
             continue
@@ -150,7 +178,7 @@ async def ingest_source(
                 category=Category.news, last_event_at=a.published_at,
                 last_event_kind="published", sources=[link],
             ))
-            added += 1
+            stored.added += 1
             continue
 
         cves = extract_cves(a.title, a.text)
@@ -179,10 +207,10 @@ async def ingest_source(
                 vendor_id=vendor_id, category=category, cve_id=cves[0] if cves else None,
                 last_event_at=a.published_at, last_event_kind="published", sources=[link],
             ))
-            added += 1
+            stored.added += 1
         # Flush per article so the next one can cluster onto it.
         await session.flush()
-    return added
+    return stored
 
 
 def _mark(source: Source, result: FetchResult, now: datetime) -> None:
@@ -220,31 +248,48 @@ async def run_ingest() -> None:
             ) as client:
                 results = await asyncio.gather(*(fetch(client, s) for s in sources))
 
-            now = datetime.now(UTC)
-            by_id = {s.id: s for s in sources}
-            for result in results:
-                source = by_id[result.source_id]
-                added = 0
-                if not result.error and not result.not_modified:
-                    try:
-                        # Savepoint: a bad feed rolls back its own rows, not the whole run.
-                        async with session.begin_nested():
-                            added = await ingest_source(session, source, result.entries, matcher, now)
-                    except Exception as e:
-                        log.exception("ingest: %s failed while storing", source.name)
-                        added = 0
-                        result.error = f"store: {type(e).__name__}: {e}"[:500]
-                _mark(source, result, now)
+                now = datetime.now(UTC)
+                by_id = {s.id: s for s in sources}
+                for result in results:
+                    source = by_id[result.source_id]
+                    stored = Stored()
+                    note = ""
+                    if not result.error and not result.not_modified:
+                        try:
+                            # Savepoint: a bad feed rolls back its own rows, not the whole run.
+                            async with session.begin_nested():
+                                if source.stream == Stream.enrichment:
+                                    handler = ENRICHERS.get(source.feed_url)
+                                    if handler is None:
+                                        raise LookupError(f"no enrichment handler for {source.feed_url}")
+                                    note = f", {await handler(session, result.entries)} enrichment rows"
+                                else:
+                                    stored = await ingest_source(session, source, result.entries, matcher, now)
+                        except Exception as e:
+                            log.exception("ingest: %s failed while storing", source.name)
+                            stored = Stored()
+                            result.error = f"store: {type(e).__name__}: {e}"[:500]
+                    _mark(source, result, now)
+                    await session.commit()
+                    run.items_added += stored.added
+                    run.skipped_ads += stored.skipped_ads
+                    status = result.error or ("304" if result.not_modified else f"{len(result.entries)} entries")
+                    log.info(
+                        "ingest: %s: %s, %d new, %d ads skipped, %d future skipped%s",
+                        source.name, status, stored.added, stored.skipped_ads, stored.skipped_future, note,
+                    )
+
+                details = await msrc.fetch_details(session, client)
                 await session.commit()
-                run.items_added += added
-                status = result.error or ("304" if result.not_modified else f"{len(result.entries)} entries")
-                log.info("ingest: %s: %s, %d new", source.name, status, added)
 
             dropped = await prune(session, now)
             failing = [by_id[r.source_id].name for r in results if r.error]
             run.ok = True
             run.error = f"failing: {', '.join(failing)}" if failing else None
-            log.info("ingest: run %d done, %d new, %d pruned, %d failing", run.id, run.items_added, dropped, len(failing))
+            log.info(
+                "ingest: run %d done, %d new, %d ads skipped, %d msrc details, %d pruned, %d failing",
+                run.id, run.items_added, run.skipped_ads, details, dropped, len(failing),
+            )
         except Exception as e:
             log.exception("ingest: run failed")
             await session.rollback()

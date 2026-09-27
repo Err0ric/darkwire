@@ -30,12 +30,15 @@ def _enum(cls: type[enum.Enum], name: str) -> Enum:
 class Stream(str, enum.Enum):
     main = "main"
     elsewhere = "elsewhere"
+    # Fetched for data only, never becomes rows (e.g. MSRC update guide).
+    enrichment = "enrichment"
 
 
 class Health(str, enum.Enum):
     unknown = "unknown"
     ok = "ok"
     failing = "failing"
+    disabled = "disabled"
 
 
 class Category(str, enum.Enum):
@@ -197,4 +200,27 @@ class SyncRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ok: Mapped[bool | None] = mapped_column(Boolean)
     items_added: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    skipped_ads: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class MsrcUpdate(Base):
+    """MSRC Security Update Guide, keyed by CVE. RSS fields for every entry;
+    API details (product, KBs, builds, exploited) only for CVEs on the board."""
+
+    __tablename__ = "msrc_updates"
+
+    cve_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    title: Mapped[str] = mapped_column(Text)
+    url: Mapped[str] = mapped_column(Text)
+    revision_note: Mapped[str | None] = mapped_column(Text)
+    revised_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    product: Mapped[str | None] = mapped_column(String(255))
+    severity: Mapped[str | None] = mapped_column(String(32))
+    exploited: Mapped[bool | None] = mapped_column(Boolean)
+    publicly_disclosed: Mapped[bool | None] = mapped_column(Boolean)
+    release: Mapped[str | None] = mapped_column(String(16))  # 2026-Sep
+    kbs: Mapped[list | None] = mapped_column(JSONB)  # [{"kb": "5126052", "url": ...}]
+    fixed_builds: Mapped[list | None] = mapped_column(JSONB)  # [{"product": ..., "build": ...}]
+    # Null means "fetch details next run". Reset when MSRC revises the entry.
+    details_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

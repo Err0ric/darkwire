@@ -7,13 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db import get_session
-from app.models import Category, Item, ItemSource, Stream, Vendor
+from app.models import Category, Item, ItemSource, MsrcUpdate, Stream, Vendor
 from app.schemas import (
     CveDetail,
     ElsewhereItem,
     FeedItem,
     FeedPage,
     ItemDetail,
+    MsrcDetail,
     SourceLink,
     VendorRef,
 )
@@ -111,6 +112,7 @@ async def item_detail(item_id: int, session: AsyncSession = Depends(get_session)
     )
     if item is None:
         raise HTTPException(404, "item not found")
+    msrc = await session.get(MsrcUpdate, item.cve_id) if item.cve_id else None
     return ItemDetail(
         **_feed_fields(item),
         summary=item.summary,
@@ -118,6 +120,7 @@ async def item_detail(item_id: int, session: AsyncSession = Depends(get_session)
         patch_url=item.patch_url,
         first_seen_at=item.first_seen_at,
         cve=CveDetail.model_validate(item.cve) if item.cve else None,
+        msrc=MsrcDetail.model_validate(msrc) if msrc else None,
     )
 
 

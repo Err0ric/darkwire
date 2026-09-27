@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Source, Stream, Vendor
+from app.models import Health, Source, Stream, Vendor
 
 log = logging.getLogger(__name__)
 
@@ -22,11 +22,15 @@ SOURCES: list[dict] = [
     {"name": "SecurityWeek", "feed_url": "https://www.securityweek.com/feed/", "site_url": "https://www.securityweek.com", "stream": Stream.main},
     {"name": "Dark Reading", "feed_url": "https://www.darkreading.com/rss.xml", "site_url": "https://www.darkreading.com", "stream": Stream.main},
     {"name": "Krebs on Security", "feed_url": "https://krebsonsecurity.com/feed/", "site_url": "https://krebsonsecurity.com", "stream": Stream.main},
-    {"name": "CISA", "feed_url": "https://www.cisa.gov/cybersecurity-advisories/all.xml", "site_url": "https://www.cisa.gov/news-events/cybersecurity-advisories", "stream": Stream.main},
+    {"name": "CISA", "feed_url": "https://www.cisa.gov/cybersecurity-advisories/all.xml", "site_url": "https://www.cisa.gov/news-events/cybersecurity-advisories", "stream": Stream.main,
+     # 403 to httpx but 200 to curl: looks like TLS fingerprinting. curl_cffi is the likely fix.
+     "enabled": False, "health": Health.disabled},
     {"name": "The Hacker News", "feed_url": "https://feeds.feedburner.com/TheHackersNews", "site_url": "https://thehackernews.com", "stream": Stream.main},
-    {"name": "MSRC", "feed_url": "https://api.msrc.microsoft.com/update-guide/rss", "site_url": "https://msrc.microsoft.com/update-guide", "stream": Stream.main, "vendor_slug": "microsoft"},
     {"name": "Rapid7", "feed_url": "https://www.rapid7.com/blog/rss/", "site_url": "https://www.rapid7.com/blog/", "stream": Stream.main},
-    {"name": "Unit 42", "feed_url": "https://unit42.paloaltonetworks.com/feed/", "site_url": "https://unit42.paloaltonetworks.com", "stream": Stream.main, "vendor_slug": "palo-alto-networks"},
+    {"name": "Unit 42", "feed_url": "https://unit42.paloaltonetworks.com/feed/", "site_url": "https://unit42.paloaltonetworks.com", "stream": Stream.main},
+    {"name": "Palo Alto Networks", "feed_url": "https://security.paloaltonetworks.com/rss.xml", "site_url": "https://security.paloaltonetworks.com", "stream": Stream.main, "vendor_slug": "palo-alto-networks"},
+    # enrichment: fetched for data keyed by CVE, never rows. Handler in app/ingest.py.
+    {"name": "MSRC", "feed_url": "https://api.msrc.microsoft.com/update-guide/rss", "site_url": "https://msrc.microsoft.com/update-guide", "stream": Stream.enrichment, "vendor_slug": "microsoft"},
     # elsewhere: policy, privacy, culture. Shown in the right rail only.
     {"name": "EFF", "feed_url": "https://www.eff.org/rss/updates.xml", "site_url": "https://www.eff.org", "stream": Stream.elsewhere},
     {"name": "404 Media", "feed_url": "https://www.404media.co/rss/", "site_url": "https://www.404media.co", "stream": Stream.elsewhere},
@@ -37,8 +41,9 @@ SOURCES: list[dict] = [
     {"name": "Ars Technica", "feed_url": "https://arstechnica.com/security/feed/", "site_url": "https://arstechnica.com/security/", "stream": Stream.elsewhere},
 ]
 
-# Aliases are matched case-insensitively on word boundaries against title + first
-# paragraph. Keep them specific: "Zoom" alone would tag every article that says "zoom in".
+# Aliases are matched case-insensitively on word boundaries (see app/tagging.py). The
+# vendor name is not an alias unless listed. Keep them specific: bare "Intel" would tag
+# "threat intel", bare "Arm" would tag "arm yourself".
 VENDORS: list[dict] = [
     {"slug": "microsoft", "name": "Microsoft", "domain": "microsoft.com", "aliases": ["Microsoft", "MSRC", "Windows", "Exchange Server", "SharePoint", "Azure", "Outlook", "Microsoft 365", "Hyper-V", "Patch Tuesday"]},
     {"slug": "fortinet", "name": "Fortinet", "domain": "fortinet.com", "aliases": ["Fortinet", "FortiOS", "FortiGate", "FortiManager", "FortiWeb", "FortiClient", "FortiProxy", "FortiSIEM"]},
@@ -80,6 +85,22 @@ VENDORS: list[dict] = [
     {"slug": "openssl", "name": "OpenSSL", "domain": "openssl.org", "aliases": ["OpenSSL"]},
     {"slug": "ibm", "name": "IBM", "domain": "ibm.com", "aliases": ["IBM", "QRadar", "WebSphere", "Aspera"]},
     {"slug": "nvidia", "name": "NVIDIA", "domain": "nvidia.com", "aliases": ["NVIDIA", "CUDA", "GeForce"]},
+    {"slug": "amd", "name": "AMD", "domain": "amd.com", "aliases": ["AMD", "Ryzen", "EPYC", "Radeon"]},
+    {"slug": "intel", "name": "Intel", "domain": "intel.com", "aliases": ["Intel Corporation", "Intel CPU", "Intel CPUs", "Intel processors", "Intel chips", "Intel SGX", "Intel TDX", "Intel ME", "Xeon"]},
+    {"slug": "qualcomm", "name": "Qualcomm", "domain": "qualcomm.com", "aliases": ["Qualcomm", "Snapdragon"]},
+    {"slug": "arm", "name": "Arm", "domain": "arm.com", "aliases": ["Arm Holdings", "Arm Mali", "Mali GPU", "Arm Cortex", "TrustZone"]},
+    {"slug": "samsung", "name": "Samsung", "domain": "samsung.com", "aliases": ["Samsung", "Exynos"]},
+    {"slug": "tp-link", "name": "TP-Link", "domain": "tp-link.com", "aliases": ["TP-Link", "Omada"]},
+    {"slug": "d-link", "name": "D-Link", "domain": "dlink.com", "aliases": ["D-Link"]},
+    {"slug": "ubiquiti", "name": "Ubiquiti", "domain": "ui.com", "aliases": ["Ubiquiti", "UniFi", "EdgeRouter"]},
+    {"slug": "trend-micro", "name": "Trend Micro", "domain": "trendmicro.com", "aliases": ["Trend Micro", "Apex One", "Deep Security"]},
+    {"slug": "connectwise", "name": "ConnectWise", "domain": "connectwise.com", "aliases": ["ConnectWise", "ScreenConnect"]},
+    {"slug": "kaseya", "name": "Kaseya", "domain": "kaseya.com", "aliases": ["Kaseya", "Kaseya VSA"]},
+    {"slug": "jenkins", "name": "Jenkins", "domain": "jenkins.io", "aliases": ["Jenkins"]},
+    {"slug": "kubernetes", "name": "Kubernetes", "domain": "kubernetes.io", "aliases": ["Kubernetes", "K8s", "kubectl", "Ingress-NGINX", "Ingress NGINX"]},
+    {"slug": "docker", "name": "Docker", "domain": "docker.com", "aliases": ["Docker", "Docker Desktop", "Docker Hub"]},
+    {"slug": "npm", "name": "npm", "domain": "npmjs.com", "aliases": ["npm"]},
+    {"slug": "pypi", "name": "PyPI", "domain": "pypi.org", "aliases": ["PyPI", "Python Package Index"]},
 ]
 
 
@@ -90,8 +111,11 @@ async def seed(session: AsyncSession) -> None:
         .on_conflict_do_nothing(index_elements=["slug"])
     )
     vendor_ids = dict((await session.execute(select(Vendor.slug, Vendor.id))).all())
+    # Every row needs the same keys for a multi-row insert.
+    defaults = {"enabled": True, "health": Health.unknown}
     sources = [
-        {**{k: v for k, v in s.items() if k != "vendor_slug"}, "vendor_id": vendor_ids.get(s.get("vendor_slug"))}
+        {**defaults, **{k: v for k, v in s.items() if k != "vendor_slug"},
+         "vendor_id": vendor_ids.get(s.get("vendor_slug"))}
         for s in SOURCES
     ]
     await session.execute(

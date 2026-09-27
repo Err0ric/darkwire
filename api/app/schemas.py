@@ -67,12 +67,27 @@ class CveDetail(ORM):
     kev_added_at: datetime | None
 
 
+class MsrcDetail(ORM):
+    url: str
+    title: str
+    revision_note: str | None
+    revised_at: datetime | None
+    product: str | None
+    severity: str | None
+    exploited: bool | None
+    publicly_disclosed: bool | None
+    release: str | None
+    kbs: list | None
+    fixed_builds: list | None
+
+
 class ItemDetail(FeedItem):
     summary: str | None
     patch_status: PatchStatus
     patch_url: str | None
     first_seen_at: datetime
     cve: CveDetail | None
+    msrc: MsrcDetail | None
 
 
 class CveRow(BaseModel):
@@ -107,6 +122,7 @@ class SyncStatus(BaseModel):
     last_started_at: datetime | None
     last_finished_at: datetime | None
     last_ok: bool | None
+    skipped_ads: int | None
     next_run_at: datetime | None
     interval_minutes: int
 
@@ -123,8 +139,10 @@ class Counts(BaseModel):
 class Status(BaseModel):
     now: datetime
     sync: SyncStatus
+    # total / ok / failing count enabled sources only. Disabled ones are listed, not counted.
     sources_total: int
     sources_ok: int
     sources_failing: int
+    sources_disabled: int
     sources: list[SourceStatus]
     counts: Counts

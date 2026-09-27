@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import jobstate
 from app.config import get_settings
 from app.models import Cve, Item, ItemCve, PatchStatus, Severity
+from app.product_names import display_name
 from app.ratelimit import RateLimiter
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,9 @@ CHANGE_OVERLAP = timedelta(minutes=5)
 MAX_WINDOW = timedelta(days=119)  # NVD allows at most 120 days per lastMod query
 CHANGES_STATE = "nvd_changes_until"
 ANALYZED = {"Analyzed", "Modified"}
+# Bump when parse() output changes; the next enrichment pass re-derives every stored CVE
+# from its cached NVD record (no API calls).
+PARSER_VERSION = "2"
 
 
 class Nvd:
@@ -86,8 +90,9 @@ def _cpes(cve: dict) -> list[dict]:
 
 
 def _cpe_product(criteria: str) -> str:
+    """The CPE product slug, e.g. "sharepoint_server"."""
     parts = criteria.split(":")
-    return parts[4].replace("_", " ") if len(parts) > 4 else criteria
+    return parts[4] if len(parts) > 4 else criteria
 
 
 def _cpe_version(criteria: str) -> str | None:
@@ -102,12 +107,17 @@ def _norm(name: str) -> str:
     return "".join(ch for ch in name.lower() if ch.isalnum())
 
 
+def _cna_name(name: str) -> str:
+    # CNA names are usually well cased; an all-lowercase one gets the CPE treatment.
+    return display_name(name.replace(" ", "_")) if name.islower() else name
+
+
 def _cna_versions(cve: dict):
     for a in cve.get("affected") or []:
         for d in a.get("affectedData") or []:
             for v in d.get("versions") or []:
                 if v.get("versionType") != "git":  # kernel-style commit ranges read as noise
-                    yield d.get("product") or "", v
+                    yield _cna_name(d.get("product") or ""), v
 
 
 def _format(groups: dict[str, list[str]], limit: int = 3) -> str | None:
@@ -123,12 +133,12 @@ def _format(groups: dict[str, list[str]], limit: int = 3) -> str | None:
 
 def affected_summary(cve: dict, cpes: list[dict]) -> str | None:
     """CPE version ranges; else the CNA's ranges; else a compact list of exact CPE versions.
-    Product names come from the CNA record when it names the same product (nicer casing)."""
+    Product names: the CNA's own name when it names the same product, else display_name()."""
     names = {_norm(p): p for p, _ in _cna_versions(cve) if p}
 
     def pretty(criteria: str) -> str:
-        raw = _cpe_product(criteria)
-        return names.get(_norm(raw), raw)
+        slug = _cpe_product(criteria)
+        return names.get(_norm(slug), display_name(slug))
 
     groups: dict[str, list[str]] = {}
     for m in cpes:
@@ -299,3 +309,17 @@ async def sync_changes(session: AsyncSession, nvd: Nvd) -> int:
     await jobstate.put(session, CHANGES_STATE, now)
     await session.commit()
     return updated
+
+
+async def reparse_if_changed(session: AsyncSession) -> int | None:
+    """Re-derive CVE columns from cached nvd_raw when PARSER_VERSION changed. None when current."""
+    if await jobstate.get(session, "nvd_parser_version") == PARSER_VERSION:
+        return None
+    cves = (await session.scalars(select(Cve).where(Cve.nvd_raw.is_not(None)))).all()
+    for c in cves:
+        values = parse(c.nvd_raw, c.fetched_at or datetime.now(UTC))
+        for key in ("affected", "patch_status", "patch_url", "base_score", "base_severity", "cvss_vector", "cvss_version"):
+            setattr(c, key, values[key])
+    await jobstate.put(session, "nvd_parser_version", PARSER_VERSION)
+    await session.commit()
+    return len(cves)

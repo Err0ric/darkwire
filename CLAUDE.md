@@ -134,6 +134,13 @@ NVD, FIRST.org EPSS and the CISA KEV JSON are enrichment APIs, not feeds, and ar
 - Bar cells fill left to right, 25ms per cell, on first paint and for new rows.
 - Nothing else moves. No hover lifts, no bounce, no parallax, no background effects.
 
+## Unseen-item indicators
+
+- When a poll finds new rows and `document.hidden` is true: title becomes `(3) darkwire`, or `(3!) darkwire` if any new row is Critical or KEV.
+- Favicon swaps to a copy with a static red dot drawn via canvas. Never blinking.
+- Both clear on `visibilitychange` when the tab is visible. Nothing stored between visits.
+- Opt-in bell in the status line: requests Notification permission only on click, sends one grouped notification for Critical/KEV additions only. Never prompt on load.
+
 ## Keyboard
 
 `j` / `k` move, `enter` expand, `o` open primary source, `/` focus search, `f` kiosk (hide nav and rail, bigger type).

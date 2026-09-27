@@ -112,6 +112,7 @@ async def run_enrich() -> None:
             ("kev", lambda: kev.refresh(session, client)),
             ("nvd_new", lambda: nvd.fetch_new(session, client_nvd)),
             ("nvd_changed", lambda: nvd.sync_changes(session, client_nvd)),
+            ("nvd_reparse", lambda: nvd.reparse_if_changed(session)),
             ("epss", lambda: epss.refresh(session, client)),
         ]
         for name, step in steps:

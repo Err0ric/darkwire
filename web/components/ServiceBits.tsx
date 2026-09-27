@@ -1,6 +1,9 @@
+"use client"
+
 import { cn } from "cn"
 
 import type { ServiceOut, ServiceState } from "@/lib/api"
+import { useNow } from "@/lib/time"
 
 // Shared by the rail's Services block and /outages: one visual language for service state,
 // the same as the CVSS bar (5x10px cells, 2px gap): gray ok, amber degraded, red major,
@@ -20,11 +23,28 @@ const DOT: Record<ServiceState, string> = {
   unknown: "bg-rule",
 }
 
+// Operational hours are a flat quiet line; hours before polling began are only outlined.
 const CELL: Record<ServiceState, string> = {
-  operational: "bg-medium",
+  operational: "bg-strip-ok",
   degraded: "bg-degraded",
   major: "bg-critical",
-  unknown: "bg-rule",
+  unknown: "bg-transparent ring-1 ring-inset ring-rule",
+}
+
+const CELL_WORD: Record<ServiceState, string> = {
+  operational: "operational",
+  degraded: "degraded",
+  major: "major",
+  unknown: "no data",
+}
+
+/** "13:00–14:00 PDT" for the cell `back` hours before the current one (local zone). */
+function hourRange(back: number, nowMs: number): string {
+  const start = new Date(Math.floor(nowMs / 3_600_000) * 3_600_000 - back * 3_600_000)
+  const end = new Date(start.getTime() + 3_600_000)
+  const hm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+  const zone = new Intl.DateTimeFormat([], { timeZoneName: "short" }).formatToParts(start).find((p) => p.type === "timeZoneName")?.value ?? ""
+  return `${hm(start)}–${hm(end)} ${zone}`.trim()
 }
 
 export function StateDot({ state, className }: { state: ServiceState; className?: string }) {
@@ -40,6 +60,7 @@ export function StateDot({ state, className }: { state: ServiceState; className?
 
 /** 24 cells, one per hour, oldest on the left. `stretch` spreads them over the full width. */
 export function HourStrip({ hours, stretch = false, className }: { hours: ServiceState[]; stretch?: boolean; className?: string }) {
+  const now = useNow()
   const impacted = hours.filter((h) => h === "degraded" || h === "major").length
   return (
     <span
@@ -48,7 +69,11 @@ export function HourStrip({ hours, stretch = false, className }: { hours: Servic
       className={cn("flex shrink-0 gap-0.5", className)}
     >
       {hours.map((h, i) => (
-        <span key={i} className={cn("h-2.5", stretch ? "min-w-0 flex-1" : "w-[5px]", CELL[h])} />
+        <span
+          key={i}
+          title={now === null ? undefined : `${hourRange(hours.length - 1 - i, now)} · ${CELL_WORD[h]}`}
+          className={cn("h-2.5", stretch ? "min-w-0 flex-1" : "w-[5px]", CELL[h])}
+        />
       ))}
     </span>
   )

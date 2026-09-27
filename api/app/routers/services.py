@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_session
 from app.models import ServiceHour, ServiceStatus
 from app.services import BY_SLUG, DEFAULTS, GROUPS, SERVICES, UNKNOWN
+from app.throttle import read_limit
 
 router = APIRouter(tags=["services"])
 
@@ -46,7 +47,9 @@ class ServicesOut(BaseModel):
 
 
 @router.get("/services", response_model=ServicesOut)
+@read_limit
 async def services(
+    request: Request,
     slugs: str | None = Query(None, max_length=1000, description="comma-separated service slugs; 'all' for every one"),
     session: AsyncSession = Depends(get_session),
 ) -> ServicesOut:

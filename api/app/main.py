@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
 from app.db import SessionLocal, engine
@@ -11,6 +12,7 @@ from app.ingest import scheduler, start_scheduler
 from app.routers import cves, feed, kev, services, status, vendors
 from app.services import schedule as schedule_services
 from app.seed import seed
+from app.throttle import limiter, rate_limited
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -29,27 +31,45 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(title="darkwire", docs_url="/docs", redoc_url=None, lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=get_settings().cors_origin_list,
-    allow_origin_regex=get_settings().cors_origin_regex,
-    allow_methods=["GET"],
-    allow_headers=["*"],
+# API docs only locally: in production /docs, /redoc and /openapi.json are 404.
+_local = not get_settings().on_railway
+app = FastAPI(
+    title="darkwire",
+    docs_url="/docs" if _local else None,
+    redoc_url="/redoc" if _local else None,
+    openapi_url="/openapi.json" if _local else None,
+    lifespan=lifespan,
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limited)
+
+# Browsers may call the API only from the site itself and local dev. Fixed in code, not
+# configurable, so no environment variable can widen it.
+ALLOWED_ORIGINS = [
+    "https://darkwire.tech",
+    "https://www.darkwire.tech",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET"], allow_headers=[])
 for r in (feed.router, cves.router, kev.router, vendors.router, status.router, services.router):
     app.include_router(r)
 
 
-# Live data: browsers and CDNs must never serve these from cache.
-NO_STORE = ("/feed", "/status", "/services")
+# Every response: no sniffing, no referrer, never cached (the data is live). The Server banner
+# is off at uvicorn (--no-server-header in railway.json).
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-store",
+}
 
 
 @app.middleware("http")
-async def no_store(request: Request, call_next):
+async def security_headers(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith(NO_STORE):
-        response.headers["Cache-Control"] = "no-store"
+    for name, value in SECURITY_HEADERS.items():
+        response.headers[name] = value
     return response
 
 

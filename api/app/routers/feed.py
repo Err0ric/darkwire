@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -19,6 +19,7 @@ from app.schemas import (
     SourceLink,
     VendorRef,
 )
+from app.throttle import cap, heavy_limit, read_limit, require_audit
 
 router = APIRouter(tags=["feed"])
 
@@ -90,7 +91,10 @@ def _feed_fields(item: Item, all_sources: bool = False) -> dict:
 
 
 @router.get("/feed", response_model=FeedPage)
+@read_limit
+@heavy_limit
 async def feed(
+    request: Request,
     tab: Tab = Tab.all,
     vendor: str | None = Query(None, description="vendor slug"),
     vendors: str | None = Query(None, max_length=2000, description="comma-separated vendor slugs (a stack)"),
@@ -106,6 +110,9 @@ async def feed(
     window: str = Query("7d", pattern="^(24h|7d)$", description="window for severity: 24h (header counts) or 7d (rail)"),
     session: AsyncSession = Depends(get_session),
 ) -> FeedPage:
+    limit = cap(request, limit)
+    if all_sources:
+        require_audit(request, "all_sources")
     where = [Item.stream == Stream.main]
     if tab == Tab.kev:
         where.append(Item.kev.is_(True))
@@ -154,7 +161,8 @@ async def feed(
 
 
 @router.get("/items/{item_id}", response_model=ItemDetail)
-async def item_detail(item_id: int, session: AsyncSession = Depends(get_session)) -> ItemDetail:
+@read_limit
+async def item_detail(request: Request, item_id: int, session: AsyncSession = Depends(get_session)) -> ItemDetail:
     item = await session.scalar(
         select(Item).where(Item.id == item_id).options(*_load)
     )
@@ -173,9 +181,12 @@ async def item_detail(item_id: int, session: AsyncSession = Depends(get_session)
 
 
 @router.get("/elsewhere", response_model=list[ElsewhereItem])
+@read_limit
+@heavy_limit
 async def elsewhere(
-    limit: int = Query(5, ge=1, le=500), session: AsyncSession = Depends(get_session)
+    request: Request, limit: int = Query(5, ge=1, le=500), session: AsyncSession = Depends(get_session)
 ) -> list[ElsewhereItem]:
+    limit = cap(request, limit)
     rows = await session.scalars(
         select(Item)
         .where(Item.stream == Stream.elsewhere)

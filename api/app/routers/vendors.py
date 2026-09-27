@@ -1,13 +1,14 @@
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.models import Item, Stream, Vendor
 from app.schemas import VendorOut
+from app.throttle import read_limit
 
 router = APIRouter(tags=["vendors"])
 
@@ -18,7 +19,8 @@ class Sort(str, Enum):
 
 
 @router.get("/vendors", response_model=list[VendorOut])
-async def vendors(sort: Sort = Sort.name, session: AsyncSession = Depends(get_session)) -> list[VendorOut]:
+@read_limit
+async def vendors(request: Request, sort: Sort = Sort.name, session: AsyncSession = Depends(get_session)) -> list[VendorOut]:
     week_ago = datetime.now(UTC) - timedelta(days=7)
     counts = (
         select(Item.vendor_id, func.count().label("n"))

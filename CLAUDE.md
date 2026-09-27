@@ -188,7 +188,20 @@ Seeded from `api/app/seed.py`. Keep this table and that file in sync. Main feeds
 
 NVD, FIRST.org EPSS and the CISA KEV JSON are enrichment APIs, not feeds, and are not in this table.
 
-Feed audit: `python -m app.audit [--api URL] [--feed NAME] [-v]` in `/api` re-fetches each feed and labels every entry with the ingest rules: kept, merged, elsewhere, ad, future-dated, too old, invalid, or not on board. `/status` carries each source's counts from its last fetch in `last_counts`.
+Feed audit: `AUDIT_TOKEN=... python -m app.audit [--api URL] [--feed NAME] [-v]` in `/api` re-fetches each feed and labels every entry with the ingest rules: kept, merged, elsewhere, ad, future-dated, too old, invalid, or not on board. `/status` carries each source's counts from its last fetch in `last_counts`.
+
+## API protection
+
+In `api/app/throttle.py` and `api/app/main.py`:
+
+- Rate limits per client IP (slowapi, in memory): 120 requests/min shared across all read endpoints; 10/min for `/feed?all_sources=true` or any request asking for `limit` > 100. A 429 carries `Retry-After`.
+- Client IP: Railway's edge sets `X-Real-IP`; it (or the last `X-Forwarded-For` hop) is trusted only on Railway or from a private/loopback peer. Spoofed headers were checked not to change the key in production.
+- `limit` is clamped to 100 on public requests. Larger limits and `all_sources` need `X-Audit-Token` matching the Railway variable `AUDIT_TOKEN` (the feed audit tool sends it).
+- Optional `SSR_TOKEN` (Railway) / `API_SERVER_TOKEN` (Vercel, server-only): server-rendered page requests carry it as `X-SSR-Token` and skip the per-IP bucket, since Vercel's servers share IPs across visitors.
+- `/docs`, `/redoc`, `/openapi.json` exist only locally (off when `RAILWAY_ENVIRONMENT_NAME` is set).
+- CORS: GET only, from `https://darkwire.tech`, `https://www.darkwire.tech` and localhost:3000. Fixed in code.
+- Every response: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`; uvicorn runs with `--no-server-header`.
+- Never commit a token value. Tokens are compared in constant time.
 
 ## Motion (all respect prefers-reduced-motion)
 

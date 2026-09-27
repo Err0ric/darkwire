@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,12 +11,14 @@ from app.staleness import not_stale
 from app.models import Cve, Health, Item, ItemSource, KevEntry, Severity, Source, Stream, SyncRun
 from app.schemas import Counts, SourceStatus, Status, SummariesStatus, SyncStatus
 from app.summaries import health
+from app.throttle import read_limit
 
 router = APIRouter(tags=["status"])
 
 
 @router.get("/status", response_model=Status)
-async def status(session: AsyncSession = Depends(get_session)) -> Status:
+@read_limit
+async def status(request: Request, session: AsyncSession = Depends(get_session)) -> Status:
     now = datetime.now(UTC)
     day_ago = now - timedelta(hours=24)
 

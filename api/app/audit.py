@@ -1,7 +1,12 @@
 """Feed audit: what happened to every entry of every feed's current fetch.
 
     python -m app.audit                      # all feeds, against the local API
-    python -m app.audit --api https://api.darkwire.tech --feed "Dark Reading" -v
+    AUDIT_TOKEN=... python -m app.audit --api https://api.darkwire.tech --feed "Dark Reading" -v
+
+The API caps public requests at 100 rows and refuses all_sources without the audit token, so
+this sends X-Audit-Token from the AUDIT_TOKEN environment variable (the same value as the
+Railway variable). Locally, with no token set on either side, the local API still answers:
+set AUDIT_TOKEN for both.
 
 Re-fetches each feed (unconditionally), parses it exactly as ingest does, and labels each
 entry with the same rules, in the same order: invalid, too old, future-dated, ad. Entries that
@@ -11,6 +16,7 @@ pass are looked up by URL in the board the API serves: kept (the row's primary a
 
 import argparse
 import asyncio
+import os
 from collections import Counter
 from datetime import UTC, datetime
 
@@ -66,7 +72,10 @@ async def main() -> None:
 
     now = datetime.now(UTC)
     feeds = [s for s in SOURCES if s["stream"] != Stream.enrichment and (not args.feed or s["name"] == args.feed)]
-    async with httpx.AsyncClient(timeout=FETCH_TIMEOUT * 2, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as client:
+    headers = {"User-Agent": USER_AGENT}
+    if os.environ.get("AUDIT_TOKEN"):
+        headers["X-Audit-Token"] = os.environ["AUDIT_TOKEN"]
+    async with httpx.AsyncClient(timeout=FETCH_TIMEOUT * 2, follow_redirects=True, headers=headers) as client:
         urls, elsewhere = await board(client, args.api)
         zero = []
         for src in feeds:

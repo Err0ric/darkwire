@@ -1,6 +1,6 @@
 from enum import Enum
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import asc, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +8,7 @@ from app.db import get_session
 from app.models import Cve, Item, ItemCve, Vendor
 from app.product_names import display_name
 from app.schemas import CveRow, VendorRef
+from app.throttle import cap, heavy_limit, read_limit
 
 router = APIRouter(tags=["cves"])
 
@@ -43,7 +44,10 @@ def _product(cpes: list | None) -> str | None:
 
 
 @router.get("/cves", response_model=list[CveRow])
+@read_limit
+@heavy_limit
 async def cves(
+    request: Request,
     sort: Sort = Sort.published,
     order: Order = Order.desc,
     vendor: str | None = Query(None, description="vendor slug"),
@@ -53,6 +57,7 @@ async def cves(
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> list[CveRow]:
+    limit = cap(request, limit)
     # Several rows can share a CVE (coverage >48h apart). Use the most recent one.
     latest = (
         select(Item.id, ItemCve.cve_id, Item.vendor_id)

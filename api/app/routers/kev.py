@@ -1,22 +1,27 @@
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.models import Item, ItemCve, KevEntry
 from app.schemas import KevRow
+from app.throttle import cap, heavy_limit, read_limit
 
 router = APIRouter(tags=["kev"])
 
 
 @router.get("/kev", response_model=list[KevRow])
+@read_limit
+@heavy_limit
 async def kev(
+    request: Request,
     days: int = Query(7, ge=1, le=90),
     limit: int = Query(20, ge=1, le=200),
     session: AsyncSession = Depends(get_session),
 ) -> list[KevRow]:
+    limit = cap(request, limit)
     """Recent additions to the whole CISA KEV catalog, newest first, with a board row when one exists."""
     since = (datetime.now(UTC) - timedelta(days=days)).date()
     on_board = (

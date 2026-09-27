@@ -30,3 +30,6 @@ desktop.ini
 # Playwright
 test-results/
 playwright-report/
+
+# Playwright MCP output
+.playwright-mcp/

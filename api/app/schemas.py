@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
@@ -139,7 +139,16 @@ class Counts(BaseModel):
     medium_24h: int
     low_24h: int
     items_24h: int
+    articles_24h: int  # main-stream articles published in the last 24h (rows can hold several)
     kev_added_7d: int
+
+
+class KevRow(BaseModel):
+    cve_id: str
+    vendor: str | None
+    product: str | None
+    date_added: date
+    item_id: int | None  # a row on the board for this CVE, if any
 
 
 class Status(BaseModel):

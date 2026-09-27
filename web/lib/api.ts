@@ -140,6 +140,7 @@ export interface Counts {
   medium_24h: number
   low_24h: number
   items_24h: number
+  articles_24h: number
   kev_added_7d: number
 }
 
@@ -182,6 +183,7 @@ export interface FeedQuery {
   vendor?: string
   q?: string
   limit?: number
+  offset?: number
   since?: string
 }
 
@@ -210,3 +212,14 @@ export const getElsewhere = (limit = 5, init?: RequestInit) =>
   get<ElsewhereItem[]>("/elsewhere", { limit }, init)
 
 export const getStatus = (init?: RequestInit) => get<Status>("/status", {}, init)
+
+export interface KevRow {
+  cve_id: string
+  vendor: string | null
+  product: string | null
+  date_added: string // YYYY-MM-DD
+  item_id: number | null
+}
+
+/** Recent additions to the whole CISA KEV catalog. */
+export const getKev = (days = 7, limit = 20, init?: RequestInit) => get<KevRow[]>("/kev", { days, limit }, init)

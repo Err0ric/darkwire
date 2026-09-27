@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import get_session
 from app.ingest import next_run_at
-from app.models import Health, Item, KevEntry, Severity, Source, Stream, SyncRun
+from app.models import Health, Item, ItemSource, KevEntry, Severity, Source, Stream, SyncRun
 from app.schemas import Counts, SourceStatus, Status, SyncStatus
 
 router = APIRouter(tags=["status"])
@@ -32,6 +32,12 @@ async def status(session: AsyncSession = Depends(get_session)) -> Status:
         ).all()
     )
     items_24h = sum(by_severity.values())
+    articles_24h = await session.scalar(
+        select(func.count())
+        .select_from(ItemSource)
+        .join(Source, Source.id == ItemSource.source_id)
+        .where(Source.stream == Stream.main, ItemSource.published_at >= day_ago)
+    )
     # Whole catalog, not just CVEs on the board: "4 added to KEV this week".
     kev_added_7d = await session.scalar(
         select(func.count()).select_from(KevEntry).where(KevEntry.date_added >= (now - timedelta(days=7)).date())
@@ -58,6 +64,7 @@ async def status(session: AsyncSession = Depends(get_session)) -> Status:
             medium_24h=by_severity.get(Severity.medium, 0),
             low_24h=by_severity.get(Severity.low, 0),
             items_24h=items_24h,
+            articles_24h=articles_24h or 0,
             kev_added_7d=kev_added_7d or 0,
         ),
     )

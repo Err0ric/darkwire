@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db import get_session
-from app.models import Category, Item, ItemSource, MsrcUpdate, Stream, Vendor
+from app.models import Category, Item, ItemCve, ItemSource, MsrcUpdate, Stream, Vendor
 from app.schemas import (
     CveDetail,
     ElsewhereItem,
@@ -77,6 +77,7 @@ async def feed(
     vendor: str | None = Query(None, description="vendor slug"),
     q: str | None = Query(None, max_length=200, description="headline text or CVE ID"),
     limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     since: datetime | None = Query(None, description="only rows with an event after this time"),
     session: AsyncSession = Depends(get_session),
 ) -> FeedPage:
@@ -92,7 +93,8 @@ async def feed(
         where.append(
             or_(
                 Item.headline.icontains(term, autoescape=True),
-                Item.cve_id.icontains(term, autoescape=True),
+                # Any CVE the row's articles mention, not only the one it displays.
+                Item.id.in_(select(ItemCve.item_id).where(ItemCve.cve_id.icontains(term, autoescape=True))),
             )
         )
     if since:
@@ -100,7 +102,12 @@ async def feed(
 
     total = await session.scalar(select(func.count()).select_from(Item).where(*where))
     rows = await session.scalars(
-        select(Item).where(*where).options(*_load).order_by(Item.last_event_at.desc()).limit(limit)
+        select(Item)
+        .where(*where)
+        .options(*_load)
+        .order_by(Item.last_event_at.desc(), Item.id.desc())
+        .limit(limit)
+        .offset(offset)
     )
     return FeedPage(items=[FeedItem(**_feed_fields(i)) for i in rows], total=total or 0)
 

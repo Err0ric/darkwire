@@ -36,10 +36,13 @@ export function FeedRow({
   item,
   detail: initialDetail,
   defaultExpanded = false,
+  fresh = false,
 }: {
   item: FeedItem
   detail?: ItemDetail
   defaultExpanded?: boolean
+  /** Arrived on a poll: fades in with the red left edge. */
+  fresh?: boolean
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [detail, setDetail] = useState<Detail>(
@@ -67,6 +70,7 @@ export function FeedRow({
     <article
       className={cn(
         "border-b border-hairline",
+        fresh && "animate-row-in",
         expanded && "-mx-4 bg-surface px-4 md:-mx-6 md:px-6",
       )}
     >

@@ -8,7 +8,7 @@ from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.enrich import schedule as schedule_enrich
 from app.ingest import scheduler, start_scheduler
-from app.routers import cves, feed, status, vendors
+from app.routers import cves, feed, kev, status, vendors
 from app.seed import seed
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -35,7 +35,7 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
-for r in (feed.router, cves.router, vendors.router, status.router):
+for r in (feed.router, cves.router, kev.router, vendors.router, status.router):
     app.include_router(r)
 
 

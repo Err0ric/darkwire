@@ -93,6 +93,29 @@
   animation: cell-fill 150ms ease-out both;
 }
 
+/* New rows: fade in from the top over 300ms; a 1px critical left edge fades over 10s. */
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes edge-fade {
+  from {
+    box-shadow: inset 1px 0 0 var(--critical);
+  }
+  to {
+    box-shadow: inset 1px 0 0 transparent;
+  }
+}
+
+@utility animate-row-in {
+  animation:
+    row-in 300ms ease-out both,
+    edge-fade 10s linear both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

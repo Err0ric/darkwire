@@ -48,18 +48,39 @@ export function Elsewhere({ elsewhere }: { elsewhere: ElsewhereItem[] }) {
 
 // Rail sections. The wire places them per breakpoint (CLAUDE.md "Right rail").
 
-export function MostActive({ active, onVendor }: { active: VendorOut[]; onVendor: (slug: string) => void }) {
+/** Each vendor sets the wire's vendor filter (like the All vendors menu); the active one is
+ * underlined like the active tab, and clicking it again clears the filter. */
+export function MostActive({
+  active,
+  vendor,
+  onVendor,
+}: {
+  active: VendorOut[]
+  vendor: string
+  onVendor: (slug: string) => void
+}) {
   return (
     <Section title="Most active this week">
       <ul className="mt-2.5">
-        {active.map((v) => (
-          <li key={v.slug} className="flex h-6 items-center justify-between">
-            <button type="button" onClick={() => onVendor(v.slug)} className="text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
-              {v.name}
-            </button>
-            <span className="font-mono text-xs text-muted">{v.items_7d}</span>
-          </li>
-        ))}
+        {active.map((v) => {
+          const on = vendor === v.slug
+          return (
+            <li key={v.slug} className="flex h-6 items-center justify-between">
+              <button
+                type="button"
+                onClick={() => onVendor(v.slug)}
+                aria-pressed={on}
+                className={cn(
+                  "relative outline-none hover:text-fg focus-visible:text-fg",
+                  on ? "text-fg after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg" : "text-fg-2",
+                )}
+              >
+                {v.name}
+              </button>
+              <span className="font-mono text-xs text-muted">{v.items_7d}</span>
+            </li>
+          )
+        })}
         {active.length === 0 && <li className="text-dim">No tagged rows this week.</li>}
       </ul>
     </Section>

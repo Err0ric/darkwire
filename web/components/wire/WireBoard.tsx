@@ -311,9 +311,9 @@ export function WireBoard({ initial }: { initial: WireData }) {
           className="sticky mt-[133px] hidden w-[300px] shrink-0 text-[13px] min-[2200px]:block"
         >
           <div className="flex flex-col gap-10">
+            <MostActive active={active} vendor={filters.vendor} onVendor={(slug) => apply({ vendor: filters.vendor === slug ? "" : slug })} />
             <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
             <AddedToKev kev={kev} query={prefs.query()} />
-            <MostActive active={active} onVendor={(slug) => apply({ vendor: slug })} />
             <SourcesLine status={status} />
           </div>
         </aside>
@@ -502,23 +502,23 @@ export function WireBoard({ initial }: { initial: WireData }) {
           className="mt-16 text-[13px] min-[1200px]:sticky min-[1200px]:mt-[133px] min-[1200px]:w-[340px] min-[1200px]:shrink-0 min-[2200px]:w-[300px]"
         >
           {/* Orders: under 1200 Elsewhere, Most active, Added to KEV, Last 7 days, Sources (Services
-              sits above the feed). 1200-2199 Services, Added to KEV, Last 7 days, Elsewhere, Most
-              active, Sources. 2200+ Services, Elsewhere; the rest is in the left rail. */}
+              sits above the feed). 1200-2199 Services, Most active, Last 7 days, Added to KEV,
+              Elsewhere, Sources. 2200+ Services, Elsewhere; the rest is in the left rail. */}
           <div className="flex max-w-[640px] flex-col gap-10 min-[1200px]:max-w-none">
             <div className="hidden min-[1200px]:order-1 min-[1200px]:block">
               <Services data={services} />
             </div>
-            <div className="order-3 min-[1200px]:order-2 min-[2200px]:hidden">
-              <AddedToKev kev={kev} query={prefs.query()} />
+            <div className="order-2 min-[2200px]:hidden">
+              <MostActive active={active} vendor={filters.vendor} onVendor={(slug) => apply({ vendor: filters.vendor === slug ? "" : slug })} />
             </div>
             <div className="order-4 min-[1200px]:order-3 min-[2200px]:hidden">
               <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
             </div>
-            <div className="order-1 min-[1200px]:order-4 min-[2200px]:order-2">
-              <Elsewhere elsewhere={elsewhere} />
+            <div className="order-3 min-[1200px]:order-4 min-[2200px]:hidden">
+              <AddedToKev kev={kev} query={prefs.query()} />
             </div>
-            <div className="order-2 min-[1200px]:order-5 min-[2200px]:hidden">
-              <MostActive active={active} onVendor={(slug) => apply({ vendor: slug })} />
+            <div className="order-1 min-[1200px]:order-5 min-[2200px]:order-2">
+              <Elsewhere elsewhere={elsewhere} />
             </div>
             <div className="order-6 min-[2200px]:hidden">
               <SourcesLine status={status} />

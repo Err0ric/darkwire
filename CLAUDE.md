@@ -130,8 +130,8 @@ Third-party status for the rail and `/outages`, from each vendor's official sour
 
 Three layouts by viewport width:
 
-- 2200px and wider: three columns in one centered block, 64px apart. Left rail 300px: Last 7 days, Added to KEV, Most active this week, Sources line. Feed flexible, max 1100px. Right rail 300px: Services, Elsewhere.
-- 1200 to 2199px: feed plus one 340px right rail, 48px apart: Services, Added to KEV, Last 7 days, Elsewhere, Most active this week, Sources line.
+- 2200px and wider: three columns in one centered block, 64px apart. Left rail 300px: Most active this week, Last 7 days, Added to KEV, Sources line. Feed flexible, max 1100px. Right rail 300px: Services, Elsewhere.
+- 1200 to 2199px: feed plus one 340px right rail, 48px apart: Services, Most active this week, Last 7 days, Added to KEV, Elsewhere, Sources line.
 - Under 1200px: the rail stacks below the feed: Elsewhere, Most active, Added to KEV, Last 7 days, Sources line (Services sits above the feed).
 
 Rails are `position: sticky` in the two- and three-column layouts: a rail shorter than the window pins 24px from the top; a taller one scrolls with the page until its bottom is 24px above the window's bottom, then holds (`web/lib/sticky.ts`). The nav is not sticky, so rails pin to the window top.
@@ -140,7 +140,7 @@ Sections:
 
 - Services (see Services).
 - Elsewhere. Five most recent from the policy/privacy/culture pool (EFF, 404 Media, Citizen Lab, Lawfare, Wired, TechCrunch Security, Ars). Headline 13px, clamped to 2 lines + `source · age` 11px. No vendor, no score.
-- Most active this week. Vendor + count.
+- Most active this week. Vendor + count. Each name sets the wire's vendor filter (same as the All vendors menu); the active one is underlined like the active tab, and clicking it again clears the filter.
 - Added to KEV. From CISA's catalog, not the board: entries with `dateAdded` in the last 7 days, newest first, CVE ID + CISA's vendor. A CVE with a row on the board links to it (scrolled to and expanded when it is on the current wire view, else `/item/[id]`); any other links to its NVD page in a new tab. No link may 404.
 - Last 7 days. Four 3px bars: Critical, High, Medium, Low. Each row with a count filters the wire to that severity over the last 7 days (`?severity=critical`, combinable with tab, vendor, search and stack; old CVEs excluded, so the list matches the count). The active row is underlined like the active tab; clicking it again clears the filter. Zero rows are not clickable. The header's "N critical" and "N high" are 24-hour counts, so they set the filter with a 24-hour window (`?severity=critical&window=24h`) and the row count matches the number clicked. The footer line names the active window.
 - Sources line: "Sources: NVD, CISA KEV, vendor PSIRTs, N feeds. All healthy. Rows update every minute." (or "N failing.", plus "Summaries paused." when the model is not ok).

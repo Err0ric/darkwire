@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 
 import type { Activity as ActivityData, ActivityHour, BoardEvent } from "@/lib/api"
 import { pad } from "@/lib/clock"
@@ -202,14 +202,25 @@ function Trace({ hours, peak7d, animate }: { hours: ActivityHour[]; peak7d: numb
 
 type Part = { text: string; color: string }
 
-function lineParts(e: BoardEvent, slot = 0): Part[] {
+const noSubscribe = () => () => {}
+
+/** False on the server and while hydrating, true after: the log's times are the viewer's local
+ * clock, which the server (in UTC) cannot know, so they fill in after mount. */
+function useMounted(): boolean {
+  return useSyncExternalStore(noSubscribe, () => true, () => false)
+}
+
+// The time column, "HH:MM" and two spaces: blank until the viewer's clock is known (same width).
+const TIME_BLANK = " ".repeat(7)
+
+function lineParts(e: BoardEvent, slot = 0, local = true): Part[] {
   const L = ACTIVITY.log
   const c = L.lineColors[Math.min(slot, L.lineColors.length - 1)]
   const at = new Date(e.at)
   const joiner = e.kind === "cluster" || e.kind === "summary" ? " · " : " "
   const detail = `${e.subject}${joiner}${e.detail}`
   return [
-    { text: `${pad(at.getHours())}:${pad(at.getMinutes())}  `, color: c.time },
+    { text: local ? `${pad(at.getHours())}:${pad(at.getMinutes())}  ` : TIME_BLANK, color: c.time },
     { text: e.kind.padEnd(L.kindWidth), color: c.kind },
     ...detail
       .split(HOT_SPLIT)
@@ -239,6 +250,7 @@ function Parts({ parts, typed }: { parts: Part[]; typed: number | null }) {
  * move up a line and the top one fades out. No events yet: "watching N sources…". */
 function Log({ events, sources, animate }: { events: BoardEvent[]; sources: number | null; animate: boolean }) {
   const L = ACTIVITY.log
+  const mounted = useMounted()
   // Line keys: the first render's lines take 0..L.lines-1, later ones count up from L.lines.
   const seq = useRef(L.lines)
   const [lines, setLines] = useState<Line[]>(() =>
@@ -363,7 +375,7 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
         {lines.map((line, i) => {
           const slot = bottom - i // 0 = bottom
           const parts = line.event
-            ? lineParts(line.event, Math.min(slot, L.lines - 1))
+            ? lineParts(line.event, Math.min(slot, L.lines - 1), mounted)
             : [{ text: `watching ${sources ?? "the"} ${sources === 1 ? "source" : "sources"}…`, color: L.lineColors[0].time }]
           return (
             <p
@@ -394,7 +406,7 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
       </div>
       <p className="sr-only">
         {latest
-          ? `Latest board event: ${lineParts(latest)
+          ? `Latest board event: ${lineParts(latest, 0, mounted)
               .map((p) => p.text)
               .join("")
               .replace(/\s+/g, " ")}`

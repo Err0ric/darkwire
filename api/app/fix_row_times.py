@@ -24,7 +24,7 @@ def planned(items) -> list[tuple[object, object, object, str]]:
     source. Pure, so it can be tested without a database."""
     out = []
     for item in items:
-        new = rowtime.news_time(s.published_at for s in dedupe.time_sources(item.sources))
+        new = rowtime.news_time(s.published_at for s in dedupe.time_sources(item.sources, dedupe.alert_led(item)))
         if new is None:
             continue  # no dated news source: nothing better to say
         if new != item.last_event_at or item.last_event_kind != rowtime.PUBLISHED:

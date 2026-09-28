@@ -29,7 +29,7 @@ from sqlalchemy.orm import selectinload
 
 from app import jobstate, rowtime
 from app.models import Item, ItemCve, ItemSource, Stream
-from app.tagging import ZERO_DAY, VendorMatcher
+from app.tagging import ZERO_DAY, VendorMatcher, cluster_cves
 
 log = logging.getLogger(__name__)
 
@@ -59,12 +59,15 @@ def has_alert(sources) -> bool:
 def alert_led(item) -> bool:
     """A row started by a KEV alert: the alert is its primary source. Such a row holds only the
     alert's CVEs and is joined only through them. A row an alert joined stays a news row."""
-    return is_kev_alert(item.headline, item.primary_url)
+    return is_kev_alert(getattr(item, "headline", None), getattr(item, "primary_url", None))
 
 
-def time_sources(sources) -> list:
-    """The sources a row's time comes from (app/rowtime.py): its news articles. A KEV alert is a
-    catalog date, so it counts only on a row that has nothing else."""
+def time_sources(sources, led_by_alert: bool = False) -> list:
+    """The sources a row's time comes from (app/rowtime.py). On a row a KEV alert started, all of
+    them, the alert included. On a news row an alert joined, the news articles only: the row
+    keeps its own time."""
+    if led_by_alert:
+        return list(sources)
     news = [s for s in sources if not is_kev_alert(getattr(s, "title", None), getattr(s, "url", None))]
     return news or list(sources)
 
@@ -266,6 +269,8 @@ class Art:
     published: datetime
     vendor_id: int | None = None
     cves: list[str] = field(default_factory=list)  # tied to its headline; for an alert, the ones it lists
+    lead: str = ""  # for the cluster's CVEs (cluster_cves), as ingest links them
+    body: str = ""
 
     @property
     def alert(self) -> bool:
@@ -288,7 +293,7 @@ class Group:
 
     @property
     def time(self) -> datetime:
-        return min(a.published for a in time_sources(self.arts))
+        return min(a.published for a in time_sources(self.arts, self.alert_led))
 
 
 def plan(arts: list[Art], matcher: VendorMatcher, cve_window: timedelta = timedelta(hours=48)) -> list[Group]:
@@ -322,7 +327,10 @@ def plan(arts: list[Art], matcher: VendorMatcher, cve_window: timedelta = timede
             continue
         target.arts.append(a)
         if not target.alert_led:  # an alert-led group keeps only the alert's CVEs
-            target.cves |= set(a.cves)
+            # As ingest links them: each article's CVEs, plus the cluster's count filled from
+            # another outlet's list ("Two ... Zero-Days" and a bulletin naming both).
+            news = [b for b in target.arts if not b.alert]
+            target.cves |= set(a.cves) | set(cluster_cves([(b.title, b.lead, b.body) for b in news]))
             if target.vendor_id is None:
                 target.vendor_id = a.vendor_id
     return groups
@@ -424,7 +432,9 @@ async def _merge(session: AsyncSession, o: dict, n: dict, n_pub: datetime) -> No
     )
     # Row time: the earliest of the merged row's news sources (app/rowtime.py), logged.
     times = (await session.execute(text("SELECT title, url, published_at FROM item_sources WHERE item_id = :o"), {"o": oid})).all()
-    earliest = rowtime.news_time(t.published_at for t in time_sources(times))
+    head = (await session.execute(text("SELECT headline, primary_url FROM items WHERE id = :o"), {"o": oid})).mappings().one()
+    led = is_kev_alert(head["headline"], head["primary_url"])
+    earliest = rowtime.news_time(t.published_at for t in time_sources(times, led))
     event, kind = earliest or min(o["last_event_at"], n_pub), rowtime.PUBLISHED
     if event != o["last_event_at"] or o["last_event_kind"] != rowtime.PUBLISHED:
         log.info(

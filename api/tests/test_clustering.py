@@ -128,6 +128,21 @@ class KevAlerts(unittest.TestCase):
         self.assertEqual([s.published_at for s in dedupe.time_sources(rows)], [at(25, 13)])
         self.assertEqual(len(dedupe.time_sources(rows[1:])), 1)  # an alert alone keeps its own time
 
+    def test_a_row_an_alert_started_keeps_the_alerts_time(self):
+        kev = alert(22, "Four", ["CVE-2026-94127"])
+        rapid7 = news("r7", "CVE-2026-94127: Critical Unauthenticated RCE in F5 BIG-IP APM", at(23, 8, 43), ["CVE-2026-94127"])
+        groups = plan([kev, rapid7], MATCHER)
+        self.assertEqual((len(groups), groups[0].time), (1, at(22)))
+
+    def test_a_headline_count_fills_the_rows_cves_for_an_alert(self):
+        # Only the lead of one article names the second CVE; the headline counts two, as ingest
+        # links them the row holds both, so the alert listing both joins it.
+        thn = news("thn", "Warning: Two Unpatched Citrix NetScaler RCE Zero-Days Under Active Exploitation", at(27, 7, 47), ["CVE-2026-88771"], CITRIX)
+        thn.lead = "Citrix disclosed CVE-2026-88771 and CVE-2026-88772, both exploited."
+        bc = news("bc", "Citrix admins warned to shut down NetScalers", at(27, 9), ["CVE-2026-88771"], CITRIX)
+        kev = alert(27, "Two", ["CVE-2026-88771", "CVE-2026-88772"])
+        self.assertEqual(len(plan([thn, bc, kev], MATCHER)), 1)
+
     def test_another_outlets_copy_of_the_title_is_news(self):
         self.assertTrue(dedupe.is_kev_alert("CISA Adds One Known Exploited Vulnerability to Catalog", "https://www.cisa.gov/news-events/alerts/x"))
         self.assertFalse(dedupe.is_kev_alert("CISA Adds One Known Exploited Vulnerability to Catalog", "https://thehackernews.com/x"))

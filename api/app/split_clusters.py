@@ -38,7 +38,7 @@ async def _arts(session, client, item: Item, matcher: VendorMatcher) -> list[ded
         else:
             cves = headline_cves(s.title, s.excerpt or "", s.body or "")
         vendor = s.source.vendor_id or matcher.match(s.title, s.excerpt or "")
-        out.append(dedupe.Art(s.id, s.title, s.url, s.published_at, vendor, cves))
+        out.append(dedupe.Art(s.id, s.title, s.url, s.published_at, vendor, cves, s.excerpt or "", s.body or ""))
     return out
 
 

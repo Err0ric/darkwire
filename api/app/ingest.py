@@ -251,7 +251,7 @@ async def ingest_source(
             # Row time: the earliest of its news sources (app/rowtime.py); logged when it moves.
             rowtime.set_row_time(
                 cluster,
-                rowtime.news_time(s.published_at for s in dedupe.time_sources(cluster.sources)),
+                rowtime.news_time(s.published_at for s in dedupe.time_sources(cluster.sources, alert_row)),
                 f"news source joined: {source.name}",
             )
             if source.vendor_id is not None or cluster.vendor_id is None:

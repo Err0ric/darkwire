@@ -289,6 +289,8 @@ Purple, indigo, gradients, glassmorphism, glow, blobs, particles, rounded-2xl, I
 
 - Read `/design-refs/*.png` before touching any page.
 - Screenshot your work at 1440 and 390 with Playwright and compare before saying done.
+- Screenshots in `design-refs` say where their data came from (local DB or prod) in the commit message or the report that cites them. Never hand-edit rows in a database used for review screenshots without reverting the edit afterwards.
+- Stop local servers when done, including their child `node` processes (stopping the shell can leave `next start` running); never leave a build pointed at the prod API running.
 - `npm run lint`, `npm test` and `npm run build` clean before every commit (in `/web`); API tests with `python -m unittest discover -s tests` (in `/api`). `npm run test:e2e` (Playwright, against a running site; `BASE_URL` to target production) checks that malicious URL and storage values run nothing.
 - Real RSS from the first commit. No mock data in the repo.
 - Small commits, one page or one component each.

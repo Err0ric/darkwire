@@ -39,6 +39,10 @@ export const ACTIVITY = {
     // Only these kinds: no article headlines on the landing (cluster and summary events are still
     // recorded, and shown nowhere else yet).
     kinds: ["ingest", "kev", "nvd", "services"] as string[],
+    // Fewer real lines than this: the log folds away (collapseMs) and the ticker moves up under the
+    // trace; 0 keeps it, with "watching N sources…" when empty.
+    hideWhenFewer: 3,
+    collapseMs: 200,
     lines: 3, // newest on the bottom
     lineHeight: 18, // px
     // Older lines are dimmer, bottom (newest) to top. Text must clear 4.5:1 on --bg (axe), which
@@ -315,7 +319,7 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
   const bottom = lines.length - 1
   const latest = [...lines].reverse().find((l) => l.event)?.event ?? null
   return (
-    <div className="mt-3 w-full" style={{ maxWidth: ACTIVITY.trace.width }}>
+    <div className="w-full pt-3" style={{ maxWidth: ACTIVITY.trace.width }}>
       {/* Lines are stacked from the bottom; a line's slot sets its offset and opacity, so a new
           line moves the others up and fades the one leaving the top (CSS transitions). The
           height of all L.lines is reserved from the first render. */}
@@ -371,10 +375,23 @@ export function Activity({ data, sources }: { data: ActivityData | null; sources
   const animate = !reduced
   const L = ACTIVITY.log
   const events = useMemo(() => (data?.events ?? []).filter((e) => L.kinds.includes(e.kind)), [data?.events, L.kinds])
+  const folded = L.hideWhenFewer > 0 && events.length < L.hideWhenFewer
   return (
     <section aria-label="Activity" className="mt-[clamp(28px,4.4vh,56px)] flex w-full flex-col items-center">
       {ACTIVITY.trace.on && <Trace hours={data?.hours ?? []} peak7d={data?.peak_7d ?? 0} animate={animate} />}
-      {ACTIVITY.log.on && <Log events={events} sources={sources} animate={animate} />}
+      {ACTIVITY.log.on && (
+        // Folds away (height to 0) when there are too few real lines; the ticker below moves up.
+        <div
+          aria-hidden={folded || undefined}
+          className="flex w-full justify-center overflow-hidden"
+          style={{
+            height: folded ? 0 : ACTIVITY.log.lines * ACTIVITY.log.lineHeight + 12,
+            transition: animate ? `height ${ACTIVITY.log.collapseMs}ms ease-out` : undefined,
+          }}
+        >
+          <Log events={events} sources={sources} animate={animate} />
+        </div>
+      )}
     </section>
   )
 }

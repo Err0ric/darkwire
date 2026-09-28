@@ -6,8 +6,9 @@ Safety rules (CLAUDE.md "Summary model"):
 - Its output is plain text. check_summary() / check_workaround() reject anything over the
   length limit (2 sentences, 45 words), with a URL, with markdown or line breaks, in the first
   person (refusals, talk about its instructions), or a bare SKIP / NONE. Sentences about what
-  the articles do not say, fix claims the vendor data does not back, and a second sentence
-  that restates the first are dropped. Rejected output is stored as "" so it
+  the articles do not say, unattributed fix claims the vendor data does not back (clause by
+  clause; attributed ones the articles support stay), and a second sentence that restates the
+  first are dropped. Rejected output is stored as "" so it
   is not re-asked every pass; the row simply has no summary.
 - CVSS, KEV, fixed versions and patch status come only from NVD / CISA / vendor data.
   actions_pending() asks the model for a workaround sentence only.
@@ -56,10 +57,10 @@ Write at most two sentences, under 45 words in total:
 1. What it is: the flaw, incident or finding, in concrete terms, naming the product or organization.
 2. Only if the articles add something: who is affected, the scope, or the status. Never repeat the product or vendor named in sentence 1. If there is nothing new to add, write only sentence 1.
 
-Do not say whether it is patched or fixed, or that an update is available: the board shows fix status from vendor data. A workaround or mitigation may be mentioned.
+The board shows fix status from vendor data, so never state on your own that something is patched, fixed or that an update is available. If the articles report a fix, you may say so only as the vendor's or the outlet's statement, for example "Cloudflare says it fixed the flaw" or "according to BleepingComputer, a patch is available". A workaround or mitigation may be mentioned.
 Use only facts stated in the articles. Never write that something is unknown or not stated. Do not speculate.
 Start directly with the first sentence. Do not repeat the headline as a title.
-No adjectives of emphasis (critical, severe, major, alarming), no marketing language, no advice, no source names, no links, no first person.
+No adjectives of emphasis (critical, severe, major, alarming), no marketing language, no advice, no links, no first person. Name an outlet only to attribute a fix statement.
 Plain text only: no markdown, no line breaks, no bullet points, no preamble.
 Many items have only a headline and a short excerpt. Summarize what they do state, in one sentence if that is all there is. Reply with exactly SKIP only when there is nothing beyond the headline itself."""
 
@@ -71,12 +72,14 @@ Reply with one plain imperative sentence under 25 words (e.g. "Disable the WebDA
 No versions, no links, no markdown, no first person, no commentary."""
 
 
-def _articles(item: Item) -> str:
-    """The only thing the model sees: the headline and each article's own text."""
+def _articles(item: Item, fetched: dict[int, str] | None = None) -> str:
+    """The only thing the model sees: the headline and each article's own text. `fetched`:
+    article text fetched for this call (fetcher.py, never stored), by source id; it replaces a
+    short feed excerpt."""
     parts = [f"<article>\nHeadline: {item.headline}\n</article>"]
     total = 0
     for s in item.sources:
-        text = (s.body or s.excerpt or "")[:BODY_CHARS]
+        text = ((fetched or {}).get(s.id) or s.body or s.excerpt or "")[:BODY_CHARS]
         if not text or total >= MATERIAL_CHARS:
             continue
         total += len(text)
@@ -111,14 +114,23 @@ def _drop_unknowns(text: str) -> str:
     return " ".join(s for s in _SENTENCE.split(text) if s and not _UNKNOWN.search(s)).strip()
 
 
-# Claims that a fix or patch exists. The row's fix status comes only from vendor / NVD data,
-# so these sentences are kept only when that data already says "patched". A sentence that
-# names a workaround or mitigation is kept either way.
+# Claims that a fix or patch exists. The row's fix status comes only from vendor / NVD data, so
+# an unattributed claim is kept only when that data already says "patched". A claim attributed
+# to the vendor or an outlet ("Cloudflare says it fixed ...", "according to BleepingComputer, a
+# patch is available") stays when the headline or articles report a fix too. A sentence that
+# names a workaround or mitigation is kept either way. A bare noun is not a claim ("updates and
+# subsequent patches cause desktop issues").
 _FIX_CLAIM = re.compile(
-    r"\b(patch(ed|es)?|fix(ed|es)?|hotfix(es)?|(security )?updates? (is |are )?(now )?available|"
-    r"ha(s|ve) released|released (a |an )?(fix|patch|update)|addressed|remediated|resolved)\b",
+    r"\b(patched|fixed|hotfixed|remediated|resolved|addressed"
+    r"|(releases?|released|issues?|issued|roll(s|ed)? out|ships?|shipped|push(es|ed)|deploy(s|ed)?|publish(es|ed))"
+    r" (an? |the )?([\w-]+ ){0,2}(fix(es)?|patch(es)?|updates?|hotfix(es)?)"
+    r"|(fix(es)?|patch(es)?|updates?|hotfix(es)?) (is |are |was |were |has been |have been )?(now )?available"
+    r"|(fixes|patches) (an? |the |\d+ |two |three |several |multiple )?([\w-]+ ){0,2}(flaws?|bugs?|vulnerabilit\w+|zero-days?|holes?))\b",
     re.I,
 )
+_ATTRIBUTED = re.compile(r"\b(says?|said|states?|stated|according to|reports?|reported|announced|confirm(s|ed)?|claims?|claimed)\b", re.I)
+_CLAUSE = re.compile(r"(,\s+|;\s+|\s+(?:and|but|while|which|after)\s+)")
+MIN_WORDS_AFTER_STRIP = 12
 _WORKAROUND = re.compile(r"\b(workarounds?|mitigat\w*|disabl\w*|block\w*|restrict\w*|turn(ing)? off)\b", re.I)
 _STOP = frozenset(
     "the a an and or of to in on for with by from that this these those is are was were be been has have "
@@ -137,34 +149,66 @@ def _restates(first: str, second: str) -> bool:
     return not words or len(words - _words(first)) / len(words) < 0.5
 
 
-def check_summary(raw: str | None, patched: bool = False) -> str | None:
-    """The summary to store, or None when nothing usable is left.
+def _strip_fix_claims(sentence: str, material: str) -> str:
+    """The sentence without its unattributed fix claims. An attributed one stays when the
+    material (headline and articles) reports a fix too; otherwise the offending clause goes, or
+    the whole sentence when the claim is in its main (first) clause."""
+    if not _FIX_CLAIM.search(sentence) or _WORKAROUND.search(sentence):
+        return sentence
+    if _ATTRIBUTED.search(sentence) and _FIX_CLAIM.search(material):
+        return sentence
+    parts = _CLAUSE.split(sentence)  # clause, sep, clause, sep, clause ...
+    if _FIX_CLAIM.search(parts[0]):
+        return ""
+    kept = [parts[0]]
+    for k in range(1, len(parts) - 1, 2):
+        if not _FIX_CLAIM.search(parts[k + 1]):
+            kept += [parts[k], parts[k + 1]]
+    text = "".join(kept).rstrip(" ,;.")
+    return text + "."
 
-    Rejects: SKIP, markdown, line breaks, URLs, first person. Then drops sentences about what
-    the articles do not say, fix claims (unless vendor data says patched; workaround sentences
-    stay), anything past two sentences, and a second sentence that only restates the first.
-    Over 45 words after that: the first sentence alone, if it fits."""
+
+def review_summary(raw: str | None, patched: bool = False, material: str = "") -> tuple[str | None, str]:
+    """(the summary to store or None, why): "ok", "skip" (the model found nothing beyond the
+    headline), "format" (markdown, line break, URL), "first person", "fix claim" (under
+    MIN_WORDS_AFTER_STRIP words left once unattributed fix claims are stripped), "length",
+    "empty".
+
+    Drops sentences about what the articles do not say, unattributed fix claims (clause by
+    clause, unless vendor data says patched; never the whole summary for that alone), anything
+    past two sentences, and a second sentence that only restates the first. Over 45 words after
+    that: the first sentence alone, if it fits."""
     if not raw or raw.strip() == "SKIP":
-        return None
-    if "\n" in raw.strip() or _MARKDOWN.search(raw) or _URL.search(raw) or _FIRST_PERSON.search(raw):
-        return None
+        return None, "skip"
+    if "\n" in raw.strip() or _MARKDOWN.search(raw) or _URL.search(raw):
+        return None, "format"
+    if _FIRST_PERSON.search(raw):
+        return None, "first person"
     sentences = [x for x in _SENTENCE.split(_plain(raw)) if x]
     sentences = [x for x in sentences if not _UNKNOWN.search(x)]
+    stripped = False
     if not patched:
-        kept = [x for x in sentences if not _FIX_CLAIM.search(x) or _WORKAROUND.search(x)]
-        # The first sentence says what it is; without it the rest reads as a fragment.
-        if sentences and kept[:1] != sentences[:1]:
-            return None
-        sentences = kept
+        cleaned = [_strip_fix_claims(x, material) for x in sentences]
+        stripped = cleaned != sentences
+        sentences = [x for x in cleaned if x]
     sentences = sentences[:SUMMARY_MAX_SENTENCES]
     if len(sentences) == 2 and _restates(sentences[0], sentences[1]):
         sentences = sentences[:1]
     text = " ".join(sentences).strip()
     if len(text.split()) > SUMMARY_MAX_WORDS or len(text) > SUMMARY_MAX_CHARS:
         text = sentences[0] if sentences else ""
-    if not text or len(text.split()) > SUMMARY_MAX_WORDS or len(text) > SUMMARY_MAX_CHARS:
-        return None
-    return text
+    if not text:
+        return None, "fix claim" if stripped else "empty"
+    if len(text.split()) > SUMMARY_MAX_WORDS or len(text) > SUMMARY_MAX_CHARS:
+        return None, "length"
+    if stripped and len(text.split()) < MIN_WORDS_AFTER_STRIP:
+        return None, "fix claim"
+    return text, "ok"
+
+
+def check_summary(raw: str | None, patched: bool = False, material: str = "") -> str | None:
+    """The summary to store, or None when nothing usable is left (see review_summary)."""
+    return review_summary(raw, patched, material)[0]
 
 
 def check_workaround(raw: str | None) -> str | None:
@@ -318,9 +362,9 @@ async def summarize_pending(session: AsyncSession) -> int | None:
     for item, raw in zip(todo, results, strict=True):
         if raw is None:
             continue  # the call failed: ask again next pass
-        text = check_summary(raw, patched=item.patch_status == PatchStatus.patched)
+        text, why = review_summary(raw, patched=item.patch_status == PatchStatus.patched, material=_articles(item))
         if text is None:
-            log.info("summaries: item %d output rejected: %r", item.id, raw[:160])
+            log.info("summaries: item %d rejected (%s): %r", item.id, why, raw[:160])
         item.summary = text or ""
         written += text is not None
     await session.commit()

@@ -23,3 +23,19 @@ export function WireClock() {
     </p>
   )
 }
+
+/** The condensed bar's clock: HH:MM:SS in 15px mono, seconds dimmer, no zone line. */
+export function CompactClock() {
+  const now = useClock()
+  const [hm, s] = now ? hms(now) : ["", ""]
+  return (
+    <time dateTime={now?.toISOString()} className="inline-block min-w-[8ch] shrink-0 font-mono text-[15px] leading-5 text-fg tabular-nums">
+      {now && (
+        <>
+          {hm}
+          <span className="text-dim-text">{s}</span>
+        </>
+      )}
+    </time>
+  )
+}

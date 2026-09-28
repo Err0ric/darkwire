@@ -5,6 +5,10 @@
 /* Feed headlines stay on one line only on wide landscape screens; narrower and portrait
    screens (1200-1600px wide, 1080x1920, 1440x2560) wrap them to at most two. */
 @custom-variant one-line-rows (@media (min-width: 1601px) and (orientation: landscape));
+/* Set by the nav while the page is scrolled (its bottom rule shows), and by the wire while its
+   tabs row is stuck under the condensed bar. */
+@custom-variant scrolled (html[data-scrolled] &);
+@custom-variant wire-stuck (html[data-wire-stuck] &);
 
 /* Palette from CLAUDE.md. Components use these through the Tailwind tokens below
    (bg-bg, text-fg-2, border-hairline, ...). Never hardcode colors in components. */
@@ -331,11 +335,16 @@ html[data-theme="high-contrast"] {
 /* Page chrome that full-height layouts (home) subtract. Kiosk hides the nav and zooms. */
 :root {
   --nav-h: 60px;
+  /* The wire's condensed sticky bar (900px and wider); the tabs row sticks under it and the
+     day labels under the tabs (--tabs-h, measured). */
+  --bar-h: 44px;
+  --tabs-h: 0px;
   --zoom: 1;
 }
 
 html[data-kiosk] {
   --nav-h: 0px;
+  --bar-h: 0px;
   --zoom: 1.15;
 }
 

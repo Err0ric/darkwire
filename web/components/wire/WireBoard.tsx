@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import { cn } from "cn"
 
 import { FeedRow } from "@/components/FeedRow"
@@ -11,7 +12,7 @@ import { AddedToKev, Elsewhere, LastSevenDays, MostActive, SourcesLine } from "@
 import { PAGE_HEADER } from "@/components/PageHeader"
 import { ElsewhereList } from "@/components/wire/ElsewhereList"
 import { Services } from "@/components/wire/Services"
-import { WireClock } from "@/components/wire/WireClock"
+import { CompactClock, WireClock } from "@/components/wire/WireClock"
 import { NEW_ROWS_EVENT } from "@/components/Wordmark"
 import { useFitCount } from "@/lib/fit"
 import {
@@ -24,6 +25,7 @@ import {
   type Severity,
 } from "@/lib/api"
 import { useDots } from "@/lib/dots"
+import { CONDENSED_SLOT } from "@/components/nav"
 import { useLiveServices } from "@/lib/services-live"
 import { useStickyTop } from "@/lib/sticky"
 import { usePrefs } from "@/lib/prefs"
@@ -85,8 +87,37 @@ export function WireBoard({ initial }: { initial: WireData }) {
   // feed and is not sticky (no position: sticky there), so its computed top does nothing.
   const leftRail = useRef<HTMLElement>(null)
   const rightRail = useRef<HTMLElement>(null)
-  useStickyTop(leftRail)
-  useStickyTop(rightRail)
+  // Rails pin under the condensed bar (--bar-h, 0 in kiosk), 24px below it.
+  useStickyTop(leftRail, 24, "--bar-h")
+  useStickyTop(rightRail, 24, "--bar-h")
+
+  // The condensed bar (in the nav) shows once the tabs row reaches it: a marker right above the
+  // tabs row leaving the area under the bar sets html[data-wire-stuck]. The tabs row's height
+  // is published as --tabs-h, so the day labels and "N new" stick right under it.
+  const stuckMarker = useRef<HTMLDivElement>(null)
+  const tabsRow = useRef<HTMLDivElement>(null)
+  const [slot, setSlot] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    const root = document.documentElement
+    setSlot(document.getElementById(CONDENSED_SLOT))
+    const marker = stuckMarker.current
+    const tabs = tabsRow.current
+    if (!marker || !tabs) return
+    const barH = () => parseFloat(getComputedStyle(root).getPropertyValue("--bar-h")) || 0
+    const check = () => root.toggleAttribute("data-wire-stuck", marker.getBoundingClientRect().top < barH())
+    check()
+    window.addEventListener("scroll", check, { passive: true })
+    window.addEventListener("resize", check)
+    const size = new ResizeObserver(() => root.style.setProperty("--tabs-h", `${tabs.offsetHeight}px`))
+    size.observe(tabs)
+    return () => {
+      window.removeEventListener("scroll", check)
+      window.removeEventListener("resize", check)
+      size.disconnect()
+      root.removeAttribute("data-wire-stuck")
+      root.style.removeProperty("--tabs-h")
+    }
+  }, [])
   const now = useNow()
   // New rows found while scrolled down, waiting for "N new ↑" or a scroll back to the top.
   const [pending, setPending] = useState<FeedItem[]>([])
@@ -362,6 +393,37 @@ export function WireBoard({ initial }: { initial: WireData }) {
         </aside>
 
         <div className="@container min-w-0 flex-1 min-[2200px]:w-(--wire-feed-w) min-[2200px]:flex-none">
+          {slot &&
+            counts &&
+            createPortal(
+              <>
+                <p className="flex min-w-0 items-baseline overflow-hidden text-[13px] leading-5 whitespace-nowrap text-muted">
+                  <Count
+                    n={counts.critical_24h}
+                    active={filters.severity === "critical" && filters.window === "24h"}
+                    onClick={() => apply(toggle24h("critical"))}
+                  >
+                    crit
+                  </Count>
+                  <Count
+                    n={counts.high_24h}
+                    sep="slash"
+                    active={filters.severity === "high" && filters.window === "24h"}
+                    onClick={() => apply(toggle24h("high"))}
+                  >
+                    high
+                  </Count>
+                  <Count n={counts.articles_24h} sep="slash">
+                    articles
+                  </Count>
+                  <Count n={counts.kev_added_7d} sep="dot">
+                    KEV
+                  </Count>
+                </p>
+                <CompactClock />
+              </>,
+              slot,
+            )}
           <header className={PAGE_HEADER}>
             {/* One row: the counts on the left, the clock on the right, its right edge on the
                 feed's. Under 1200px the clock line goes under the counts, left-aligned. */}
@@ -410,9 +472,12 @@ export function WireBoard({ initial }: { initial: WireData }) {
 
           {/* Tabs and filters share a line only when the feed column is wide enough for both;
               My stack adds a tab, so the split moves out. */}
+          <div ref={stuckMarker} aria-hidden className="mt-8 md:mt-[32px]" />
+          {/* From 900px the tabs row sticks under the condensed bar; phones keep the space. */}
           <div
+            ref={tabsRow}
             className={cn(
-              "mt-8 flex flex-col-reverse border-b border-rule md:mt-[32px]",
+              "z-[6] flex flex-col-reverse border-b border-rule bg-bg min-[900px]:sticky min-[900px]:top-(--bar-h)",
               stack.length
                 ? "@min-[1060px]:flex-row @min-[1060px]:items-end @min-[1060px]:justify-between"
                 : "@min-[940px]:flex-row @min-[940px]:items-end @min-[940px]:justify-between",
@@ -479,7 +544,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
 
           {pending.length > 0 && (
             // Pinned under the tabs while scrolled; nothing above the viewer moves until asked.
-            <div className="sticky top-3 z-10 flex h-0 justify-center">
+            <div className="sticky top-[calc(var(--nav-h)+4px)] z-10 flex h-0 justify-center min-[900px]:top-[calc(var(--bar-h)+var(--tabs-h)+4px)]">
               <button
                 type="button"
                 onClick={() => {
@@ -513,7 +578,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                           role="separator"
                           aria-label={`${g.name}, ${g.items.length} rows`}
                           className={cn(
-                            "sticky top-0 z-[5] flex h-9 items-center border-t bg-bg text-[13px]",
+                            "sticky top-(--nav-h) z-[5] flex h-9 items-center border-t bg-bg text-[13px] min-[900px]:top-[calc(var(--bar-h)+var(--tabs-h))]",
                             // The tabs row's rule is already right above the first label.
                             gi === 0 ? "border-transparent" : "border-rule",
                           )}

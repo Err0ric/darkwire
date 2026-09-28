@@ -18,6 +18,9 @@ const LINKS = [
   { href: "/vendors", label: "Vendors" },
 ]
 
+/** Where the wire puts its compact counts and clock inside the condensed bar (a portal). */
+export const CONDENSED_SLOT = "wire-condensed-slot"
+
 const STATUS_POLL_MS = 60_000
 const RETRY_MS = 15_000
 const CLOCK_TICK_MS = 15_000
@@ -76,6 +79,7 @@ export function Nav() {
   const minutes = minutesSinceSync(sync.status, now)
   const dot = syncState(sync.status, sync.failing || sync.unreachable, now)
   const ownClock = OWN_CLOCK.has(pathname)
+  const wirePage = pathname === "/wire"
   const cvesActive = pathname === "/cves" || pathname.startsWith("/cve/")
   const label = sync.unreachable
     ? "Feed unreachable · retrying"
@@ -85,18 +89,37 @@ export function Nav() {
         ? syncedLabel(minutes)
         : ""
 
-  return (
-    <header data-chrome className="flex h-15 items-center page-frame">
-      <Link
-        href={`/${query()}`}
-        aria-label="darkwire.tech"
-        className="max-md:tap mr-2.5 flex items-center outline-none sm:mr-6 md:mr-10"
-      >
-        {/* .tech is hidden under 640px so the nav still fits on one line on a phone. */}
-        <Wordmark state={sync.status || sync.failing || sync.unreachable ? dot : null} className="text-base sm:text-lg" techClassName="max-sm:hidden" />
-      </Link>
+  // The nav's bottom rule shows only while the page is scrolled (it is sticky).
+  useEffect(() => {
+    const root = document.documentElement
+    const on = () => root.toggleAttribute("data-scrolled", window.scrollY > 0)
+    on()
+    window.addEventListener("scroll", on, { passive: true })
+    return () => {
+      window.removeEventListener("scroll", on)
+      root.removeAttribute("data-scrolled")
+    }
+  }, [])
 
-      <nav aria-label="Main" className="flex min-w-0 items-center gap-2.5 sm:gap-6">
+  const wordmark = (tech: string) => (
+    <Link
+      href={`/${query()}`}
+      aria-label="darkwire.tech"
+      className="max-md:tap mr-2.5 flex items-center outline-none sm:mr-6 md:mr-10"
+    >
+      <Wordmark
+        state={sync.status || sync.failing || sync.unreachable ? dot : null}
+        className="text-base sm:text-lg"
+        techClassName={tech}
+      />
+    </Link>
+  )
+
+  // The condensed bar repeats the links in a plain div: one "Main" landmark per page.
+  const links = (landmark: boolean) => {
+    const Tag = landmark ? "nav" : "div"
+    return (
+      <Tag aria-label={landmark ? "Main" : undefined} className="flex min-w-0 items-center gap-2.5 sm:gap-6">
         {LINKS.map(({ href, label }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`)
           // Wire is the primary link: a small outlined button in OPEN WIRE's style.
@@ -107,54 +130,111 @@ export function Nav() {
               href={`${href}${query()}`}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "max-md:tap", "leading-none outline-none",
+                "max-md:tap",
+                "leading-none outline-none",
                 wire
                   ? cn(
                       "rounded-control border px-1.5 py-1 font-mono text-xs font-medium tracking-[0.06em] focus-visible:border-critical sm:px-2.5",
                       active ? "border-critical text-fg" : "border-accent/60 text-fg-2 hover:border-critical",
                     )
-                  : cn("text-[13px] focus-visible:text-fg sm:text-[15px]", active ? "text-fg" : "text-muted hover:text-fg-2"),
+                  : cn(
+                      "text-[13px] focus-visible:text-fg sm:text-[15px]",
+                      active ? "text-fg" : "text-muted hover:text-fg-2",
+                    ),
               )}
             >
               {wire ? label.toUpperCase() : label}
             </Link>
           )
         })}
-      </nav>
+      </Tag>
+    )
+  }
 
-      <div className="ml-auto flex shrink-0 items-center gap-3 pl-5 sm:gap-4">
-        <NavServices className="mr-1" />
-        {/* CVEs is a quiet link at the start of the status group. On / and /wire (their own
-            clocks show UTC) there is no UTC slot, so CVEs sits right next to "Synced". */}
-        <Link
-          href={`/cves${query()}`}
-          aria-current={cvesActive ? "page" : undefined}
+  const status = (utc: boolean, main: boolean) => (
+    // main: the nav proper (its Synced line is the live region); else the condensed bar, which
+    // drops Synced under 1400px and the services status under 1200px to fit one line.
+    <div className="ml-auto flex shrink-0 items-center gap-3 pl-5 sm:gap-4">
+      <NavServices className={cn("mr-1", !main && "max-[1199px]:hidden!")} />
+      {/* CVEs is a quiet link at the start of the status group. On / and /wire (their own
+          clocks show UTC) there is no UTC slot, so CVEs sits right next to "Synced". */}
+      <Link
+        href={`/cves${query()}`}
+        aria-current={cvesActive ? "page" : undefined}
+        className={cn(
+          "max-md:tap",
+          "text-[13px] leading-none outline-none focus-visible:text-fg sm:text-[15px]",
+          cvesActive ? "text-fg" : "text-muted hover:text-fg-2",
+        )}
+      >
+        CVEs
+      </Link>
+      {utc && (
+        <>
+          <span aria-hidden className="-mx-1.5 hidden text-xs text-dim-text min-[1200px]:block">
+            ·
+          </span>
+          <time
+            dateTime={now !== null ? new Date(now).toISOString() : undefined}
+            title="Coordinated Universal Time"
+            className="hidden w-[70px] font-mono text-xs leading-none text-dim-text min-[1200px]:block"
+          >
+            {now !== null ? `${utcHHMM(new Date(now))} UTC` : ""}
+          </time>
+        </>
+      )}
+      <p
+        className={cn(
+          "hidden text-[15px] leading-none sm:block",
+          !main && "max-[1399px]:hidden!",
+          sync.unreachable ? "text-critical-text" : "text-muted",
+        )}
+        aria-live={main ? "polite" : undefined}
+      >
+        {label}
+      </p>
+      <ThemePicker />
+    </div>
+  )
+
+  return (
+    <>
+      {/* Sticky on every page, full width so rows never show beside it. On /wire from 900px it
+          scrolls away with the page header and the condensed bar below takes over. */}
+      <div
+        data-chrome
+        className={cn(
+          // A 1px shadow, not a border, so the nav stays exactly --nav-h tall.
+          "sticky top-0 z-30 bg-bg scrolled:shadow-[0_1px_0_var(--color-rule)]",
+          wirePage && "min-[900px]:static min-[900px]:shadow-none",
+        )}
+      >
+        <header className="flex h-15 items-center page-frame">
+          {/* .tech is hidden under 640px so the nav still fits on one line on a phone. */}
+          {wordmark("max-sm:hidden")}
+          {links(true)}
+          {status(!ownClock, true)}
+        </header>
+      </div>
+      {wirePage && (
+        // The wire's condensed bar: shown (150ms fade) once the tabs row reaches it, hidden again
+        // at the top. Fixed, so the feed never moves. Its counts and clock are the wire's, put
+        // into the slot by a portal. A labelled region, not a second banner or Main nav.
+        <div
+          data-chrome
           className={cn(
-            "max-md:tap", "text-[13px] leading-none outline-none focus-visible:text-fg sm:text-[15px]",
-            cvesActive ? "text-fg" : "text-muted hover:text-fg-2",
+            "invisible fixed inset-x-0 top-0 z-30 h-(--bar-h) border-b border-rule bg-bg opacity-0 transition-[opacity,visibility] duration-150 motion-reduce:transition-none max-[899px]:hidden",
+            "wire-stuck:visible wire-stuck:opacity-100",
           )}
         >
-          CVEs
-        </Link>
-        {!ownClock && (
-          <>
-            <span aria-hidden className="-mx-1.5 hidden text-xs text-dim-text min-[1200px]:block">
-              ·
-            </span>
-            <time
-              dateTime={now !== null ? new Date(now).toISOString() : undefined}
-              title="Coordinated Universal Time"
-              className="hidden w-[70px] font-mono text-xs leading-none text-dim-text min-[1200px]:block"
-            >
-              {now !== null ? `${utcHHMM(new Date(now))} UTC` : ""}
-            </time>
-          </>
-        )}
-        <p className={cn("hidden text-[15px] leading-none sm:block", sync.unreachable ? "text-critical-text" : "text-muted")} aria-live="polite">
-          {label}
-        </p>
-        <ThemePicker />
-      </div>
-    </header>
+          <div role="region" aria-label="Wire summary" className="flex h-full items-center page-frame">
+            {wordmark("hidden")}
+            {links(false)}
+            <div id={CONDENSED_SLOT} className="flex min-w-0 flex-1 items-center justify-between gap-6 pl-8" />
+            {status(false, false)}
+          </div>
+        </div>
+      )}
+    </>
   )
 }

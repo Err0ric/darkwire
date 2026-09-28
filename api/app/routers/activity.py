@@ -14,6 +14,7 @@ router = APIRouter(tags=["activity"])
 
 HOURS = 24
 EVENTS = 20
+PEAK_DAYS = 7
 # A derived event is the same as a recorded one: same kind and subject, and for ingest and
 # services within this much time (kev and nvd: at any time, plus the same detail for nvd).
 SAME_WITHIN = timedelta(minutes=10)
@@ -67,6 +68,17 @@ async def activity(request: Request, session: AsyncSession = Depends(get_session
         )
     ).all()
     counts = {h.astimezone(UTC): (n, c) for h, n, c in rows}
+    # The busiest single hour of the last PEAK_DAYS days, the same way: the trace's scale, so a
+    # quiet day draws small blips and a busy one tall spikes.
+    per_hour = (
+        select(func.count().label("n"))
+        .select_from(Item)
+        .outerjoin(published, published.c.item_id == Item.id)
+        .where(Item.stream == Stream.main, when >= now - timedelta(days=PEAK_DAYS))
+        .group_by(hour)
+        .subquery()
+    )
+    peak = await session.scalar(select(func.coalesce(func.max(per_hour.c.n), 0)))
     hours = []
     for k in range(HOURS):
         start = first + timedelta(hours=k)
@@ -92,5 +104,5 @@ async def activity(request: Request, session: AsyncSession = Depends(get_session
         if not _is_recorded(d, recorded):
             merged.append(BoardEventOut(id=None, key=_key(d["kind"], d["subject"], d["detail"], d["at"]), **d))
     merged.sort(key=lambda e: e.at, reverse=True)
-    return Activity(hours=hours, events=merged[:EVENTS])
+    return Activity(hours=hours, peak_7d=peak or 0, events=merged[:EVENTS])
 

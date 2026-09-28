@@ -323,6 +323,7 @@ export interface BoardEvent {
  * events of the last 24 hours, recorded and derived, newest first). */
 export interface Activity {
   hours: ActivityHour[]
+  peak_7d: number // the busiest single hour of the last 7 days (the trace's scale)
   events: BoardEvent[]
 }
 

@@ -19,6 +19,9 @@ export const ACTIVITY = {
     minSpike: 3, // px, the smallest non-zero hour, so a quiet hour is still a visible bump
     spikeHalfWidth: 5, // px each side of an hour's peak
     scale: "sqrt" as "sqrt" | "linear", // sqrt of the count (capped at the max): one busy hour does not flatten the rest
+    // What a full-height spike means: the busiest single hour of the last 7 days (a quiet day draws
+    // small blips, a busy one tall spikes), or of the 24 hours shown.
+    scaleBasis: "7d" as "7d" | "24h",
     lineColor: "#3a1414",
     lineWidth: 1,
     hotColor: "var(--critical)", // hours with a Critical, KEV or exploited row
@@ -73,10 +76,10 @@ function useReducedMotion(): boolean {
 
 // ---------------------------------------------------------------- trace
 
-function spikes(hours: ActivityHour[]) {
+function spikes(hours: ActivityHour[], peak7d: number) {
   const T = ACTIVITY.trace
   const f = T.scale === "sqrt" ? Math.sqrt : (n: number) => n
-  const max = Math.max(1, ...hours.map((h) => f(h.items)))
+  const max = Math.max(1, T.scaleBasis === "7d" ? f(peak7d) : 0, ...hours.map((h) => f(h.items)))
   const slot = T.width / Math.max(1, hours.length)
   return hours.map((h, i) => ({
     x: (i + 0.5) * slot,
@@ -85,10 +88,10 @@ function spikes(hours: ActivityHour[]) {
   }))
 }
 
-function tracePath(hours: ActivityHour[]): string {
+function tracePath(hours: ActivityHour[], peak7d: number): string {
   const T = ACTIVITY.trace
   const d = [`M0 ${T.baseline}`]
-  for (const s of spikes(hours)) {
+  for (const s of spikes(hours, peak7d)) {
     if (!s.h) continue
     d.push(`L${s.x - T.spikeHalfWidth} ${T.baseline}`, `L${s.x} ${T.baseline - s.h}`, `L${s.x + T.spikeHalfWidth} ${T.baseline}`)
   }
@@ -96,11 +99,11 @@ function tracePath(hours: ActivityHour[]): string {
   return d.join(" ")
 }
 
-function Trace({ hours, animate }: { hours: ActivityHour[]; animate: boolean }) {
+function Trace({ hours, peak7d, animate }: { hours: ActivityHour[]; peak7d: number; animate: boolean }) {
   const T = ACTIVITY.trace
   const P = ACTIVITY.pulse
-  const d = useMemo(() => tracePath(hours), [hours])
-  const hot = useMemo(() => spikes(hours).filter((s) => s.hot && s.h), [hours])
+  const d = useMemo(() => tracePath(hours, peak7d), [hours, peak7d])
+  const hot = useMemo(() => spikes(hours, peak7d).filter((s) => s.hot && s.h), [hours, peak7d])
   const pulse = useRef<SVGPathElement>(null)
   const head = useRef<HTMLSpanElement>(null)
 
@@ -365,7 +368,7 @@ export function Activity({ data, sources }: { data: ActivityData | null; sources
   const animate = !reduced
   return (
     <section aria-label="Activity" className="mt-[clamp(28px,4.4vh,56px)] flex w-full flex-col items-center">
-      {ACTIVITY.trace.on && <Trace hours={data?.hours ?? []} animate={animate} />}
+      {ACTIVITY.trace.on && <Trace hours={data?.hours ?? []} peak7d={data?.peak_7d ?? 0} animate={animate} />}
       {ACTIVITY.log.on && <Log events={data?.events ?? []} sources={sources} animate={animate} />}
     </section>
   )

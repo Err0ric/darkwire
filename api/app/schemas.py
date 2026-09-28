@@ -233,4 +233,5 @@ class BoardEventOut(ORM):
 
 class Activity(BaseModel):
     hours: list[ActivityHour]  # 24, oldest first; the last is the current hour
+    peak_7d: int  # the busiest single hour of the last 7 days (the trace's scale)
     events: list[BoardEventOut]  # newest first

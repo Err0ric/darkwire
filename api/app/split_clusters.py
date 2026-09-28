@@ -105,6 +105,8 @@ async def _apply(session, item: Item, groups: list[dedupe.Group], keep: dedupe.G
         primary = _primary(g, by_id)
         cves = _group_cves(g, by_id)
         category = guess_category(primary.title, primary.excerpt or "", bool(cves))
+        if cves:  # placeholder CVE rows first, so items.cve_id and item_cves hold
+            await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
         if g is keep:
             row = item
         else:
@@ -126,7 +128,6 @@ async def _apply(session, item: Item, groups: list[dedupe.Group], keep: dedupe.G
         await session.flush()
         rowtime.set_row_time(row, g.time, f"split from item {item.id}")
         if cves:
-            await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
             await session.execute(
                 insert(ItemCve).values([{"item_id": row.id, "cve_id": c, "position": i} for i, c in enumerate(cves)])
                 .on_conflict_do_nothing()

@@ -26,6 +26,7 @@ import {
 } from "@/lib/api"
 import { useDots } from "@/lib/dots"
 import { CONDENSED_SLOT } from "@/components/nav"
+import { isPreviewRow, PREVIEW_DELAY_MS, PREVIEW_PARAM, previewRows } from "@/lib/preview"
 import { useLiveServices } from "@/lib/services-live"
 import { useStickyTop } from "@/lib/sticky"
 import { usePrefs } from "@/lib/prefs"
@@ -244,14 +245,33 @@ export function WireBoard({ initial }: { initial: WireData }) {
     addDots(queued.map((i) => i.id))
   }, [addDots])
 
+  // New and escalated rows (from a poll, or the preview): they count as unseen, re-type the
+  // wordmark, and go on top with a dot; scrolled down, they wait behind "N new ↑".
+  const takeFresh = useCallback(
+    (fresh: FeedItem[], countAll = false) => {
+      const mine = stackRef.current
+      // With a stack, only its rows count toward the unseen title and dot.
+      const counted = mine.length && !countAll ? fresh.filter((i) => i.vendor && mine.includes(i.vendor.slug)) : fresh
+      void addUnseen(counted.length, counted.some(isImportant))
+      // NEW rows re-type the nav wordmark's ".tech".
+      window.dispatchEvent(new Event(NEW_ROWS_EVENT))
+
+      const ids = new Set(fresh.map((i) => i.id))
+      pendingRef.current = [...fresh, ...pendingRef.current.filter((i) => !ids.has(i.id))]
+      if (window.scrollY > SCROLLED_PX) setPending(pendingRef.current)
+      else flush()
+    },
+    [addUnseen, flush],
+  )
+
   // Every 60s, hidden or not (the unseen count depends on it): rows with a newer event or any
-  // newer change. New and escalated rows go on top with a dot and count as unseen; anything
-  // else updates in place, silently. Scrolled down, new rows wait behind "N new ↑".
+  // newer change. New and escalated rows go to takeFresh; anything else updates in place,
+  // silently. Preview rows (?preview=unseen) are left out of the cursor and the diff.
   useEffect(() => {
     const poll = async () => {
       const f = filtersRef.current
       const mine = stackRef.current
-      const current = [...itemsRef.current, ...pendingRef.current]
+      const current = [...itemsRef.current, ...pendingRef.current].filter((i) => !isPreviewRow(i))
       const since = cursorOf(current) ?? loadedAt.current
       const changed = changedSince(lastPoll.current)
       lastPoll.current = Date.now()
@@ -275,22 +295,19 @@ export function WireBoard({ initial }: { initial: WireData }) {
         pendingRef.current = pendingRef.current.map((i) => d.updated.get(i.id) ?? i)
       }
       if (d.added) setTotal((t) => t + d.added)
-      if (!d.fresh.length) return
-
-      // With a stack, only its rows count toward the unseen title and dot.
-      const counted = mine.length ? d.fresh.filter((i) => i.vendor && mine.includes(i.vendor.slug)) : d.fresh
-      void addUnseen(counted.length, counted.some(isImportant))
-      // NEW rows re-type the nav wordmark's ".tech".
-      if (d.fresh.length) window.dispatchEvent(new Event(NEW_ROWS_EVENT))
-
-      const ids = new Set(d.fresh.map((i) => i.id))
-      pendingRef.current = [...d.fresh, ...pendingRef.current.filter((i) => !ids.has(i.id))]
-      if (window.scrollY > SCROLLED_PX) setPending(pendingRef.current)
-      else flush()
+      if (d.fresh.length) takeFresh(d.fresh)
     }
     const timer = setInterval(poll, LIVE_POLL_MS)
     return () => clearInterval(timer)
-  }, [addUnseen, flush])
+  }, [takeFresh])
+
+  // /wire?preview=unseen: 10s after load, two fake new rows (one Critical) take the same path,
+  // in this tab only, so the unseen indicators can be seen by switching tabs (lib/preview.ts).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("preview") !== PREVIEW_PARAM) return
+    const timer = setTimeout(() => takeFresh(previewRows(), true), PREVIEW_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [takeFresh])
 
   // Back at the top: queued rows go in directly.
   useEffect(() => {

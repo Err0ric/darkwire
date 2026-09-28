@@ -116,13 +116,16 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
             </Link>
           ))}
         </nav>
-        <Link
-          href={`/vendors${query()}`}
-          className="max-md:tap mt-[clamp(20px,3vh,36px)] text-[13px] text-muted underline decoration-rule underline-offset-[5px] outline-none hover:text-fg-2 focus-visible:text-fg-2"
-        >
-          Pick your vendors to filter everything to your stack →
-        </Link>
       </div>
+
+      {/* Just above the footer, centered: at least 48px under the links (mt-12); the block above
+          keeps its vertical centering in what is left. */}
+      <Link
+        href={`/vendors${query()}`}
+        className="max-md:tap mx-auto mt-12 shrink-0 text-[13px] text-muted underline decoration-rule underline-offset-[5px] outline-none hover:text-fg-2 focus-visible:text-fg-2"
+      >
+        Pick your vendors to filter everything to your stack →
+      </Link>
 
       <footer className="flex shrink-0 flex-col gap-2 pt-6 pb-[30px] text-[13px] text-muted sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
         <span>

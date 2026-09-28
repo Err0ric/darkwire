@@ -1,3 +1,4 @@
+# The API app: routers, rate limits, CORS, security headers, and the ingest/enrich schedulers.
 import logging
 from contextlib import asynccontextmanager
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { cn } from "cn"
 
 import { Activity } from "@/components/home/Activity"
 import { Ticker } from "@/components/home/Ticker"
@@ -22,6 +23,8 @@ import { useUnseen } from "@/lib/unseen"
 // due dates and services too. Gaps scale with the viewport height; the wordmark with its width.
 
 const STATUS_POLL_MS = 60_000
+// The gap between the landing's clusters (identity, live, action): about 48px at 1080px tall.
+const CLUSTER_GAP = "mt-[clamp(28px,4.4vh,56px)]"
 
 export interface HomeData {
   activity: ActivityData | null
@@ -92,30 +95,35 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
     <main className="flex min-h-[calc(100dvh/var(--zoom)-var(--nav-h))] flex-col page-frame">
       <div className="mx-auto my-auto flex w-full max-w-[880px] flex-col items-center py-[clamp(24px,5vh,72px)] text-center">
         {/* One block on the page's center axis: the lockup (as in og.png), then the date line. */}
-        <div className="flex flex-col items-center">
-          <Lockup state={syncState(status, statusFailed || status?.sync.last_ok === false, minute?.getTime() ?? null)} />
+        {/* Three clusters, tight inside and CLUSTER_GAP apart (about 48px at 1080px tall).
+            Identity: the lockup. */}
+        <Lockup state={syncState(status, statusFailed || status?.sync.last_ok === false, minute?.getTime() ?? null)} />
+        {/* Live: the date line heads the trace (16px above it), then its labels and the log. */}
+        <div className={cn(CLUSTER_GAP, "flex w-full flex-col items-center")}>
           <DateLine now={minute} />
+          <Activity data={activity} sources={status?.sources_total ?? null} />
         </div>
-        <Activity data={activity} sources={status?.sources_total ?? null} />
-        <Ticker items={latest} />
-
-        <Link
-          href={`/wire${query()}`}
-          className="max-md:tap mt-[clamp(24px,3.6vh,48px)] inline-flex h-10 items-center gap-2.5 rounded-control border border-accent px-6 font-mono text-[13px] font-medium tracking-[0.08em] text-fg outline-none hover:border-critical focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        {/* Action: the latest headline, OPEN WIRE and the other pages. */}
+        <div className={cn(CLUSTER_GAP, "flex w-full flex-col items-center")}>
+          <Ticker items={latest} />
+          <Link
+            href={`/wire${query()}`}
+            className="max-md:tap mt-5 inline-flex h-10 items-center gap-2.5 rounded-control border border-accent px-6 font-mono text-[13px] font-medium tracking-[0.08em] text-fg outline-none hover:border-critical focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
-          OPEN WIRE <span className="text-critical-text">→</span>
-        </Link>
-        <nav aria-label="More" className="mt-3.5 flex gap-6 text-[13px] text-muted">
-          {[
-            ["/cves", "CVEs"],
-            ["/vendors", "Vendors"],
-            ["/services", "Services"],
-          ].map(([href, label]) => (
-            <Link key={href} href={`${href}${query()}`} className="max-md:tap outline-none hover:text-fg-2 focus-visible:text-fg-2">
-              {label}
-            </Link>
-          ))}
-        </nav>
+            OPEN WIRE <span className="text-critical-text">→</span>
+          </Link>
+          <nav aria-label="More" className="mt-3.5 flex gap-6 text-[13px] text-muted">
+            {[
+              ["/cves", "CVEs"],
+              ["/vendors", "Vendors"],
+              ["/services", "Services"],
+            ].map(([href, label]) => (
+              <Link key={href} href={`${href}${query()}`} className="max-md:tap outline-none hover:text-fg-2 focus-visible:text-fg-2">
+                {label}
+              </Link>
+            ))}
+          </nav>
+        </div>
       </div>
 
       {/* Just above the footer, centered: at least 48px under the links (mt-12); the block above
@@ -227,7 +235,7 @@ function DateLine({ now }: { now: Date | null }) {
   const dot = <span className="text-dim-text"> · </span>
   const utcOnly = now !== null && zoneName(now) === "UTC"
   return (
-    <p className="mt-5 h-5 text-[15px] leading-5 text-fg-2">
+    <p className="h-5 text-[15px] leading-5 text-fg-2">
       {now && (
         <>
           {now.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}

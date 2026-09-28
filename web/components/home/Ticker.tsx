@@ -157,7 +157,7 @@ export function Ticker({ items }: { items: FeedItem[] }) {
 
   if (!current) return null
   return (
-    <div className="relative mt-[clamp(20px,3vh,36px)] flex h-5 w-full justify-center">
+    <div className="relative flex h-5 w-full justify-center">
       <p className="flex max-w-full min-w-0 items-baseline gap-2.5 text-[13px] leading-5">
         <span aria-hidden className="text-critical-text">
           ›
@@ -167,7 +167,7 @@ export function Ticker({ items }: { items: FeedItem[] }) {
           href={current.primary_url}
           {...EXTERNAL}
           aria-label={current.headline}
-          className="max-md:tap ticker-fade block min-w-0 truncate text-left text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+          className="max-md:tap ticker-fade block max-w-full min-w-0 truncate text-left text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
         >
           <span ref={text} aria-hidden className="whitespace-pre" />
         </a>

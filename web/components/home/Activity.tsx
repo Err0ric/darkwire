@@ -51,23 +51,19 @@ export const ACTIVITY = {
     widthMs: 200, // the centered block follows its longest line
     lines: 3, // newest on the bottom
     lineHeight: 18, // px
-    // Older lines are dimmer, bottom (newest) to top. Text must clear 4.5:1 on --bg (axe), which
-    // rules out opacity on text (50% of even --fg-2 fails), so they step down through the text
-    // tokens instead: the middle line's type column goes --muted, the top line is all
-    // --dim-text. lineOpacity stays 1; lower it only if that contrast rule is dropped.
-    lineOpacity: [1, 1, 1],
-    lineColors: [null, { kind: "var(--muted)" }, { all: "var(--dim-text)" }] as ({ kind?: string; all?: string } | null)[],
+    // Colors per line, bottom (newest) to top: the newest is the brightest, older ones step down
+    // through the text tokens (never opacity on text, never bold). Every one clears 4.5:1 on --bg.
+    lineColors: [
+      { time: "var(--muted)", kind: "var(--fg-2)", detail: "var(--fg-2)", hot: "var(--critical-text)" },
+      { time: "var(--dim-text)", kind: "var(--muted)", detail: "var(--muted)", hot: "var(--critical-text)" },
+      { time: "var(--dim-text)", kind: "var(--dim-text)", detail: "var(--dim-text)", hot: "var(--dim-text)" },
+    ],
     slideMs: 300, // older lines move up, the top one fades out
     typingMs: 25, // per character
     cycleMs: 30_000, // no new event for this long: bring back an older one
-    cycleCount: 10, // how far back the cycle goes
+    cycleCount: 10, // the replay covers the last this-many events, oldest to newest
     cursorColor: "#4a4a4a",
     cursorFadeMs: 700,
-    // The faintest text that clears 4.5:1 on --bg (#555 would be about 2.9:1).
-    timeColor: "var(--dim-text)",
-    kindColor: "var(--fg-2)",
-    detailColor: "var(--dim-text)",
-    hotColor: "var(--critical-text)",
     hotWords: /\b(?:KEV|critical|exploited)\b/i, // non-capturing: the split below adds its own group
     kindWidth: 9, // characters, the type column
   },
@@ -208,17 +204,17 @@ type Part = { text: string; color: string }
 
 function lineParts(e: BoardEvent, slot = 0): Part[] {
   const L = ACTIVITY.log
-  const over = L.lineColors[slot] ?? null
+  const c = L.lineColors[Math.min(slot, L.lineColors.length - 1)]
   const at = new Date(e.at)
   const joiner = e.kind === "cluster" || e.kind === "summary" ? " · " : " "
   const detail = `${e.subject}${joiner}${e.detail}`
   return [
-    { text: `${pad(at.getHours())}:${pad(at.getMinutes())}  `, color: over?.all ?? L.timeColor },
-    { text: e.kind.padEnd(L.kindWidth), color: over?.all ?? over?.kind ?? L.kindColor },
+    { text: `${pad(at.getHours())}:${pad(at.getMinutes())}  `, color: c.time },
+    { text: e.kind.padEnd(L.kindWidth), color: c.kind },
     ...detail
       .split(HOT_SPLIT)
       .filter(Boolean)
-      .map((text) => ({ text, color: over?.all ?? (L.hotWords.test(text) ? L.hotColor : L.detailColor) })),
+      .map((text) => ({ text, color: L.hotWords.test(text) ? c.hot : c.detail })),
   ]
 }
 
@@ -257,7 +253,7 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
   const [cursor, setCursor] = useState(!events.length)
   // Newness by time: derived events have no id. The newest time shown so far.
   const newest = useRef(events[0] ? Date.parse(events[0].at) : 0)
-  const cycle = useRef(L.lines - 1)
+  const cycle = useRef(-1)
   const eventsRef = useRef(events)
   const lastChange = useRef(0)
   useLayoutEffect(() => {
@@ -307,7 +303,7 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
     const top = events[0]
     if (!top || Date.parse(top.at) <= newest.current) return
     newest.current = Date.parse(top.at)
-    cycle.current = L.lines - 1
+    cycle.current = -1
     if (!document.hidden) push.current(top)
     else {
       const onShow = () => {
@@ -320,15 +316,25 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
     }
   }, [events, L.lines])
 
-  // Quiet for L.cycleMs: bring back the last L.cycleCount events, older each time, one per interval.
+  // Quiet for L.cycleMs: replay the last L.cycleCount events in time order, one per interval,
+  // each entering on the bottom line as a new one would, so the lines stay oldest-on-top. Past
+  // the newest, the replay starts over from the oldest three. cycle.current is the replayed
+  // event on the bottom line, as an index into the oldest-first list; -1: the live newest.
   useEffect(() => {
     if (!animate) return
     lastChange.current = Date.now()
     const timer = setInterval(() => {
-      const list = eventsRef.current.slice(0, L.cycleCount)
+      const list = eventsRef.current.slice(0, L.cycleCount).reverse()
       if (document.hidden || list.length <= L.lines || Date.now() - lastChange.current < L.cycleMs) return
-      cycle.current = (cycle.current + 1) % list.length
-      push.current(list[cycle.current])
+      const next = cycle.current + 1
+      if (cycle.current < 0 || next >= list.length) {
+        cycle.current = L.lines - 1
+        setLines(list.slice(0, L.lines - 1).map((event) => ({ key: seq.current++, event })))
+        push.current(list[L.lines - 1])
+      } else {
+        cycle.current = next
+        push.current(list[next])
+      }
     }, 1000)
     return () => clearInterval(timer)
   }, [animate, L.cycleCount, L.cycleMs, L.lines])
@@ -353,12 +359,12 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
       {/* Lines are stacked from the bottom; a line's slot sets its offset and opacity, so a new
           line moves the others up and fades the one leaving the top (CSS transitions). The
           height of all L.lines is reserved from the first render. */}
-      <div aria-hidden className="relative overflow-hidden font-mono text-[12.5px]" style={{ height: L.lines * L.lineHeight }}>
+      <div aria-hidden className="relative overflow-hidden font-mono text-[12.5px] font-normal" style={{ height: L.lines * L.lineHeight }}>
         {lines.map((line, i) => {
           const slot = bottom - i // 0 = bottom
           const parts = line.event
             ? lineParts(line.event, Math.min(slot, L.lines - 1))
-            : [{ text: `watching ${sources ?? "the"} ${sources === 1 ? "source" : "sources"}…`, color: L.detailColor }]
+            : [{ text: `watching ${sources ?? "the"} ${sources === 1 ? "source" : "sources"}…`, color: L.lineColors[0].time }]
           return (
             <p
               key={line.key}
@@ -367,7 +373,7 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
                 height: L.lineHeight,
                 lineHeight: `${L.lineHeight}px`,
                 transform: `translateY(${-slot * L.lineHeight}px)`,
-                opacity: slot < L.lines ? (L.lineOpacity[slot] ?? 0.5) : 0,
+                opacity: slot < L.lines ? 1 : 0,
                 transition: animate ? `transform ${L.slideMs}ms ease-out, opacity ${L.slideMs}ms ease-out` : undefined,
               }}
             >
@@ -407,7 +413,7 @@ export function Activity({ data, sources }: { data: ActivityData | null; sources
   const events = useMemo(() => (data?.events ?? []).filter((e) => L.kinds.includes(e.kind)), [data?.events, L.kinds])
   const folded = L.hideWhenFewer > 0 && events.length < L.hideWhenFewer
   return (
-    <section aria-label="Activity" className="mt-[clamp(28px,4.4vh,56px)] flex w-full flex-col items-center">
+    <section aria-label="Activity" className="mt-4 flex w-full flex-col items-center">
       {ACTIVITY.trace.on && <Trace hours={data?.hours ?? []} peak7d={data?.peak_7d ?? 0} animate={animate} />}
       {ACTIVITY.log.on && (
         // Folds away (height to 0) when there are too few real lines; the ticker below moves up.

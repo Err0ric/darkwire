@@ -55,7 +55,7 @@ FETCH_BELOW_CHARS = 1500
 FETCH_PER_ITEM = 2
 # Bump to re-ask, once, the rows of the last 7 days whose summary was declined or discarded.
 RETRY_STATE = "summaries_retry"
-RETRY_VERSION = "1"
+RETRY_VERSION = "2"
 MATERIAL_CHARS = 12000
 
 SYSTEM = """You write the summary under a headline on darkwire, a board of security news and CVEs read by security engineers.
@@ -71,7 +71,7 @@ Use only facts stated in the articles. Never write that something is unknown or 
 Start directly with the first sentence. Do not repeat the headline as a title.
 No adjectives of emphasis (critical, severe, major, alarming), no marketing language, no advice, no links, no first person. Name an outlet only to attribute a fix statement.
 Plain text only: no markdown, no line breaks, no bullet points, no preamble.
-Many items have only a headline and a short excerpt. Summarize what they do state, in one sentence if that is all there is. Reply with exactly SKIP only when there is nothing beyond the headline itself."""
+Many items have only a headline and a short excerpt. Summarize what they do state, in one sentence if that is all there is. The board also carries technology, AI and policy news: summarize those the same way, even when they are not about a vulnerability or an attack. Reply with exactly SKIP only when there is nothing beyond the headline itself."""
 
 ACTION_SYSTEM = """You read security articles about a vulnerability and report the workaround they describe, if any.
 
@@ -432,7 +432,7 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         text, why = review_summary(raw, patched=item.patch_status == PatchStatus.patched, material=material[item.id])
         reasons[why] = reasons.get(why, 0) + 1
         if text is None:
-            log.info("summaries: item %d rejected (%s): %r", item.id, why, raw[:160])
+            log.info("summaries: item %d rejected (%s, %d chars of input): %r", item.id, why, len(material[item.id]), raw[:160])
         item.summary = text or ""
         written += text is not None
     await session.commit()

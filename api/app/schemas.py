@@ -46,6 +46,15 @@ class FeedItem(BaseModel):
     sources: list[SourceLink]
     last_event_at: datetime
     last_event_kind: str | None
+    # False for a plain row with no summary and no usable feed excerpt: headline link only.
+    expandable: bool
+
+
+class Excerpt(BaseModel):
+    """The feed's own excerpt (first sentences, at most 220 chars), shown when there is no summary."""
+
+    source: str
+    text: str
 
 
 class FeedPage(BaseModel):
@@ -108,6 +117,7 @@ class Action(BaseModel):
 
 class ItemDetail(FeedItem):
     summary: str | None
+    excerpt: Excerpt | None
     action: Action | None  # model-read from the articles, CVE rows only
     patch_url: str | None
     first_seen_at: datetime

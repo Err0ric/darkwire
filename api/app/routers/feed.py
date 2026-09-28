@@ -6,6 +6,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.excerpt import expandable, row_excerpt
 from app.db import get_session
 from app.staleness import is_stale, not_stale
 from app.models import Category, Item, ItemCve, ItemSource, MsrcUpdate, Severity, Stream, Vendor
@@ -66,6 +67,7 @@ def _one_per_outlet(sources: list[ItemSource]) -> list[SourceLink]:
 
 
 def _feed_fields(item: Item, all_sources: bool = False) -> dict:
+    excerpt = None if item.summary or item.cve_id else row_excerpt(item)
     return {
         "id": item.id,
         "headline": item.headline,
@@ -88,6 +90,7 @@ def _feed_fields(item: Item, all_sources: bool = False) -> dict:
         ),
         "last_event_at": item.last_event_at,
         "last_event_kind": item.last_event_kind,
+        "expandable": expandable(item, excerpt),
     }
 
 
@@ -173,6 +176,7 @@ async def item_detail(request: Request, item_id: int, session: AsyncSession = De
     return ItemDetail(
         **_feed_fields(item),
         summary=item.summary,
+        excerpt=None if item.summary else row_excerpt(item),
         action=item.action,
         patch_url=item.patch_url,
         first_seen_at=item.first_seen_at,

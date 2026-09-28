@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 
-import { DEFAULT_THEME, parseStack, parseTheme, type Theme } from "@/lib/stack"
+import { DEFAULT_THEME, parseServices, parseStack, parseTheme, type Theme } from "@/lib/stack"
 
 // Personal preferences with no accounts: your stack of vendors, the services you watch, a theme.
 // - The URL is the source of truth: ?stack=cisco,fortinet&services=aws,slack. It always wins.
@@ -78,7 +78,7 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     const servicesUrl = params.get("services")
     const stored = readStored()
     const next = fromUrl !== null ? parseStack(fromUrl) : parseStack(stored?.stack?.join(","))
-    const watched = servicesUrl !== null ? parseStack(servicesUrl) : parseStack(stored?.services?.join(","))
+    const watched = servicesUrl !== null ? parseServices(servicesUrl) : parseServices(stored?.services?.join(","))
     // The <head> script has already applied the theme; read back what it chose.
     const shown = parseTheme(document.documentElement.getAttribute("data-theme"))
     const load = () => {

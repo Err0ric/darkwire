@@ -8,7 +8,7 @@ import { Kiosk } from "@/components/Kiosk"
 import { Nav } from "@/components/nav"
 import { PrefsProvider } from "@/lib/prefs"
 import OG from "@/lib/og-images.json"
-import { THEME_SCRIPT } from "@/lib/stack"
+import { THEME_CHOICES, THEME_SCRIPT } from "@/lib/stack"
 
 import "./globals.css"
 
@@ -58,7 +58,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const nonce = (await headers()).get("x-nonce") ?? undefined
   return (
     // data-theme is set by the head script before paint, so the server markup never has it.
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="en" data-themes={THEME_CHOICES} className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 
 import { Activity } from "@/components/home/Activity"
 import { Ticker } from "@/components/home/Ticker"
@@ -140,19 +140,64 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
   )
 }
 
+/** The x of a glyph's right ink edge: its box's left (the glyph origin) plus the font's
+ * actualBoundingBoxRight for that character, so side bearings and tracking do not count. */
+function inkRight(left: number, ch: string, style: CSSStyleDeclaration): number {
+  const ctx = document.createElement("canvas").getContext("2d")
+  if (!ctx) return left
+  ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+  return left + ctx.measureText(ch).actualBoundingBoxRight
+}
+
+/** Moves the tagline so its last glyph's ink ends exactly where the "h" of ".tech" ends when
+ * fully typed (the wordmark's invisible reserve, so typing never moves it). A transform, so the
+ * layout does not shift. Re-measured on resize and once fonts are ready. */
+function useTaglineAlign(lockup: React.RefObject<HTMLDivElement | null>, tagline: React.RefObject<HTMLParagraphElement | null>) {
+  useLayoutEffect(() => {
+    const box = lockup.current
+    const tag = tagline.current
+    if (!box || !tag) return
+    const place = () => {
+      const h = box.querySelector<HTMLElement>("[data-wordmark-last]")
+      const text = tag.firstChild
+      if (!h || !text || text.nodeType !== Node.TEXT_NODE) return
+      tag.style.transform = ""
+      const hRight = inkRight(h.getBoundingClientRect().left, h.textContent ?? "h", getComputedStyle(h))
+      const content = text.textContent ?? ""
+      const range = document.createRange()
+      range.setStart(text, content.length - 1)
+      range.setEnd(text, content.length)
+      const tagRight = inkRight(range.getBoundingClientRect().left, content.slice(-1), getComputedStyle(tag))
+      tag.style.transform = `translateX(${hRight - tagRight}px)`
+    }
+    place()
+    const ro = new ResizeObserver(place)
+    ro.observe(box)
+    document.fonts?.ready.then(place)
+    window.addEventListener("resize", place)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener("resize", place)
+    }
+  }, [lockup, tagline])
+}
+
 /** The landing's centerpiece, the og.png lockup: the nav's wordmark (red i-dot, typing
- * ".tech") at landing size, and "live security news + CVEs" under it, right-aligned to the
- * reserved end of ".tech". */
+ * ".tech") at landing size, and "live security news + CVEs" under it, its last glyph's ink
+ * ending exactly under the ink of the "h" in ".tech" (measured, see useTaglineAlign). */
 function Lockup({ state }: { state: SyncState }) {
   // The cursor's reserved space after ".tech" hangs outside the layout box (negative margin),
-  // so the block centers on the visible "darkwire.tech" and the tagline ends under the "h".
+  // so the block centers on the visible "darkwire.tech".
   const size = "clamp(40px, 3.2vw, 64px)"
+  const box = useRef<HTMLDivElement>(null)
+  const tag = useRef<HTMLParagraphElement>(null)
+  useTaglineAlign(box, tag)
   return (
-    <div className="inline-flex flex-col items-end">
+    <div ref={box} className="inline-flex flex-col items-end">
       <h1 aria-label="darkwire.tech" style={{ fontSize: size, marginRight: `calc(${size} * ${-CURSOR_RESERVE_EM})` }}>
         <Wordmark state={state} />
       </h1>
-      <p className="mt-2 font-mono text-[13px] leading-4 text-muted">live security news + CVEs</p>
+      <p ref={tag} className="mt-2 font-mono text-[13px] leading-4 text-muted">live security news + CVEs</p>
     </div>
   )
 }

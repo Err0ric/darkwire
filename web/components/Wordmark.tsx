@@ -298,8 +298,12 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
         className={cn("relative inline-block font-mono font-normal", techClassName)}
         style={{ fontSize: `${WORDMARK.tech.size}em`, letterSpacing: WORDMARK.tech.tracking, color: WORDMARK.tech.color, marginLeft: WORDMARK.tech.gap }}
       >
-        {/* The reserve: the full ".tech" plus the cursor, invisible, so nothing shifts. */}
-        <span className="invisible">{text}</span>
+        {/* The reserve: the full ".tech" plus the cursor, invisible, so nothing shifts. Its last
+            character marks where the fully typed "h" ends (the landing aligns its tagline to it). */}
+        <span className="invisible">
+          {text.slice(0, -1)}
+          <span data-wordmark-last>{text.slice(-1)}</span>
+        </span>
         <span className="invisible inline-block" style={{ width: `${WORDMARK.cursor.width + WORDMARK.cursor.gap}em` }} />
         <span ref={overlay} data-wordmark-tech className="absolute inset-0 text-left whitespace-pre" style={{ opacity: state === null ? 0 : undefined }}>
           {[...text].map((ch, i) => (

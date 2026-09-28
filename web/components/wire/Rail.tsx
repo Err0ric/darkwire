@@ -67,7 +67,7 @@ export function Elsewhere({
                 href={e.url}
                 {...EXTERNAL}
                 onClick={() => onSeen?.(e.id)}
-                className="max-md:tap line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+                className="max-md:tap line-clamp-2 leading-[18px] font-medium text-fg outline-none hover:underline focus-visible:underline"
               >
                 {e.headline}
               </a>

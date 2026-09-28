@@ -35,6 +35,11 @@ const CATEGORY_ICON: Record<Category, LucideIcon> = {
 
 export type Detail = { state: "idle" | "loading" | "error" } | { state: "ready"; item: ItemDetail }
 
+/** KEV, exploited or Critical (an old CVE, dimmed, is not): these rows get the critical edge. */
+function flagged(item: FeedItem): boolean {
+  return !item.stale && (item.severity === "critical" || item.kev || item.exploited)
+}
+
 export function FeedRow({
   item,
   detail: initialDetail,
@@ -114,8 +119,12 @@ export function FeedRow({
         aria-label={canExpand ? `${item.headline}. ${expanded ? "Collapse" : "Expand"} details` : undefined}
         className={cn(
           // Rhythm: 15px above and below, 4px from headline to meta, so rows read as units.
-          "flex min-h-14 items-start py-[15px] outline-offset-[-1px] hover:bg-row-hover md:items-center",
+          "relative flex min-h-14 items-start py-[15px] outline-offset-[-1px] hover:bg-row-hover md:items-center",
           canExpand && "cursor-pointer",
+          // KEV, exploited or Critical: a 2px --rail-critical edge the row's full height, in the
+          // gutter just left of it, so the icon and headline do not move.
+          flagged(item) &&
+            "before:pointer-events-none before:absolute before:inset-y-0 before:-left-2.5 before:w-0.5 before:bg-rail-critical",
         )}
       >
         <VendorMark item={item} inStack={inStack} />
@@ -238,7 +247,7 @@ function MetaLine({
   } else {
     for (const s of item.sources.slice(0, MAX_SOURCES)) {
       parts.push(
-        <a key={s.url} href={s.url} {...EXTERNAL} className="max-md:tap-down underline decoration-outline-medium underline-offset-[3px] outline-none hover:text-fg-2 hover:decoration-fg-2 focus-visible:text-fg-2">
+        <a key={s.url} href={s.url} {...EXTERNAL} className="max-md:tap-down decoration-fg-2 underline-offset-[3px] outline-none hover:text-fg-2 hover:underline focus-visible:text-fg-2 focus-visible:underline">
           {s.name}
         </a>,
       )

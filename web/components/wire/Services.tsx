@@ -44,8 +44,9 @@ export function Services({ data, compact = false }: { data: ServicesOut | null; 
   )
 
   if (compact) {
+    // Its own name: under 1200px the full block is on the page too, and landmarks must differ.
     return (
-      <section aria-label="Services">
+      <section aria-label="Services, impacted now">
         {lines || (
           <p className="flex items-baseline justify-between gap-3 leading-5 text-muted">
             <span>

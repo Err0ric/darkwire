@@ -94,7 +94,8 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 - Headline: `--fg`, 15px/500, line-height 1.35, at most 72ch wide, wrapping to at most two lines (ellipsis). Icon column and text column keep one hard left edge on every row (marks left-aligned in a fixed 20px column).
 - Vendor mark: `/public/vendors/{slug}.svg`, monochrome, `--muted`, 20px, no circle; fallback a Lucide category icon.
 - Only the headline text links to the primary source (new tab, `noopener noreferrer`); a click anywhere else on the row, or Enter/Space when it has focus, toggles it.
-- Meta line: 12px Geist Mono in `--muted`, one line. Each source name links to that outlet's article (a quiet underline), one name per outlet (its newest), at most 4 then `+N`; then category, then `KEV` in red if listed, else `EXPLOITED` in red when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator `·`.
+- Meta line: 12px Geist Mono in `--muted`, one line. Each source name links to that outlet's article (no underline until hover or keyboard focus), one name per outlet (its newest), at most 4 then `+N`; then category, then `KEV` in red if listed, else `EXPLOITED` in red when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator `·`.
+- Flag edge: KEV, exploited or Critical rows (not old CVEs) get a 2px `--rail-critical` line down the full row height, in the gutter just left of the icon, so nothing shifts. `--rail-critical` is set per theme.
 - KEV due: within 7 days of CISA's due date the marker reads `KEV due in Nd` (all red at 2 days or less, `KEV due today` on the day), and `KEV overdue` for 7 days after it. Days count in UTC. These rows count toward the unseen `!`.
 - Old CVEs: published more than 90 days ago, not in KEV, and no headline about exploitation: the score, bar and badge dim. Such rows are left out of severity totals, pinning and the unseen `!`.
 - Score: Geist Mono 15px/500, `--fg` for 7.0+, `--fg-2` below. Bar: 10 cells, filled = round(CVSS), colored by severity (Critical `--critical`, High `--accent`, Medium #6b6b6b), empty cells `--rule`; unscored rows keep the empty slot so columns align.
@@ -145,7 +146,7 @@ Third-party status from each vendor's official source, polled every 3 minutes (`
 
 - Rails by width: from 2200px a left rail (Most active, Last 7 days, Added to KEV) and a right rail (Elsewhere, Services); 1200-2199px one right rail (Elsewhere, Most active, Last 7 days, Added to KEV, Services); under 1200px they stack below the feed, with impacted services also above it. A thin rule separates rails from the feed.
 - Rails are quieter than the feed: `--fg-2` titles, `--muted` items, `--dim-text` numbers, the dark `--rail-*` bars; feed headlines stay the brightest text. Rails are sticky (`web/lib/sticky.ts`).
-- Elsewhere: the six most recent relevant items with their topic, the week's top topics as subtitle, "+ N more" opens the Elsewhere tab.
+- Elsewhere: the six most recent relevant items (headlines `--fg`/500) with their topic, the week's top topics as subtitle, "+ N more" opens the Elsewhere tab.
 - Most active this week: vendor, bar, count; a name sets the vendor filter, again clears it.
 - Added to KEV: CISA's catalog entries of the last 7 days (not only the board's), with the CVSS score and a mini bar; no due dates here. A CVE on the board links to its row, any other to NVD; no link may 404. "+N more" opens the KEV tab.
 - Last 7 days: Critical, High, Medium, Low bars; a row with a count filters the wire to that severity (`?severity=`), old CVEs excluded so the list matches the count. The header's 24-hour counts filter with `&window=24h`.

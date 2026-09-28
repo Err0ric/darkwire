@@ -56,6 +56,7 @@ html[data-theme="amber"] {
   --bg: #0b0906;
   --surface: #110e09;
   --row-hover: #120f0a;
+  --rail-critical: #7a2410;
   --hairline: #1a150d;
   --rule: #271f12;
   --fg: #e8c690;
@@ -82,6 +83,7 @@ html[data-theme="phosphor"] {
   --bg: #050a06;
   --surface: #08100a;
   --row-hover: #0a110b;
+  --rail-critical: #6e1c1c;
   --hairline: #0e1a11;
   --rule: #15271a;
   --fg: #a9e4b4;
@@ -110,6 +112,7 @@ html[data-theme="high-contrast"] {
   --bg: #000000;
   --surface: #0d0d0d;
   --row-hover: #121212;
+  --rail-critical: #c00000;
   --hairline: #3a3a3a;
   --rule: #595959;
   --fg: #ffffff;

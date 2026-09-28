@@ -7,10 +7,10 @@ import { useCallback, useEffect, useRef } from "react"
 // and the favicon's cursor block turns red (a static copy drawn on a canvas, never
 // animated). Both clear when the tab is visible again. Nothing is stored between visits.
 
-// On the favicon's 16-cell grid (scripts/make-og.py): the cursor block, cells x 10-13, y 8-13.
-const CURSOR = { x: 10, y: 8, w: 4, h: 6 }
-// The unseen cursor is always the brand red; the icon itself does not follow the theme.
-const RED = "#dc2626"
+// On the favicon's 16-cell grid (scripts/make-og.py): the cursor block, cells x 11-13, y 2-14.
+const CURSOR = { x: 11, y: 2, w: 3, h: 13 }
+// Unseen: the dark red cursor (#991b1b) turns bright red. The icon does not follow the theme.
+const RED = "#ef4444"
 
 function iconLinks(): HTMLLinkElement[] {
   return [...document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')]

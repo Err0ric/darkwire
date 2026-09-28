@@ -4,7 +4,7 @@
 
 Writes:
 - app/favicon.ico (16 + 32), app/icon.svg, app/apple-icon.png (180), public/icon-192.png,
-  public/icon-512.png: a lowercase "d" in --fg and a block cursor (#5a5a5a) on black, drawn
+  public/icon-512.png: a lowercase "d" in --fg and a dark red block cursor (#991b1b) as tall as the d, on black, drawn
   cell by cell on a 16 grid so 16 and 32 are crisp (no scaling, no antialiasing). The larger
   icons keep the mark inside the maskable safe zone. The unseen state (lib/unseen.ts) paints
   the cursor --critical on a canvas copy.
@@ -74,10 +74,12 @@ TAG_GAP = 34
 
 # The favicon: a lowercase "d" and a block cursor, drawn cell by cell on a 16 grid so it is
 # crisp at 16 and 32 (32 = each cell 2x2). Inclusive cell ranges (x0, y0, x1, y1).
-D_STEM = (6, 2, 7, 14)
-D_BOWL = (1, 5, 6, 14)  # 2-cell stroke, rounded by leaving its two left corners open
-CURSOR_BLOCK = (10, 8, 13, 13)
-ICON_CURSOR = (0x5A, 0x5A, 0x5A)  # normal; the unseen state paints it --critical (lib/unseen.ts)
+# The d spans x 3-9, y 2-14; the cursor is as tall as the d (ascender to baseline), 3 cells
+# wide (about 40% of the d's 7), one empty cell after it. The mark (x 3-13) is centered.
+D_STEM = (8, 2, 9, 14)
+D_BOWL = (3, 5, 8, 14)  # 2-cell stroke, rounded by leaving its two left corners open
+CURSOR_BLOCK = (11, 2, 13, 14)
+ICON_CURSOR = (0x99, 0x1B, 0x1B)  # #991b1b; the unseen state paints it #ef4444 (lib/unseen.ts)
 
 
 def d_cells() -> set[tuple[int, int]]:
@@ -110,11 +112,11 @@ def grid_icon(size: int, cursor=ICON_CURSOR) -> Image.Image:
 
 
 def safe_icon(size: int) -> Image.Image:
-    """Larger icons: the mark (cells x 1-13, y 2-14) scaled into the central 60% (the maskable
+    """Larger icons: the mark (cells x 3-13, y 2-14) scaled into the central 60% (the maskable
     safe zone), centered, on whole pixels."""
     im = Image.new("RGB", (size, size), BLACK)
     u = round(size * 0.6 / 13)
-    ox = round(size / 2 - 7.5 * u)  # mark center x = (1 + 14) / 2 = 7.5 cells
+    ox = round(size / 2 - 8.5 * u)  # mark center x = (3 + 14) / 2 = 8.5 cells
     oy = round(size / 2 - 8.5 * u)  # mark center y = (2 + 15) / 2 = 8.5 cells
     draw_mark(im, ox, oy, u)
     return im
@@ -147,7 +149,7 @@ def icon_svg() -> str:
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">'
         '<rect width="16" height="16" fill="#000"/>'
         + rects
-        + f'<rect x="{x0}" y="{y0}" width="{x1 - x0 + 1}" height="{y1 - y0 + 1}" fill="#5a5a5a"/>'
+        + f'<rect x="{x0}" y="{y0}" width="{x1 - x0 + 1}" height="{y1 - y0 + 1}" fill="#991b1b"/>'
         "</svg>\n"
     )
 

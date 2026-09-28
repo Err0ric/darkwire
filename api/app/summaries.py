@@ -8,8 +8,10 @@ Safety rules (CLAUDE.md "Summary model"):
   person (refusals, talk about its instructions), or a bare SKIP / NONE. Sentences about what
   the articles do not say, unattributed fix claims the vendor data does not back (clause by
   clause; attributed ones the articles support stay), and a second sentence that restates the
-  first are dropped. Rejected output is stored as "" so it
-  is not re-asked every pass; the row simply has no summary.
+  first are dropped. Rejected output is stored as "" so it is not re-asked every pass; the row
+  simply has no summary.
+- Input: the feed's text, plus for summaries only the article itself when the feed's text is
+  short, fetched politely by fetcher.py and never stored.
 - CVSS, KEV, fixed versions and patch status come only from NVD / CISA / vendor data.
   actions_pending() asks the model for a workaround sentence only.
 
@@ -22,14 +24,14 @@ import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import anthropic
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import jobstate
+from app import fetcher, jobstate
 from app.config import get_settings
 from app.models import Item, ItemCve, PatchStatus, Stream
 
@@ -47,6 +49,13 @@ SUMMARY_MAX_WORDS = 45
 SUMMARY_MAX_CHARS = 340
 WORKAROUND_MAX_WORDS = 25
 BODY_CHARS = 4000
+# Fetch the article (fetcher.py) when the feed's own text is shorter than this; at most this
+# many articles per item.
+FETCH_BELOW_CHARS = 1500
+FETCH_PER_ITEM = 2
+# Bump to re-ask, once, the rows of the last 7 days whose summary was declined or discarded.
+RETRY_STATE = "summaries_retry"
+RETRY_VERSION = "1"
 MATERIAL_CHARS = 12000
 
 SYSTEM = """You write the summary under a headline on darkwire, a board of security news and CVEs read by security engineers.
@@ -330,12 +339,67 @@ async def _run(
 # articles and nothing else.
 
 
+async def _fetch_articles(items: list[Item]) -> dict[int, dict[int, str]]:
+    """For summarization only: article text for items whose feed text is short, by item id then
+    source id. The primary source first, at most FETCH_PER_ITEM per item. Held in memory for
+    this pass, never stored (fetcher.py)."""
+    out: dict[int, dict[int, str]] = {}
+    async with fetcher.client() as client:
+
+        async def one(item: Item) -> None:
+            got: dict[int, str] = {}
+            short = [x for x in item.sources if len(x.body or x.excerpt or "") < FETCH_BELOW_CHARS]
+            short.sort(key=lambda x: x.url != item.primary_url)
+            for src in short[:FETCH_PER_ITEM]:
+                text = await fetcher.article_text(client, src.url)
+                if text:
+                    got[src.id] = text
+            out[item.id] = got
+
+        await asyncio.gather(*(one(i) for i in items))
+    fetcher.log_stats()
+    return out
+
+
+async def _retry_once(session: AsyncSession) -> None:
+    """Once per RETRY_VERSION: rows of the last 7 days whose summary was declined or discarded
+    ("") are asked again, with fetched article text and the current rules."""
+    if await jobstate.get(session, RETRY_STATE) == RETRY_VERSION:
+        return
+    result = await session.execute(
+        update(Item)
+        .where(Item.stream == Stream.main, Item.summary == "", Item.last_event_at >= datetime.now(UTC) - timedelta(days=7))
+        .values(summary=None)
+    )
+    await jobstate.put(session, RETRY_STATE, RETRY_VERSION)
+    await session.commit()
+    log.info("summaries: retry: re-asking %d rows of the last 7 days that were declined or discarded", result.rowcount)
+
+
+async def log_coverage(session: AsyncSession) -> None:
+    """One line: summary coverage of the main rows of the last 7 days."""
+    rows = (
+        await session.execute(
+            select(Item.summary).where(Item.stream == Stream.main, Item.last_event_at >= datetime.now(UTC) - timedelta(days=7))
+        )
+    ).scalars().all()
+    have = sum(1 for x in rows if x)
+    rejected = sum(1 for x in rows if x == "")
+    queued = sum(1 for x in rows if x is None)
+    log.info(
+        "summaries: last 7 days: %d rows, %d with a summary (%.0f%%), %d declined or discarded, %d queued",
+        len(rows), have, 100 * have / max(1, len(rows)), rejected, queued,
+    )
+
+
 async def summarize_pending(session: AsyncSession) -> int | None:
     """Summarize up to PER_RUN items that have none. None when skipped (no key).
-    summary NULL = not asked yet; "" = asked, output rejected or SKIP (never re-asked)."""
+    summary NULL = not asked yet; "" = asked, output rejected or SKIP (not re-asked, except by
+    a one-time retry)."""
     if not get_settings().anthropic_api_key:
         return None
     await reset_once(session)
+    await _retry_once(session)
     todo = list(
         (
             await session.scalars(
@@ -350,24 +414,30 @@ async def summarize_pending(session: AsyncSession) -> int | None:
     if not todo:
         return 0
 
+    fetched = await _fetch_articles(todo)
+    material = {item.id: _articles(item, fetched.get(item.id)) for item in todo}
     results = await _run(
         session,
         todo,
         lambda client, item: client.messages.create(
-            model=MODEL, max_tokens=300, system=SYSTEM, messages=[{"role": "user", "content": _articles(item)}]
+            model=MODEL, max_tokens=300, system=SYSTEM, messages=[{"role": "user", "content": material[item.id]}]
         ),
         "summaries",
     )
     written = 0
+    reasons: dict[str, int] = {}
     for item, raw in zip(todo, results, strict=True):
         if raw is None:
             continue  # the call failed: ask again next pass
-        text, why = review_summary(raw, patched=item.patch_status == PatchStatus.patched, material=_articles(item))
+        text, why = review_summary(raw, patched=item.patch_status == PatchStatus.patched, material=material[item.id])
+        reasons[why] = reasons.get(why, 0) + 1
         if text is None:
             log.info("summaries: item %d rejected (%s): %r", item.id, why, raw[:160])
         item.summary = text or ""
         written += text is not None
     await session.commit()
+    log.info("summaries: pass: %s", ", ".join(f"{k} {v}" for k, v in sorted(reasons.items())))
+    await log_coverage(session)
     return written
 
 

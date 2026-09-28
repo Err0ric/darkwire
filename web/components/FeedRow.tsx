@@ -35,6 +35,17 @@ const CATEGORY_ICON: Record<Category, LucideIcon> = {
 
 export type Detail = { state: "idle" | "loading" | "error" } | { state: "ready"; item: ItemDetail }
 
+const SECURITY_CATEGORIES = new Set(["vulnerability", "breach", "ransomware", "advisory"])
+
+/** Headline tier: Critical, KEV or exploited rows in --fg; other rows with a CVE or a security
+ * category (vulnerability, breach, ransomware, advisory) in --fg-2; everything else (news,
+ * research, policy) in --muted. Old CVEs (stale) are not Critical here, as in the totals. */
+export function headlineTier(item: FeedItem): string {
+  if (!item.stale && (item.severity === "critical" || item.kev || item.exploited)) return "text-headline-1"
+  if (item.cve_id || SECURITY_CATEGORIES.has(item.category)) return "text-headline-2"
+  return "text-headline-3"
+}
+
 export function FeedRow({
   item,
   detail: initialDetail,
@@ -99,7 +110,7 @@ export function FeedRow({
     <article
       id={`row-${item.id}`}
       className={cn(
-        "scroll-mt-12 border-b border-hairline",
+        "scroll-mt-12 border-b border-rule",
         fresh && "animate-row-in",
         expanded && "-mx-4 bg-surface px-4 md:-mx-6 md:px-6",
       )}
@@ -113,7 +124,7 @@ export function FeedRow({
         tabIndex={canExpand ? 0 : undefined}
         aria-label={canExpand ? `${item.headline}. ${expanded ? "Collapse" : "Expand"} details` : undefined}
         className={cn(
-          "flex items-start py-3 outline-offset-[-1px] hover:bg-surface md:min-h-16 md:items-center md:py-2.5 one-line-rows:h-16 one-line-rows:py-0",
+          "group/row flex items-start py-[14px] outline-offset-[-1px] hover:bg-surface md:min-h-[68px] md:items-center md:py-3 one-line-rows:h-[68px] one-line-rows:py-0",
           canExpand && "cursor-pointer",
         )}
       >
@@ -122,7 +133,15 @@ export function FeedRow({
         <div className="relative min-w-0 flex-1 md:mr-[22px]">
           {dot && <NewDot state={dot} className="top-[7px] -left-[9px] md:-left-[13px]" />}
           {/* Only the headline text is the link (inline), so the space beside it toggles the row. */}
-          <p className="line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] text-fg one-line-rows:block one-line-rows:truncate">
+          {/* The headline's color says how much the row matters (headlineTier); hovering or
+              focusing the row, or expanding it, brings it to full --fg. */}
+          <p
+            className={cn(
+              "line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] one-line-rows:block one-line-rows:truncate",
+              expanded ? "text-fg" : headlineTier(item),
+              "group-hover/row:text-fg group-focus-visible/row:text-fg has-[a:focus-visible]:text-fg",
+            )}
+          >
             <a
               href={item.primary_url}
               {...EXTERNAL}

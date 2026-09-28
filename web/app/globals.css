@@ -20,6 +20,12 @@
   --fg: #f5f5f5;
   --fg-2: #a3a3a3;
   --muted: #8b8b8b;
+  /* Wire headline tiers: Critical / KEV / exploited, other security rows, everything else.
+     References, so every theme follows through its own --fg / --fg-2 / --muted; a theme can
+     override these three if it needs a different split. */
+  --headline-1: var(--fg);
+  --headline-2: var(--fg-2);
+  --headline-3: var(--muted);
   --dim: #525252; /* lines, borders and non-text marks only */
   --dim-text: #7d7d7d; /* tertiary text, >= 4.5:1 on --bg and --surface */
   --accent: #b91c1c;
@@ -136,6 +142,9 @@ html[data-theme="high-contrast"] {
   --color-fg: var(--fg);
   --color-fg-2: var(--fg-2);
   --color-muted: var(--muted);
+  --color-headline-1: var(--headline-1);
+  --color-headline-2: var(--headline-2);
+  --color-headline-3: var(--headline-3);
   --color-dim: var(--dim);
   --color-dim-text: var(--dim-text);
   --color-accent: var(--accent);

@@ -29,8 +29,8 @@ export function ElsewhereList({
       {items.map((e) => {
         const dot = dots.get(e.id)
         return (
-          <article key={e.id} id={`elsewhere-${e.id}`} className="border-b border-hairline hover:bg-surface">
-            <div className="flex items-start py-3 md:min-h-16 md:items-center md:py-2.5">
+          <article key={e.id} id={`elsewhere-${e.id}`} className="group/row border-b border-rule hover:bg-surface">
+            <div className="flex items-start py-[14px] md:min-h-[68px] md:items-center md:py-3">
               <span
                 aria-hidden
                 className="mt-0.5 mr-5 flex size-5 shrink-0 items-center justify-center text-muted md:mt-0"
@@ -43,7 +43,7 @@ export function ElsewhereList({
                   href={e.url}
                   {...EXTERNAL}
                   onClick={() => onSeen(e.id)}
-                  className="max-md:tap line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] text-fg outline-none focus-visible:underline"
+                  className="max-md:tap line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] text-headline-3 outline-none group-hover/row:text-fg focus-visible:text-fg focus-visible:underline"
                 >
                   {e.headline}
                 </a>

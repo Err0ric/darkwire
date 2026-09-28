@@ -50,8 +50,8 @@ Palette. Use CSS variables, never hardcode in components.
 |---|---|---|
 | `--bg` | #0a0a0a | page |
 | `--surface` | #0f0f0f | expanded row band |
-| `--hairline` | #161616 | row dividers |
-| `--rule` | #1f1f1f | section dividers, empty bar cells |
+| `--hairline` | #161616 | table and list dividers (/cves, /vendors, /services) |
+| `--rule` | #1f1f1f | section dividers, wire row dividers, empty bar cells |
 | `--fg` | #f5f5f5 | headlines, primary text |
 | `--fg-2` | #a3a3a3 | source links, secondary |
 | `--muted` | #8b8b8b | meta text, labels (5.6:1; was #737373, which fails 4.5:1) |
@@ -67,7 +67,7 @@ Type: Geist Sans for words, Geist Mono for data (CVE IDs, scores, timestamps, ve
 
 Details: thin dark scrollbars (`--rule` thumb on `--bg`), a red-tinted selection (`--critical` at 32%), antialiased font smoothing.
 
-Layout: no boxes, no cards, no panel borders. Separate regions with background tone and 1px hairlines. 48px page gutter on desktop, 16px on mobile. Row height 64px. Radius: 4px on inputs and buttons, 3px on badges, 0 elsewhere.
+Layout: no boxes, no cards, no panel borders. Separate regions with background tone and 1px hairlines. 48px page gutter on desktop, 16px on mobile. Wire row height 68px. Radius: 4px on inputs and buttons, 3px on badges, 0 elsewhere.
 
 ## Layout
 
@@ -92,6 +92,7 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 - Rows with no CVE ID, score, bar or badge drop those columns: the headline runs to the age. Rows with data keep the aligned columns.
 - Headlines are one line (ellipsis) only on wide landscape screens (over 1600px); narrower and portrait screens wrap to at most two lines.
 - Vendor mark: `/public/vendors/{slug}.svg`, monochrome, `--muted`, 20px, no circle; fallback a Lucide category icon.
+- Headline color by importance (`headlineTier`, theme tokens `--headline-1/2/3`, which follow each theme's `--fg` / `--fg-2` / `--muted`): Critical, KEV or exploited rows in `--fg`; other rows with a CVE or a security category (vulnerability, breach, ransomware, advisory) in `--fg-2`; everything else (news, research, policy, Elsewhere) in `--muted`. Hover, keyboard focus and expanding bring any headline to `--fg`. Same on `/wire`, `/vendor/[slug]` and the Elsewhere tab.
 - Only the headline text links to the primary source (new tab, `noopener noreferrer`); a click anywhere else on the row, or Enter/Space when it has focus, toggles it.
 - Meta line: each source name links to that outlet's article (`--fg-2`, a quiet underline), one name per outlet (its newest), at most 4 then `+N`; then category, then `KEV` in red if listed, else `EXPLOITED` in red when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator `·`.
 - KEV due: within 7 days of CISA's due date the marker reads `KEV due in Nd` (all red at 2 days or less, `KEV due today` on the day), and `KEV overdue` for 7 days after it. Days count in UTC. These rows count toward the unseen `!`.

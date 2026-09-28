@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import cleanup, dedupe, events, jobstate, msrc
+from app import cleanup, dedupe, events, jobstate, msrc, rowtime
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Category, Cve, Health, Item, ItemCve, ItemSource, Source, Stream, SyncRun, Vendor
@@ -230,7 +230,10 @@ async def ingest_source(
             if _is_better_primary(link, source, current):
                 cluster.headline, cluster.primary_url = a.title, a.url
             cluster.sources.append(link)
-            cluster.last_event_at = min(cluster.last_event_at, a.published_at)
+            # Row time: the earliest of its news sources (app/rowtime.py); logged when it moves.
+            rowtime.set_row_time(
+                cluster, rowtime.news_time(s.published_at for s in cluster.sources), f"news source joined: {source.name}"
+            )
             if source.vendor_id is not None or cluster.vendor_id is None:
                 cluster.vendor_id = vendor_id or cluster.vendor_id
             if cluster.category == Category.news:

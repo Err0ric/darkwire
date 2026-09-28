@@ -45,7 +45,8 @@ async def apply_kev(session: AsyncSession) -> None:
 
 
 async def roll_up(session: AsyncSession) -> int:
-    """Copy CVE facts onto items. Returns items whose last_event_at moved."""
+    """Copy CVE facts onto items. Returns how many escalated (KEV added, score changed); the
+    row's time is never touched here."""
     links = (
         await session.execute(
             select(ItemCve.item_id, ItemCve.position, Cve)
@@ -73,7 +74,7 @@ async def roll_up(session: AsyncSession) -> int:
         ).all()
     }
 
-    resurfaced = 0
+    escalated = 0
     for item_id, cves in by_item.items():
         item = items[item_id]
         scored = [c for c in cves if c.base_score is not None]
@@ -87,17 +88,12 @@ async def roll_up(session: AsyncSession) -> int:
             status, url = PatchStatus.patched, m.url  # Microsoft shipped a KB for it
         url = url or (m.url if m else None)
 
-        # Resurface on real events only: KEV added after the row's last event, or a score change.
-        # The first score a row ever gets is not an event.
-        event, kind = item.last_event_at, item.last_event_kind
-        if kev_dates and not item.kev and max(kev_dates) > event:
-            event, kind = max(kev_dates), "kev_added"
-        if item.cvss is not None and primary.base_score is not None and primary.base_score != item.cvss:
-            changed_at = primary.last_modified_at or datetime.now(UTC)
-            if changed_at > event:
-                event, kind = changed_at, "cvss_changed"
-        if event != item.last_event_at:
-            resurfaced += 1
+        # KEV or score changes never move the row's time (app/rowtime.py: its news sources only).
+        # They still reach viewers as escalations through items.changed_at; counted for the log.
+        if (kev_dates and not item.kev) or (
+            item.cvss is not None and primary.base_score is not None and primary.base_score != item.cvss
+        ):
+            escalated += 1
 
         # Coverage override: when a headline or lead paragraph in the cluster says unpatched / no
         # patch, nothing in it is "patched". With no explicit vendor fix it is "no fix"; with one
@@ -114,9 +110,8 @@ async def roll_up(session: AsyncSession) -> int:
         item.epss = primary.epss
         item.patch_status = status or PatchStatus.unverified
         item.patch_url = url
-        item.last_event_at, item.last_event_kind = event, kind
     await session.commit()
-    return resurfaced
+    return escalated
 
 
 async def run_enrich() -> None:
@@ -142,7 +137,7 @@ async def run_enrich() -> None:
                 counts[name] = None
         try:
             await apply_kev(session)
-            counts["resurfaced"] = await roll_up(session)
+            counts["escalated"] = await roll_up(session)
         except Exception:
             log.exception("enrich: roll-up failed")
             await session.rollback()

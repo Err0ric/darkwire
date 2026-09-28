@@ -14,7 +14,7 @@ from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import jobstate
+from app import jobstate, rowtime
 from app.models import Item, ItemSource, Stream
 from app.tagging import ZERO_DAY, VendorMatcher
 
@@ -221,13 +221,14 @@ async def _merge(session: AsyncSession, o: dict, n: dict, n_pub: datetime) -> No
         """),
         {"o": oid, "n": nid},
     )
-    # A publish-only row moves to its earliest article, as ingest does; a real event on
-    # either row (KEV added, score change) is kept.
-    event, kind = o["last_event_at"], o["last_event_kind"]
-    if kind == "published" and n_pub < event:
-        event = n_pub
-    if n["last_event_kind"] not in (None, "published") and n["last_event_at"] > event:
-        event, kind = n["last_event_at"], n["last_event_kind"]
+    # Row time: the earliest of the merged row's news sources (app/rowtime.py), logged.
+    earliest = await session.scalar(text("SELECT min(published_at) FROM item_sources WHERE item_id = :o"), {"o": oid})
+    event, kind = earliest or min(o["last_event_at"], n_pub), rowtime.PUBLISHED
+    if event != o["last_event_at"] or o["last_event_kind"] != rowtime.PUBLISHED:
+        log.info(
+            "row time: item %s %s -> %s (merged item %s into it)",
+            oid, o["last_event_at"].isoformat(), event.isoformat(), nid,
+        )
 
     primary = (
         await session.execute(

@@ -157,7 +157,7 @@ Third-party status from each vendor's official source, polled every 3 minutes (`
 
 - Merged stream. A CVE with no article is a row with headline = CVE description, meta = `NVD · CVE published · no coverage yet`. When an article arrives, the row updates in place.
 - Dedupe: cluster by any shared CVE ID first; else normalized-title similarity > 0.85 within 48h, same vendor; or same vendor, a shared product alias and "zero-day" in both titles within 48h; or, when at least one row has no vendor (and vendors do not conflict), at least 3 shared distinctive words (stopwords and generic security terms dropped) of which one is a proper noun or product name, within 48h. One row per cluster. Primary source = vendor PSIRT if present, else earliest.
-- Sort by last significant event (published, KEV added, PoC published, CVSS changed), not first-seen.
+- Row time = the earliest `published_at` among the row's news sources (the articles in its cluster), never a CVE, KEV or NVD date (`api/app/rowtime.py`). It sorts the wire, groups it by day and drives the age. A sync moves it back only when a news source genuinely published earlier, and every change is logged (old, new, reason). KEV additions, score changes and new exploitation still surface a row as NEW in live updates (via `items.changed_at`), without rewriting its time. `python -m app.fix_row_times` (dry run; `--apply` only with sign-off) re-derives existing rows.
 - Vendor tagging: `vendors(slug, name, aliases[], domain, logo_path)`. Match aliases, case-insensitive, word boundaries. A title match wins (earliest, then longest alias). With no title match, the first paragraph must mention the vendor 2+ times or the article stays untagged. The vendor name is not an alias unless listed, so ambiguous names use qualified aliases ("Intel CPU", "Arm Cortex", never bare "Intel" or "Arm"). A vendor feed tags its own vendor. 56 vendors, list in `api/app/seed.py`. Nightly job lists untagged articles.
 - Category: classify from the title first; the first paragraph only if the title matches nothing. A CVE with no keyword is vulnerability. Otherwise default to news, never guess breach.
 - Skip at ingest: ads (title, URL or first paragraph says sponsored, sponsored by, partner content, webinar, virtual event) and anything dated more than 1 hour in the future. The ad count per run is in `/status`. Some THN sponsored posts carry no marker in the feed and still get through.
@@ -288,6 +288,6 @@ Purple, indigo, gradients, glassmorphism, glow, blobs, particles, rounded-2xl, I
 
 - Read `/design-refs/*.png` before touching any page.
 - Screenshot your work at 1440 and 390 with Playwright and compare before saying done.
-- `npm run lint`, `npm test` and `npm run build` clean before every commit (in `/web`). `npm run test:e2e` (Playwright, against a running site; `BASE_URL` to target production) checks that malicious URL and storage values run nothing.
+- `npm run lint`, `npm test` and `npm run build` clean before every commit (in `/web`); API tests with `python -m unittest discover -s tests` (in `/api`). `npm run test:e2e` (Playwright, against a running site; `BASE_URL` to target production) checks that malicious URL and storage values run nothing.
 - Real RSS from the first commit. No mock data in the repo.
 - Small commits, one page or one component each.

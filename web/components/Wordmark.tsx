@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, type CSSProperties } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, type CSSProperties } from "react"
 import type React from "react"
 import { cn } from "cn"
 
@@ -74,30 +74,26 @@ type Phase = "idle" | "fadeout" | "pause" | "typing" | "blink" | "done"
 
 /** Clip the red copy of the "i" at the x-height: measure the baseline (a zero-height
  * inline-block's bottom edge) and the copy's box, and keep only what is above clipAbove.
- * Re-runs on resize and when fonts load. Server render: an em estimate. */
-function useTittleClip(anchor: React.RefObject<HTMLSpanElement | null>, layer: React.RefObject<HTMLSpanElement | null>) {
-  useEffect(() => {
-    const a = anchor.current
-    const l = layer.current
-    if (!a || !l) return
-    const place = () => {
-      const fs = parseFloat(getComputedStyle(a).fontSize)
-      if (!fs) return
-      const base = a.getBoundingClientRect().bottom
-      const box = l.getBoundingClientRect()
-      const keep = Math.max(0, base - WORDMARK.tittle.clipAbove * fs - box.top)
-      l.style.clipPath = `inset(0 0 ${Math.max(0, box.height - keep)}px 0)`
-    }
-    place()
-    const ro = new ResizeObserver(place)
-    ro.observe(a.parentElement ?? a)
-    document.fonts?.ready.then(place)
-    window.addEventListener("resize", place)
-    return () => {
-      ro.disconnect()
-      window.removeEventListener("resize", place)
-    }
-  }, [anchor, layer])
+ * Re-runs on resize and when fonts load; returns the cleanup. Server render: an em estimate. */
+function watchTittle(a: HTMLSpanElement | null, l: HTMLSpanElement | null): (() => void) | undefined {
+  if (!a || !l) return
+  const place = () => {
+    const fs = parseFloat(getComputedStyle(a).fontSize)
+    if (!fs) return
+    const base = a.getBoundingClientRect().bottom
+    const box = l.getBoundingClientRect()
+    const keep = Math.max(0, base - WORDMARK.tittle.clipAbove * fs - box.top)
+    l.style.clipPath = `inset(0 0 ${Math.max(0, box.height - keep)}px 0)`
+  }
+  place()
+  const ro = new ResizeObserver(place)
+  ro.observe(a.parentElement ?? a)
+  document.fonts?.ready.then(place)
+  window.addEventListener("resize", place)
+  return () => {
+    ro.disconnect()
+    window.removeEventListener("resize", place)
+  }
 }
 
 /**
@@ -110,17 +106,20 @@ function useTittleClip(anchor: React.RefObject<HTMLSpanElement | null>, layer: R
 export function Wordmark({ state, className, techClassName }: { state: SyncState | null; className?: string; techClassName?: string }) {
   const square = useRef<HTMLSpanElement>(null)
   const anchor = useRef<HTMLSpanElement>(null)
+  useEffect(() => watchTittle(anchor.current, square.current), [])
   const overlay = useRef<HTMLSpanElement>(null)
   const cursor = useRef<HTMLSpanElement>(null)
   const chars = useRef<(HTMLSpanElement | null)[]>([])
   const bins = useRef<(HTMLSpanElement | null)[]>([])
   const frame = useRef(0)
+  const fallback = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const phase = useRef<Phase>("idle")
   const played = useRef(false)
   const queued = useRef(false)
-  useTittleClip(anchor, square)
   const stateRef = useRef(state)
-  stateRef.current = state
+  useLayoutEffect(() => {
+    stateRef.current = state
+  }, [state])
 
   const text = WORDMARK.tech.text
   const T = WORDMARK.typing
@@ -129,6 +128,7 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
   /** Everything shown, nothing moving: the settled mark. */
   const settle = useCallback((showTech: boolean) => {
     cancelAnimationFrame(frame.current)
+    clearTimeout(fallback.current)
     phase.current = "done"
     if (overlay.current) overlay.current.style.opacity = showTech ? "1" : "0"
     chars.current.forEach((c) => {
@@ -155,6 +155,11 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
       const blinkEnd = typeEnd + B.count * B.durationMs
       let start = 0
       let reset = !rerun
+      // Frames can stop mid-animation (a background or occluded window) and leave the cursor up
+      // until they resume. A timer, which keeps running there, settles the mark when the
+      // animation should have ended, so the cursor never stays.
+      clearTimeout(fallback.current)
+      fallback.current = setTimeout(() => settle(true), blinkEnd + 400)
 
       const hideChars = () => {
         chars.current.forEach((c) => c && (c.style.display = "none"))
@@ -268,6 +273,7 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
       window.removeEventListener(NEW_ROWS_EVENT, onNew)
       document.removeEventListener("visibilitychange", onVisible)
       cancelAnimationFrame(frame.current)
+      clearTimeout(fallback.current)
     }
   }, [play])
 

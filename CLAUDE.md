@@ -57,6 +57,7 @@ Palette. Use CSS variables, never hardcode in components.
 | `--muted` | #8b8b8b | meta text, labels (5.6:1; was #737373, which fails 4.5:1) |
 | `--dim` | #525252 | lines, borders and non-text marks only, never text |
 | `--dim-text` | #7d7d7d | tertiary text: timestamps in rail, separators, pinned (4.66:1 on `--bg` and `--surface`) |
+| `--row-hover` | #111111 | wire row hover (each theme sets its own) |
 | `--accent` | #b91c1c | outlines, HIGH, the wordmark's i-dot when stale (50%) |
 | `--critical` | #dc2626 | CRITICAL fill, outlines, focus ring |
 | `--critical-text` | #e14343 | red text: KEV, EXPLOITED, arrows, errors (4.6:1) |
@@ -67,7 +68,7 @@ Type: Geist Sans for words, Geist Mono for data (CVE IDs, scores, timestamps, ve
 
 Details: thin dark scrollbars (`--rule` thumb on `--bg`), a red-tinted selection (`--critical` at 32%), antialiased font smoothing.
 
-Layout: no boxes, no cards, no panel borders. Separate regions with background tone and 1px hairlines. 48px page gutter on desktop, 16px on mobile. Wire row height 68px. Radius: 4px on inputs and buttons, 3px on badges, 0 elsewhere.
+Layout: no boxes, no cards, no panel borders. Separate regions with background tone and 1px hairlines. 48px page gutter on desktop, 16px on mobile. Wire rows: 15px padding above and below, 56px minimum height, 4px from headline to meta, so the gap between rows is clearly larger than the gap inside one. Radius: 4px on inputs and buttons, 3px on badges, 0 elsewhere.
 
 ## Layout
 
@@ -90,11 +91,10 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 
 - Phones: the age ends the meta line; the score / bar / badge line shows only when the row has one.
 - Rows with no CVE ID, score, bar or badge drop those columns: the headline runs to the age. Rows with data keep the aligned columns.
-- Headlines are one line (ellipsis) only on wide landscape screens (over 1600px); narrower and portrait screens wrap to at most two lines.
+- Headline: `--fg`, 15px/500, line-height 1.35, at most 72ch wide, wrapping to at most two lines (ellipsis). Icon column and text column keep one hard left edge on every row (marks left-aligned in a fixed 20px column).
 - Vendor mark: `/public/vendors/{slug}.svg`, monochrome, `--muted`, 20px, no circle; fallback a Lucide category icon.
-- Headline color by importance (`headlineTier`, theme tokens `--headline-1/2/3`, which follow each theme's `--fg` / `--fg-2` / `--muted`): Critical, KEV or exploited rows in `--fg`; other rows with a CVE or a security category (vulnerability, breach, ransomware, advisory) in `--fg-2`; everything else (news, research, policy, Elsewhere) in `--muted`. Hover, keyboard focus and expanding bring any headline to `--fg`. Same on `/wire`, `/vendor/[slug]` and the Elsewhere tab.
 - Only the headline text links to the primary source (new tab, `noopener noreferrer`); a click anywhere else on the row, or Enter/Space when it has focus, toggles it.
-- Meta line: each source name links to that outlet's article (`--fg-2`, a quiet underline), one name per outlet (its newest), at most 4 then `+N`; then category, then `KEV` in red if listed, else `EXPLOITED` in red when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator `·`.
+- Meta line: 12px Geist Mono in `--muted`, one line. Each source name links to that outlet's article (a quiet underline), one name per outlet (its newest), at most 4 then `+N`; then category, then `KEV` in red if listed, else `EXPLOITED` in red when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator `·`.
 - KEV due: within 7 days of CISA's due date the marker reads `KEV due in Nd` (all red at 2 days or less, `KEV due today` on the day), and `KEV overdue` for 7 days after it. Days count in UTC. These rows count toward the unseen `!`.
 - Old CVEs: published more than 90 days ago, not in KEV, and no headline about exploitation: the score, bar and badge dim. Such rows are left out of severity totals, pinning and the unseen `!`.
 - Score: Geist Mono 15px/500, `--fg` for 7.0+, `--fg-2` below. Bar: 10 cells, filled = round(CVSS), colored by severity (Critical `--critical`, High `--accent`, Medium #6b6b6b), empty cells `--rule`; unscored rows keep the empty slot so columns align.
@@ -151,7 +151,7 @@ Third-party status from each vendor's official source, polled every 3 minutes (`
 - Last 7 days: Critical, High, Medium, Low bars; a row with a count filters the wire to that severity (`?severity=`), old CVEs excluded so the list matches the count. The header's 24-hour counts filter with `&window=24h`.
 - Footer: "Sources: NVD, CISA KEV, vendor PSIRTs, N feeds. All healthy. Rows update every minute." (or "N failing.", plus "Summaries paused.").
 - Header: the counts line ("Last 24h: N critical / N high / N articles · N added to KEV this week") and the clock (HH:MM:SS, zone and UTC).
-- Day separators, one per local day of `last_event_at`: "Today", "Yesterday", then "Fri Sep 25", with the date and row count; sticky under the tabs. Not rows: no dot, not counted by "N new ↑", not `<article>`.
+- Day separators, one per local day of `last_event_at`: "Today", "Yesterday", then "Fri Sep 25", with the date and row count; 28px above, 10px around the label; sticky under the tabs. Not rows: no dot, not counted by "N new ↑", not `<article>`.
 
 ## Data rules
 
@@ -236,7 +236,7 @@ Generated by `web/scripts/make-og.py` (`npm run og`). The favicon and app icons 
 - New rows fade in from the top and get a small red dot left of the headline (in the gutter, so nothing shifts): three pulses, then solid, gone at 10 minutes; expanding the row clears it. Rows that arrive while the tab is hidden pulse on return. More than 5 at once: only the top 5 pulse. No dots on first load. Reduced motion: a solid dot.
 - Bar cells fill left to right on first paint and for new rows.
 - Landing: the ticker's scramble swap (encode out, decode in) and the wordmark's typing are the only text animations; the trace pulse and the log's typing are part of the activity block. Reduced motion: crossfade, static trace and log.
-- Hover: rows and rail items take a `--surface` background; nothing else. Focus: a 1px `--critical` ring on `:focus-visible` only, set globally.
+- Hover: wire rows take `--row-hover` (no border, no radius); other rows and rail items `--surface`; nothing else. Focus: a 1px `--critical` ring on `:focus-visible` only, set globally.
 - Nothing else moves. No hover lifts, no bounce, no parallax, no background effects.
 
 ## Live updates

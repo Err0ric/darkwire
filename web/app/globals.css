@@ -4,7 +4,6 @@
 
 /* Feed headlines stay on one line only on wide landscape screens; narrower and portrait
    screens (1200-1600px wide, 1080x1920, 1440x2560) wrap them to at most two. */
-@custom-variant one-line-rows (@media (min-width: 1601px) and (orientation: landscape));
 /* Set by the nav while the page is scrolled (its bottom rule shows), and by the wire while its
    tabs row is stuck under the condensed bar. */
 @custom-variant scrolled (html[data-scrolled] &);
@@ -20,12 +19,8 @@
   --fg: #f5f5f5;
   --fg-2: #a3a3a3;
   --muted: #8b8b8b;
-  /* Wire headline tiers: Critical / KEV / exploited, other security rows, everything else.
-     References, so every theme follows through its own --fg / --fg-2 / --muted; a theme can
-     override these three if it needs a different split. */
-  --headline-1: var(--fg);
-  --headline-2: var(--fg-2);
-  --headline-3: var(--muted);
+  /* Wire row hover: a step above --bg (about 3% of --fg), no border or radius. */
+  --row-hover: #111111;
   --dim: #525252; /* lines, borders and non-text marks only */
   --dim-text: #7d7d7d; /* tertiary text, >= 4.5:1 on --bg and --surface */
   --accent: #b91c1c;
@@ -60,6 +55,7 @@
 html[data-theme="amber"] {
   --bg: #0b0906;
   --surface: #110e09;
+  --row-hover: #120f0a;
   --hairline: #1a150d;
   --rule: #271f12;
   --fg: #e8c690;
@@ -68,7 +64,7 @@ html[data-theme="amber"] {
   --dim: #5e4f37;
   --dim-text: #907954;
   --accent: #c2261d;
-  --critical: #ef2d21;
+  --critical: #e61d11; /* fill: white CRITICAL badge text clears 4.5:1 on it */
   --critical-text: #ef2d21;
   --medium: #7a6645;
   --outline-medium: #3d3220;
@@ -85,6 +81,7 @@ html[data-theme="amber"] {
 html[data-theme="phosphor"] {
   --bg: #050a06;
   --surface: #08100a;
+  --row-hover: #0a110b;
   --hairline: #0e1a11;
   --rule: #15271a;
   --fg: #a9e4b4;
@@ -93,7 +90,7 @@ html[data-theme="phosphor"] {
   --dim: #3b6345;
   --dim-text: #51885f;
   --accent: #c62828;
-  --critical: #f03030;
+  --critical: #e91111; /* fill: white CRITICAL badge text clears 4.5:1 on it */
   --critical-text: #f03030;
   --medium: #4b7a56;
   --outline-medium: #22412a;
@@ -112,6 +109,7 @@ html[data-theme="phosphor"] {
 html[data-theme="high-contrast"] {
   --bg: #000000;
   --surface: #0d0d0d;
+  --row-hover: #121212;
   --hairline: #3a3a3a;
   --rule: #595959;
   --fg: #ffffff;
@@ -142,9 +140,7 @@ html[data-theme="high-contrast"] {
   --color-fg: var(--fg);
   --color-fg-2: var(--fg-2);
   --color-muted: var(--muted);
-  --color-headline-1: var(--headline-1);
-  --color-headline-2: var(--headline-2);
-  --color-headline-3: var(--headline-3);
+  --color-row-hover: var(--row-hover);
   --color-dim: var(--dim);
   --color-dim-text: var(--dim-text);
   --color-accent: var(--accent);

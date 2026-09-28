@@ -30,7 +30,7 @@ export function SkeletonFeedRows({ count = 12, className }: { count?: number; cl
   return (
     <div className={className} aria-hidden>
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="flex h-[68px] items-center gap-5 border-b border-rule">
+        <div key={i} className="flex h-[70px] items-center gap-5 border-b border-rule">
           <Bar className="size-5 shrink-0" />
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             <Bar className={cn("h-3.5", widths[i % widths.length])} />

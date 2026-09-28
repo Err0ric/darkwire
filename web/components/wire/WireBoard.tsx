@@ -590,14 +590,14 @@ export function WireBoard({ initial }: { initial: WireData }) {
                     <section
                       key={g.key}
                       aria-label={g.name || undefined}
-                      className={cn("[&>article:last-child]:border-b-0", gi > 0 && "mt-8")}
+                      className={cn("[&>article:last-child]:border-b-0", gi > 0 && "mt-7")}
                     >
                       {g.name && (
                         <div
                           role="separator"
                           aria-label={`${g.name}, ${g.items.length} rows`}
                           className={cn(
-                            "sticky top-(--nav-h) z-[5] flex h-9 items-center border-t bg-bg text-[13px] min-[900px]:top-[calc(var(--bar-h)+var(--tabs-h))]",
+                            "sticky top-(--nav-h) z-[5] flex items-center border-t bg-bg py-2.5 text-[13px] leading-5 min-[900px]:top-[calc(var(--bar-h)+var(--tabs-h))]",
                             // The tabs row's rule is already right above the first label.
                             gi === 0 ? "border-transparent" : "border-rule",
                           )}

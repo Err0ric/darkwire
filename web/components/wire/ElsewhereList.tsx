@@ -29,11 +29,11 @@ export function ElsewhereList({
       {items.map((e) => {
         const dot = dots.get(e.id)
         return (
-          <article key={e.id} id={`elsewhere-${e.id}`} className="group/row border-b border-rule hover:bg-surface">
-            <div className="flex items-start py-[14px] md:min-h-[68px] md:items-center md:py-3">
+          <article key={e.id} id={`elsewhere-${e.id}`} className="border-b border-rule hover:bg-row-hover">
+            <div className="flex min-h-14 items-start py-[15px] md:items-center">
               <span
                 aria-hidden
-                className="mt-0.5 mr-5 flex size-5 shrink-0 items-center justify-center text-muted md:mt-0"
+                className="mt-0.5 mr-3 flex size-5 shrink-0 items-center justify-start text-muted md:mt-0 md:mr-5"
               >
                 <Newspaper className="size-4" strokeWidth={1.75} />
               </span>
@@ -43,11 +43,11 @@ export function ElsewhereList({
                   href={e.url}
                   {...EXTERNAL}
                   onClick={() => onSeen(e.id)}
-                  className="max-md:tap line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] text-headline-3 outline-none group-hover/row:text-fg focus-visible:text-fg focus-visible:underline"
+                  className="max-md:tap line-clamp-2 max-w-[72ch] text-[15px] leading-[1.35] font-medium tracking-[-0.01em] text-fg outline-none focus-visible:underline"
                 >
                   {e.headline}
                 </a>
-                <p className="mt-0.5 flex items-baseline text-xs leading-4 text-muted">
+                <p className="mt-1 flex items-baseline font-mono text-xs leading-4 whitespace-nowrap text-muted">
                   <span className="min-w-0 truncate">
                     <span className="text-fg-2">{e.source}</span>
                     {e.topic && (

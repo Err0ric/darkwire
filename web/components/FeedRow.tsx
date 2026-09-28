@@ -35,17 +35,6 @@ const CATEGORY_ICON: Record<Category, LucideIcon> = {
 
 export type Detail = { state: "idle" | "loading" | "error" } | { state: "ready"; item: ItemDetail }
 
-const SECURITY_CATEGORIES = new Set(["vulnerability", "breach", "ransomware", "advisory"])
-
-/** Headline tier: Critical, KEV or exploited rows in --fg; other rows with a CVE or a security
- * category (vulnerability, breach, ransomware, advisory) in --fg-2; everything else (news,
- * research, policy) in --muted. Old CVEs (stale) are not Critical here, as in the totals. */
-export function headlineTier(item: FeedItem): string {
-  if (!item.stale && (item.severity === "critical" || item.kev || item.exploited)) return "text-headline-1"
-  if (item.cve_id || SECURITY_CATEGORIES.has(item.category)) return "text-headline-2"
-  return "text-headline-3"
-}
-
 export function FeedRow({
   item,
   detail: initialDetail,
@@ -124,7 +113,8 @@ export function FeedRow({
         tabIndex={canExpand ? 0 : undefined}
         aria-label={canExpand ? `${item.headline}. ${expanded ? "Collapse" : "Expand"} details` : undefined}
         className={cn(
-          "group/row flex items-start py-[14px] outline-offset-[-1px] hover:bg-surface md:min-h-[68px] md:items-center md:py-3 one-line-rows:h-[68px] one-line-rows:py-0",
+          // Rhythm: 15px above and below, 4px from headline to meta, so rows read as units.
+          "flex min-h-14 items-start py-[15px] outline-offset-[-1px] hover:bg-row-hover md:items-center",
           canExpand && "cursor-pointer",
         )}
       >
@@ -133,15 +123,7 @@ export function FeedRow({
         <div className="relative min-w-0 flex-1 md:mr-[22px]">
           {dot && <NewDot state={dot} className="top-[7px] -left-[9px] md:-left-[13px]" />}
           {/* Only the headline text is the link (inline), so the space beside it toggles the row. */}
-          {/* The headline's color says how much the row matters (headlineTier); hovering or
-              focusing the row, or expanding it, brings it to full --fg. */}
-          <p
-            className={cn(
-              "line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] one-line-rows:block one-line-rows:truncate",
-              expanded ? "text-fg" : headlineTier(item),
-              "group-hover/row:text-fg group-focus-visible/row:text-fg has-[a:focus-visible]:text-fg",
-            )}
-          >
+          <p className="line-clamp-2 max-w-[72ch] text-[15px] leading-[1.35] font-medium tracking-[-0.01em] text-fg">
             <a
               href={item.primary_url}
               {...EXTERNAL}
@@ -212,7 +194,8 @@ export function FeedRow({
 }
 
 function VendorMark({ item, inStack }: { item: FeedItem; inStack: boolean }) {
-  const box = cn("mr-3 flex h-5 w-5 shrink-0 items-center justify-center md:mr-5", inStack ? "text-fg" : "text-muted")
+  // A fixed 20px column, marks aligned to its left: one hard edge for icons, one for text.
+  const box = cn("mr-3 flex h-5 w-5 shrink-0 items-center justify-start md:mr-5", inStack ? "text-fg" : "text-muted")
   if (item.vendor) {
     return (
       <span className={box} title={item.vendor.name}>
@@ -255,7 +238,7 @@ function MetaLine({
   } else {
     for (const s of item.sources.slice(0, MAX_SOURCES)) {
       parts.push(
-        <a key={s.url} href={s.url} {...EXTERNAL} className="max-md:tap-down text-fg-2 underline decoration-outline-medium underline-offset-[3px] outline-none hover:text-fg hover:decoration-fg-2 focus-visible:text-fg">
+        <a key={s.url} href={s.url} {...EXTERNAL} className="max-md:tap-down underline decoration-outline-medium underline-offset-[3px] outline-none hover:text-fg-2 hover:decoration-fg-2 focus-visible:text-fg-2">
           {s.name}
         </a>,
       )
@@ -276,7 +259,7 @@ function MetaLine({
   if (inStack) parts.push(<span key="stack" className="text-dim-text">your stack</span>)
 
   return (
-    <p className="mt-0.5 flex items-baseline text-xs leading-4 text-muted">
+    <p className="mt-1 flex items-baseline font-mono text-xs leading-4 whitespace-nowrap text-muted">
       <span className="min-w-0 truncate">
         {parts.map((p, i) => (
           <span key={i}>

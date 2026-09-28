@@ -304,6 +304,6 @@ Purple, indigo, gradients, glassmorphism, glow, blobs, particles, rounded-2xl, I
 
 - Read `/design-refs/*.png` before touching any page.
 - Screenshot your work at 1440 and 390 with Playwright and compare before saying done.
-- `npm run build` clean before every commit.
+- `npm run lint` and `npm run build` clean before every commit (in `/web`).
 - Real RSS from the first commit. No mock data in the repo.
 - Small commits, one page or one component each.

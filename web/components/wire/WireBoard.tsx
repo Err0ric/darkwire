@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { cn } from "cn"
 
@@ -56,6 +56,8 @@ function syncUrl(f: Filters) {
   window.history.replaceState(null, "", url.pathname + url.search.replace(/%2C/gi, ",") + url.hash)
 }
 
+const noSubscribe = () => () => {}
+
 export function WireBoard({ initial }: { initial: WireData }) {
   const [filters, setFilters] = useState(initial.filters)
   const [query, setQuery] = useState(initial.filters.q)
@@ -69,7 +71,6 @@ export function WireBoard({ initial }: { initial: WireData }) {
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(initial.error)
   const [stackCritical, setStackCritical] = useState(initial.stackCritical)
-  const [services, setServices] = useState(initial.services)
   const prefs = usePrefs()
   // Until the provider has read the URL, the server's stack is the truth.
   const stack = prefs.ready ? prefs.stack : initial.stack
@@ -96,10 +97,14 @@ export function WireBoard({ initial }: { initial: WireData }) {
   // is published as --tabs-h, so the day labels and "N new" stick right under it.
   const stuckMarker = useRef<HTMLDivElement>(null)
   const tabsRow = useRef<HTMLDivElement>(null)
-  const [slot, setSlot] = useState<HTMLElement | null>(null)
+  // The nav's slot for the compact counts: null on the server and while hydrating, the element after.
+  const slot = useSyncExternalStore(
+    noSubscribe,
+    () => document.getElementById(CONDENSED_SLOT),
+    () => null,
+  )
   useEffect(() => {
     const root = document.documentElement
-    setSlot(document.getElementById(CONDENSED_SLOT))
     const marker = stuckMarker.current
     const tabs = tabsRow.current
     if (!marker || !tabs) return
@@ -197,13 +202,13 @@ export function WireBoard({ initial }: { initial: WireData }) {
   // unseen indicator like a Critical row, but only one the viewer watches: their ?services=
   // picks, else the API's default set.
   const live = useLiveServices("all", initial.services)
+  const services = live ?? initial.services
   const watched = (prefs.services.length ? prefs.services : (services?.defaults ?? [])).join(",")
   const majors = useRef(
     new Set((initial.services?.services ?? []).filter((s) => s.state === "major").map((s) => s.slug)),
   )
   useEffect(() => {
     if (!live) return
-    setServices(live)
     const nowMajor = new Set(live.services.filter((s) => s.state === "major").map((s) => s.slug))
     const mine = watched.split(",")
     const fresh = [...nowMajor].filter((s) => !majors.current.has(s) && mine.includes(s))

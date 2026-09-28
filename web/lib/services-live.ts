@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useSyncExternalStore } from "react"
 
 import { getServices, type ServicesOut } from "@/lib/api"
 
@@ -15,13 +15,13 @@ let data: ServicesOut | null = null
 let at = 0
 let inflight = false
 let timer: ReturnType<typeof setInterval> | undefined
-const subs = new Set<(d: ServicesOut) => void>()
+const subs = new Set<() => void>()
 
 function publish(k: string, d: ServicesOut) {
   if (k !== key) return
   data = d
   at = Date.now()
-  subs.forEach((fn) => fn(d))
+  subs.forEach((fn) => fn())
 }
 
 function load() {
@@ -48,28 +48,32 @@ function use(k: string) {
   if (Date.now() - at > POLL_MS) load()
 }
 
-/** Live services for the ?services= set `k` (null until preferences are read). `initial` is
- * server-rendered data for that same set; it seeds the store so nothing refetches at once. */
+/** Live services for the API slugs `k` (null: not yet). `initial` is server-rendered data for
+ * that same set; it seeds the store so nothing refetches at once. */
 export function useLiveServices(k: string | null, initial: ServicesOut | null = null): ServicesOut | null {
-  const [state, setState] = useState<ServicesOut | null>(initial)
-  useEffect(() => {
-    if (k === null) return
-    if (initial && (k !== key || at === 0)) {
-      key = k
-      publish(k, initial)
-    } else if (k === key && data) {
-      setState(data)
-    }
-    const fn = (d: ServicesOut) => setState(d)
-    subs.add(fn)
-    use(k)
-    return () => {
-      subs.delete(fn)
-      if (!subs.size) {
-        clearInterval(timer)
-        timer = undefined
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      if (k === null) return () => {}
+      if (initial && (k !== key || at === 0)) {
+        key = k
+        data = initial
+        at = Date.now()
       }
-    }
-  }, [k, initial])
-  return state
+      subs.add(onChange)
+      use(k)
+      return () => {
+        subs.delete(onChange)
+        if (!subs.size) {
+          clearInterval(timer)
+          timer = undefined
+        }
+      }
+    },
+    [k, initial],
+  )
+  return useSyncExternalStore(
+    subscribe,
+    () => (k !== null && key === k && data) || initial,
+    () => initial,
+  )
 }

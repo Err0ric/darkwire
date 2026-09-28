@@ -134,6 +134,7 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
     chars.current.forEach((c) => {
       if (!c) return
       c.style.display = "inline-block"
+      c.style.position = ""
       c.style.opacity = "1"
     })
     bins.current.forEach((b) => b && (b.style.opacity = "0"))
@@ -162,7 +163,7 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
       fallback.current = setTimeout(() => settle(true), blinkEnd + 400)
 
       const hideChars = () => {
-        chars.current.forEach((c) => c && (c.style.display = "none"))
+        chars.current.forEach((c) => c && ((c.style.display = "none"), (c.style.position = "")))
         bins.current.forEach((b) => b && (b.style.opacity = "0"))
       }
       if (!rerun) {
@@ -199,6 +200,11 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
               return
             }
             c.style.display = "inline-block"
+            // A character still resolving (binary digit, then fading in) is taken out of the
+            // flow: it draws at its own spot, over the cursor, and the cursor stays right after
+            // the last typed character (".t▮", ".te▮"). Once resolved it joins the text and the
+            // cursor steps on. The reserved width never changes.
+            c.style.position = local < T.charMs ? "absolute" : ""
             const fade = Math.min(1, Math.max(0, (local - (T.charMs - T.fadeMs)) / T.fadeMs))
             b.textContent = local < T.flipMs ? digits[i][0] : digits[i][1]
             b.style.opacity = String(1 - fade)
@@ -207,7 +213,7 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
         } else if (e < blinkEnd) {
           if (phase.current !== "blink") {
             phase.current = "blink"
-            chars.current.forEach((c) => c && ((c.style.display = "inline-block"), (c.style.opacity = "1")))
+            chars.current.forEach((c) => c && ((c.style.display = "inline-block"), (c.style.position = ""), (c.style.opacity = "1")))
             bins.current.forEach((b) => b && (b.style.opacity = "0"))
           }
           // One value drives both, so the cursor and the red dot blink in perfect sync.

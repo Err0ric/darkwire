@@ -153,9 +153,9 @@ export function Nav() {
 
   const status = (utc: boolean, main: boolean) => (
     // main: the nav proper (its Synced line is the live region); else the condensed bar, which
-    // drops Synced under 1400px and the services status under 1200px to fit one line.
+    // drops Synced under 1400px to fit one line.
     <div className="ml-auto flex shrink-0 items-center gap-3 pl-5 sm:gap-4">
-      <NavServices className={cn("mr-1", !main && "max-[1199px]:hidden!")} />
+      <NavServices />
       {/* CVEs is a quiet link at the start of the status group. On / and /wire (their own
           clocks show UTC) there is no UTC slot, so CVEs sits right next to "Synced". */}
       <Link

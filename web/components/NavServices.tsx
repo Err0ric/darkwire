@@ -1,51 +1,63 @@
 "use client"
 
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { cn } from "cn"
 
 import { byImpact, isImpacted } from "@/components/ServiceBits"
+import { Tooltip } from "@/components/Tooltip"
 import { usePrefs } from "@/lib/prefs"
 import { useLiveServices } from "@/lib/services-live"
 
-/** The nav's services status, from the same watched set and poll as the wire's rail block:
- * "All services operational" (quiet), "Cloudflare degraded" / "3 services degraded" (amber
- * dot), or the worst major outage first, "AWS major outage +1" (red dot). Links to /services.
- * Hidden under 900px; the rail and /services still show it. */
-export function NavServices({ className }: { className?: string }) {
+/** The nav's "Services" link (styled like CVEs), from the same watched set and poll as the
+ * wire's rail block. A dot before the word only when something is wrong: amber when any
+ * service is degraded, red when any has a major outage (worst wins). Hover and focus show the
+ * detail at once ("Cloudflare degraded", "AWS major outage +1", "All services operational");
+ * the dot's aria-label says the same. */
+export function NavServices() {
+  const pathname = usePathname()
   const prefs = usePrefs()
   const data = useLiveServices(prefs.ready ? prefs.services.join(",") : null)
-  if (!data) return null
-  const list = [...data.services].sort(byImpact)
-  const impacted = list.filter(isImpacted)
-  if (!impacted.length && !list.some((s) => s.state === "operational")) return null
+  const active = pathname === "/services"
 
+  const impacted = data ? [...data.services].sort(byImpact).filter(isImpacted) : []
   const worst = impacted[0]
   const more = impacted.length - 1
-  const label = !worst
-    ? "All services operational"
-    : worst.state === "major"
-      ? `${worst.name} major outage${more ? ` +${more}` : ""}`
-      : impacted.length === 1
-        ? `${worst.name} degraded`
-        : `${impacted.length} services degraded`
+  const detail = !data
+    ? null
+    : !worst
+      ? "All services operational"
+      : worst.state === "major"
+        ? `${worst.name} major outage${more ? ` +${more}` : ""}`
+        : impacted.length === 1
+          ? `${worst.name} degraded`
+          : `${impacted.length} services degraded`
 
-  return (
+  const link = (props: object = {}) => (
     <Link
       href={`/services${prefs.query()}`}
+      aria-current={active ? "page" : undefined}
+      {...props}
       className={cn(
-        "hidden items-center gap-2 text-[15px] leading-none whitespace-nowrap outline-none min-[900px]:flex",
-        worst ? "text-fg-2 hover:text-fg focus-visible:text-fg" : "text-muted hover:text-fg-2 focus-visible:text-fg-2",
-        className,
+        "max-md:tap flex items-center gap-1.5 text-[13px] leading-none outline-none focus-visible:text-fg sm:text-[15px]",
+        active ? "text-fg" : "text-muted hover:text-fg-2",
       )}
     >
-      <span
-        aria-hidden
-        className={cn(
-          "size-1.5 shrink-0 rounded-full",
-          !worst ? "bg-muted" : worst.state === "major" ? "bg-critical" : "bg-degraded",
-        )}
-      />
-      {label}
+      {worst && (
+        <span
+          role="img"
+          aria-label={detail ?? undefined}
+          className={cn("size-1.5 shrink-0 rounded-full", worst.state === "major" ? "bg-critical" : "bg-degraded")}
+        />
+      )}
+      Services
     </Link>
+  )
+
+  if (!detail) return link()
+  return (
+    <Tooltip label={detail} side="bottom">
+      {(props) => link(props)}
+    </Tooltip>
   )
 }

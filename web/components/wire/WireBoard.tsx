@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { cn } from "cn"
 
 import { FeedRow } from "@/components/FeedRow"
@@ -18,13 +18,13 @@ import {
   getElsewhere,
   getFeed,
   getKev,
-  getServices,
   getStatus,
   getVendors,
   type FeedItem,
   type Severity,
 } from "@/lib/api"
 import { useDots } from "@/lib/dots"
+import { useLiveServices } from "@/lib/services-live"
 import { useStickyTop } from "@/lib/sticky"
 import { usePrefs } from "@/lib/prefs"
 import { isImportant } from "@/lib/kev"
@@ -39,7 +39,6 @@ const RAIL_POLL_MS = 15 * 60 * 1000
 // Scrolled further than this: new rows wait behind the "N new ↑" button instead of shifting the page.
 const SCROLLED_PX = 160
 // The API reads status pages every 3 minutes.
-const SERVICES_POLL_MS = 3 * 60 * 1000
 const SEARCH_DEBOUNCE_MS = 250
 const ALL_VENDORS = "all"
 
@@ -162,33 +161,27 @@ export function WireBoard({ initial }: { initial: WireData }) {
     }
   }
 
-  // Services: every 3 minutes, and at once when a remembered ?services= set differs from the
-  // server's. A service newly in a major outage fires the unseen indicator like a Critical row.
+  // Services: the shared 3-minute poll (lib/services-live.ts, also read by the nav). The
+  // server's data seeds it when it is for the same ?services= set; a remembered set that differs
+  // is fetched at once. A service newly in a major outage fires the unseen indicator like a
+  // Critical row.
   const watched = prefs.ready ? prefs.services.join(",") : null
+  const serverSet = useMemo(() => {
+    const listed = (initial.services?.services ?? []).map((s) => s.slug).join(",")
+    return listed === (initial.services?.defaults ?? []).join(",") ? "" : listed
+  }, [initial.services])
+  const live = useLiveServices(watched, watched === serverSet ? initial.services : null)
   const majors = useRef(
     new Set((initial.services?.services ?? []).filter((s) => s.state === "major").map((s) => s.slug)),
   )
   useEffect(() => {
-    if (watched === null) return
-    let cancelled = false
-    const load = async () => {
-      const next = await getServices(watched || undefined).catch(() => null)
-      if (cancelled || !next) return
-      setServices(next)
-      const nowMajor = new Set(next.services.filter((s) => s.state === "major").map((s) => s.slug))
-      const fresh = [...nowMajor].filter((s) => !majors.current.has(s))
-      majors.current = nowMajor
-      if (fresh.length) void addUnseen(fresh.length, true)
-    }
-    const serverSet = (initial.services?.services ?? []).map((s) => s.slug).join(",")
-    const defaults = (initial.services?.defaults ?? []).join(",")
-    if ((watched || defaults) !== serverSet) void load()
-    const timer = setInterval(load, SERVICES_POLL_MS)
-    return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [watched, addUnseen, initial.services])
+    if (!live) return
+    setServices(live)
+    const nowMajor = new Set(live.services.filter((s) => s.state === "major").map((s) => s.slug))
+    const fresh = [...nowMajor].filter((s) => !majors.current.has(s))
+    majors.current = nowMajor
+    if (fresh.length) void addUnseen(fresh.length, true)
+  }, [live, addUnseen])
 
   // The stack can change after first paint: restored from storage, or edited in another page.
   // Refetch what depends on it; a URL asking for tab=stack gets it once a stack exists.

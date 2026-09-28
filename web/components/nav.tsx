@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import { cn } from "cn"
 
+import { NavServices } from "@/components/NavServices"
 import { Wordmark } from "@/components/Wordmark"
 import { ThemePicker } from "@/components/ThemePicker"
 import { getStatus, type Status } from "@/lib/api"
@@ -15,7 +16,6 @@ import { minutesSinceSync, syncState } from "@/lib/sync"
 const LINKS = [
   { href: "/wire", label: "Wire" },
   { href: "/vendors", label: "Vendors" },
-  { href: "/services", label: "Services" },
 ]
 
 const STATUS_POLL_MS = 60_000
@@ -123,6 +123,7 @@ export function Nav() {
       </nav>
 
       <div className="ml-auto flex shrink-0 items-center gap-3 pl-5 sm:gap-4">
+        <NavServices className="mr-1" />
         {/* CVEs is a quiet link at the start of the status group. On / and /wire (their own
             clocks show UTC) there is no UTC slot, so CVEs sits right next to "Synced". */}
         <Link

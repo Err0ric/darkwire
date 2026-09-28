@@ -282,10 +282,11 @@ function Row({ row: r, expanded, onToggle }: { row: CveRow; expanded: boolean; o
           : undefined
       }
       tabIndex={clickable ? 0 : undefined}
-      aria-expanded={clickable ? expanded : undefined}
       className={cn("h-12 text-[13px] hover:bg-surface", clickable && "cursor-pointer", expanded ? "bg-surface" : "border-b border-hairline")}
     >
       <td className={cn(CELL, "py-2")} title={[r.vendor_name, r.product].filter(Boolean).join(" · ") || undefined}>
+        {/* A table row cannot carry aria-expanded (only in a treegrid): the state is read here. */}
+        {clickable && <span className="sr-only">{expanded ? "Expanded. " : "Collapsed. "}</span>}
         <span className="block truncate leading-4 text-fg">{r.vendor_name}</span>
         <span className="mt-0.5 block truncate text-xs leading-4 text-muted">{r.product}</span>
       </td>

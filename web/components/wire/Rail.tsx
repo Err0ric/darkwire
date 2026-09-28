@@ -168,10 +168,10 @@ function openRow(itemId: number): boolean {
  * to that row (scrolled to and expanded when it is on this view, else its permalink); any other
  * CVE links to NVD. `query` carries the stack and theme on internal links. */
 const MINI_FILL: Partial<Record<Severity, string>> = {
-  critical: "bg-critical",
-  high: "bg-accent",
-  medium: "bg-medium",
-  low: "bg-dim",
+  critical: "bg-rail-critical",
+  high: "bg-rail-high",
+  medium: "bg-rail-medium",
+  low: "bg-rail-low",
 }
 
 /** CVSS score in mono with a 5-cell bar (one cell per 2 points), colored by severity; an
@@ -179,7 +179,7 @@ const MINI_FILL: Partial<Record<Severity, string>> = {
 function MiniScore({ cvss, severity }: { cvss: number | null; severity: Severity | null }) {
   if (cvss === null) return <span className="w-[62px] shrink-0" />
   const filled = Math.round(cvss / 2)
-  const fill = (severity && MINI_FILL[severity]) || "bg-medium"
+  const fill = (severity && MINI_FILL[severity]) || "bg-rail-medium"
   return (
     <span className="flex w-[62px] shrink-0 items-center justify-end gap-2">
       <span className="font-mono text-xs text-dim-text">{cvss.toFixed(1)}</span>

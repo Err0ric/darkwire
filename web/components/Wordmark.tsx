@@ -12,19 +12,12 @@ export const WORDMARK = {
     weight: 700,
     tracking: "-0.03em",
   },
-  square: {
-    /** Geist Sans 700 "i", measured (canvas, 1000px, ink scan), in em of the wordmark size:
-     *  stem 0.150 wide, left edge 0.066 from the glyph origin, top 0.536 above the baseline;
-     *  native tittle 0.155 x 0.120, from 0.602 to 0.722, a 0.066 gap above the stem; the
-     *  ascender of "d"/"k" tops out at 0.710. A stem-wide square over the native gap would rise
-     *  to 0.752 (above the ascender, as Geist's own tittle does), so the square keeps the stem's
-     *  width, its top sits on the ascender, and the gap is what remains (0.024em), never less
-     *  than one device pixel. Snapped to device pixels at the rendered size (see useSquareGeometry). */
-    stemWidth: 0.15,
-    stemLeft: 0.066,
-    stemTop: 0.536,
-    ascender: 0.71,
-    nativeGap: 0.066,
+  tittle: {
+    /** The real Geist Sans 700 "i" is drawn twice: white, then a copy in the status color clipped
+     *  to everything above clipAbove (em above the baseline), so only its dot turns red and keeps
+     *  Geist's own shape, size and gap. Measured: the stem tops out at 0.536em and the tittle
+     *  starts at 0.602em, so the clip line sits in the gap. */
+    clipAbove: 0.57,
     live: "var(--critical)",
     stale: "var(--accent)",
     staleOpacity: 0.5,
@@ -58,7 +51,7 @@ export const WORDMARK = {
     gap: 0.06,
   },
   blink: {
-    /** Cursor and square blink together: opacity 1 -> low -> 1 on a cosine curve. */
+    /** Cursor and the red dot blink together: opacity 1 -> low -> 1 on a cosine curve. */
     count: 2,
     durationMs: 1800,
     low: 0.25,
@@ -77,42 +70,23 @@ export const NEW_ROWS_EVENT = "darkwire:new-rows"
  * subtracts it so the tagline and the centering use the visible end of ".tech". */
 export const CURSOR_RESERVE_EM = WORDMARK.tech.size * (WORDMARK.cursor.width + WORDMARK.cursor.gap)
 
-const sq0 = WORDMARK.square
-/** The square in em before it is measured (server render): stem-wide, top on the ascender. */
-const SQUARE_EM = {
-  size: sq0.stemWidth,
-  bottom: sq0.ascender - sq0.stemWidth,
-  left: sq0.stemLeft,
-}
+type Phase = "idle" | "fadeout" | "pause" | "typing" | "blink" | "done"
 
-/** Snap the square to device pixels at the rendered size: side = stem width, top on the
- * ascender (never above), gap to the stem at least one device pixel; if both cannot fit at a
- * small size the square loses a pixel rather than rise above the ascender. Re-runs on resize
- * and font load. */
-function useSquareGeometry(anchor: React.RefObject<HTMLSpanElement | null>, square: React.RefObject<HTMLSpanElement | null>) {
+/** Clip the red copy of the "i" at the x-height: measure the baseline (a zero-height
+ * inline-block's bottom edge) and the copy's box, and keep only what is above clipAbove.
+ * Re-runs on resize and when fonts load. Server render: an em estimate. */
+function useTittleClip(anchor: React.RefObject<HTMLSpanElement | null>, layer: React.RefObject<HTMLSpanElement | null>) {
   useEffect(() => {
     const a = anchor.current
-    const sq = square.current
-    if (!a || !sq) return
+    const l = layer.current
+    if (!a || !l) return
     const place = () => {
       const fs = parseFloat(getComputedStyle(a).fontSize)
       if (!fs) return
-      const dpr = window.devicePixelRatio || 1
-      const down = (v: number) => Math.floor(v * dpr + 1e-6) / dpr
-      const near = (v: number) => Math.round(v * dpr) / dpr
-      const r = a.getBoundingClientRect() // zero-height inline-block: its bottom is the baseline
-      const base = r.bottom
-      const stemTop = base - sq0.stemTop * fs
-      const ascTop = base - sq0.ascender * fs
-      const bottom = down(stemTop - 1 / dpr) // a gap of at least one device pixel
-      // On the ascender, to the nearest device pixel (its top ink row is partly covered).
-      const top = near(ascTop)
-      const size = Math.max(1 / dpr, Math.min(near(sq0.stemWidth * fs), bottom - top))
-      const cx = r.left + (sq0.stemLeft + sq0.stemWidth / 2) * fs
-      const left = near(cx - size / 2)
-      sq.style.width = sq.style.height = `${size}px`
-      sq.style.left = `${left - r.left}px`
-      sq.style.bottom = `${base - bottom}px`
+      const base = a.getBoundingClientRect().bottom
+      const box = l.getBoundingClientRect()
+      const keep = Math.max(0, base - WORDMARK.tittle.clipAbove * fs - box.top)
+      l.style.clipPath = `inset(0 0 ${Math.max(0, box.height - keep)}px 0)`
     }
     place()
     const ro = new ResizeObserver(place)
@@ -123,13 +97,11 @@ function useSquareGeometry(anchor: React.RefObject<HTMLSpanElement | null>, squa
       ro.disconnect()
       window.removeEventListener("resize", place)
     }
-  }, [anchor, square])
+  }, [anchor, layer])
 }
 
-type Phase = "idle" | "fadeout" | "pause" | "typing" | "blink" | "done"
-
 /**
- * "darkwire" (Geist Sans 700) with a red square for the i's dot, then ".tech" in faint Geist
+ * "darkwire" (Geist Sans 700) with the i's dot in red (the real glyph, recolored above the x-height), then ".tech" in faint Geist
  * Mono that types in. `state` null means the sync state is not known yet (".tech" stays hidden
  * until it is). Live: types in once on load and again on NEW rows; stale / down: static, the
  * square in its status color. prefers-reduced-motion: static. The animated parts are
@@ -146,7 +118,7 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
   const phase = useRef<Phase>("idle")
   const played = useRef(false)
   const queued = useRef(false)
-  useSquareGeometry(anchor, square)
+  useTittleClip(anchor, square)
   const stateRef = useRef(state)
   stateRef.current = state
 
@@ -233,7 +205,7 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
             chars.current.forEach((c) => c && ((c.style.display = "inline-block"), (c.style.opacity = "1")))
             bins.current.forEach((b) => b && (b.style.opacity = "0"))
           }
-          // One value drives both, so the cursor and the square blink in perfect sync.
+          // One value drives both, so the cursor and the red dot blink in perfect sync.
           const f = ((e - typeEnd) % B.durationMs) / B.durationMs
           const v = B.low + (1 - B.low) * (0.5 + 0.5 * Math.cos(2 * Math.PI * f))
           cur.style.opacity = String(v)
@@ -299,27 +271,26 @@ export function Wordmark({ state, className, techClassName }: { state: SyncState
     }
   }, [play])
 
-  const sq = WORDMARK.square
-  const squareStyle: CSSProperties = {
-    width: `${SQUARE_EM.size}em`,
-    height: `${SQUARE_EM.size}em`,
-    bottom: `${SQUARE_EM.bottom}em`,
-    left: `${SQUARE_EM.left}em`,
-    background: state === "down" ? sq.down : state === "stale" ? sq.stale : sq.live,
-    ...(state === "stale" ? { filter: `opacity(${sq.staleOpacity})` } : {}),
+  const t = WORDMARK.tittle
+  const tittleStyle: CSSProperties = {
+    color: state === "down" ? t.down : state === "stale" ? t.stale : t.live,
+    // Server render: keep about the top 0.29em of the line box (Geist's metrics at line-height 1).
+    clipPath: "inset(0 0 calc(100% - 0.29em) 0)",
+    ...(state === "stale" ? { filter: `opacity(${t.staleOpacity})` } : {}),
   }
 
   return (
     <span aria-hidden className={cn("inline-flex items-baseline leading-none whitespace-nowrap text-fg", className)}>
       <span style={{ fontWeight: WORDMARK.word.weight, letterSpacing: WORDMARK.word.tracking }}>
         darkw
-        <span className="inline-block">
-          {/* Baseline anchor: zero height, so its bottom edge is the baseline; the square is
-              placed from it with the measured glyph metrics. */}
-          <span ref={anchor} className="relative inline-block h-0 w-0 align-baseline">
-            <span ref={square} data-wordmark-square className="absolute" style={squareStyle} />
+        <span className="relative inline-block">
+          {/* Baseline anchor: zero height, so its bottom edge is the baseline. */}
+          <span ref={anchor} className="inline-block h-0 w-0 align-baseline" />
+          i
+          {/* The same "i" in the status color, clipped to its dot. */}
+          <span ref={square} data-wordmark-square className="absolute inset-0" style={tittleStyle}>
+            i
           </span>
-          {"ı"}
         </span>
         re
       </span>

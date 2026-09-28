@@ -47,8 +47,9 @@ RED_MID = (0x8C, 0x1C, 0x1C)  # the square half way through a blink (palette slo
 
 # Wordmark geometry, in em of the word's font size (WORDMARK in Wordmark.tsx).
 WORD_TRACKING = -0.03
-# The square is measured from the font itself (as Wordmark.tsx does in the browser): side =
-# the ı stem's width, top on the ascender of "d" (never above), at least 1px above the stem.
+# The i's dot: the real glyph, recolored red above TITTLE_CLIP em over the baseline (in the gap
+# between Geist's stem top, 0.536em, and its tittle, 0.602em), as Wordmark.tsx does in the page.
+TITTLE_CLIP = 0.57
 TECH_SIZE = 0.55
 TECH_TRACKING = -0.04  # of the tech font size
 TECH_GAP = -0.05  # of the tech font size
@@ -171,7 +172,7 @@ class Lockup:
         self.w_track = WORD_TRACKING * WORD_SIZE
         self.t_track = TECH_TRACKING * self.tech_size
 
-        word_text = "darkwıre"
+        word_text = "darkwire"
         self.word_text = word_text
         word_w = tracked_len(word_text, self.word, self.w_track)
         gap = TECH_GAP * self.tech_size
@@ -185,8 +186,7 @@ class Lockup:
         w_top = self.word.getbbox("dk")[1]
         # Vertical centering on the ink: the square's top to the tagline's bottom.
         self.baseline_off = ascent  # draw origin to baseline
-        square_top_rel = self._square_rect(0, 0)[1]  # relative to the draw origin
-        ink_top = min(square_top_rel, w_top)
+        ink_top = min(self.word.getbbox("i")[1], w_top)
         word_bottom = ascent  # baseline
         tag_h = t_box[3] - t_box[1]
         block = (word_bottom - ink_top) + TAG_GAP + tag_h
@@ -200,21 +200,25 @@ class Lockup:
         self.tag_y = self.y0 + word_bottom + TAG_GAP - t_box[1]
         self.tag_x = self.reserve_end - self.tag.getlength("live security news + CVEs")
 
-    def _square_rect(self, x0, y0):
-        """The square over the ı from the font's own ink: side = stem width, top on the
-        ascender of "d", at least 1px above the stem (the square gives up a pixel before it
-        rises above the ascender)."""
+    def _tittle(self, im: Image.Image, alpha: float) -> None:
+        """Recolor the drawn "i" above the x-height red: its dot keeps Geist's own shape, size and
+        gap. Antialiased edge pixels keep their coverage (read from their white-over-bg mix).
+        alpha: the dot's opacity (the GIF's blink)."""
         f = self.word
-        stem_box = f.getbbox("ı")  # (x0, y0, x1, y1) from the draw origin
-        asc_top = f.getbbox("d")[1]
+        ascent, _ = f.getmetrics()
         prefix = tracked_len("darkw", f, self.w_track) + self.w_track
-        stem_w = stem_box[2] - stem_box[0]
-        bottom = stem_box[1] - max(1, round(0.024 * WORD_SIZE))
-        side = min(stem_w, bottom - asc_top)
-        cx = prefix + (stem_box[0] + stem_box[2]) / 2
-        left = round(x0 + cx - side / 2)
-        top = round(y0 + bottom - side)
-        return (left, top, left + side, top + side)
+        box = f.getbbox("i")
+        x0 = int(self.x0 + prefix + box[0]) - 1
+        x1 = int(self.x0 + prefix + box[2]) + 2
+        clip = self.y0 + ascent - TITTLE_CLIP * WORD_SIZE  # above this y is the dot
+        px = im.load()
+        for y in range(int(self.y0 + box[1]) - 1, int(clip)):
+            for x in range(x0, x1):
+                r, g, b = px[x, y]
+                cover = (g - BG[1]) / (FG[1] - BG[1])  # white over bg: coverage from the green channel
+                if cover <= 0:
+                    continue
+                px[x, y] = mix(RED, BG, min(1.0, cover) * alpha)
 
     def draw(self, typed=5, char_state=None, tech_alpha=1.0, cursor=None, square_alpha=1.0):
         """typed: characters fully shown; char_state: (index, digit, fade 0..1) for the one
@@ -222,8 +226,7 @@ class Lockup:
         im = Image.new("RGB", (W, H), BG)
         d = ImageDraw.Draw(im)
         tracked(d, (self.x0, self.y0), self.word_text, self.word, FG, self.w_track)
-        sq = self._square_rect(self.x0, self.y0)
-        d.rectangle([round(sq[0]), round(sq[1]), round(sq[2]) - 1, round(sq[3]) - 1], fill=mix(RED, BG, square_alpha))
+        self._tittle(im, square_alpha)
         tech_color = mix(TECH, BG, tech_alpha)
         for i, ch in enumerate(".tech"[:typed]):
             d.text((self.tech_x + i * self.tech_adv, self.tech_y), ch, font=self.tech, fill=tech_color)

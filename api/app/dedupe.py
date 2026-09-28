@@ -1,12 +1,19 @@
 """Clustering rules shared by live ingest, the one-time merge of existing rows and the split
 of bad clusters (app/split_clusters.py).
 
-CLAUDE.md: cluster by CVE ID first. A title merge (normalized-title similarity > 0.85, same
-vendor; or same vendor + a shared product alias + "zero-day" in both titles; or shared
-distinctive words) also needs publish times within 72h AND a shared CVE ID or vendor, so
-boilerplate titles alone never merge. CISA's "Adds N Known Exploited Vulnerabilities to
-Catalog" alerts never merge with anything: each is its own row, and a news article joins one
-only by sharing a CVE the alert lists (the row's CVEs are the alert's own, app/alerts.py).
+CLAUDE.md: cluster by CVE ID first. Title merges need publish times within 72h: with the same
+vendor, normalized-title similarity > 0.85, or a shared product alias and "zero-day" in both
+titles; with no vendor on one side, the same tests on the titles with boilerplate removed
+(CISA, adds, known, exploited, vulnerability, catalog, KEV, warns, patches, flaw, zero-day,
+critical, actively, attacks and stopwords): similarity > 0.85 on at least 3 remaining words, or
+3 shared distinctive words with a proper noun among them.
+
+CISA's "Adds N Known Exploited Vulnerabilities to Catalog" alerts (app/alerts.py lists their
+CVEs): when every CVE an alert lists belongs to one existing row, and to no other row covering
+them all, the alert joins that row as a source (the row keeps its headline and time and gets
+KEV). Otherwise it starts its own row, which holds only the alert's CVEs and which a news article
+joins only by sharing one of them. Alerts never merge with each other or by title, and never
+pull stories in by chaining.
 """
 
 import logging
@@ -44,9 +51,22 @@ def is_kev_alert(title: str | None, url: str | None) -> bool:
     return bool(KEV_ALERT.match(title or "")) and (host == "cisa.gov" or host.endswith(".cisa.gov"))
 
 
-def is_alert_row(sources) -> bool:
-    """A row holding a CISA KEV alert (sources: anything with .title and .url)."""
+def has_alert(sources) -> bool:
+    """A row with a CISA KEV alert among its sources (anything with .title and .url)."""
     return any(is_kev_alert(s.title, s.url) for s in sources)
+
+
+def alert_led(item) -> bool:
+    """A row started by a KEV alert: the alert is its primary source. Such a row holds only the
+    alert's CVEs and is joined only through them. A row an alert joined stays a news row."""
+    return is_kev_alert(item.headline, item.primary_url)
+
+
+def time_sources(sources) -> list:
+    """The sources a row's time comes from (app/rowtime.py): its news articles. A KEV alert is a
+    catalog date, so it counts only on a row that has nothing else."""
+    news = [s for s in sources if not is_kev_alert(getattr(s, "title", None), getattr(s, "url", None))]
+    return news or list(sources)
 
 
 def normalize(title: str) -> str:
@@ -72,6 +92,13 @@ exploiting exploitation zero day zeroday cyber cyberattack cybersecurity securit
 patch patched update fix fixed critical severe active actively ransomware malware threat actor campaign researcher
 research user customer company firm government agency warning alert advisory possible potential million billion
 """.split())
+# Words every KEV / advisory headline has; removed before titles are compared, so boilerplate
+# alone ("CISA Adds Two Known Exploited Vulnerabilities to Catalog") never matches.
+BOILERPLATE = set("""
+cisa add adds known exploited vulnerability vulnerabilities catalog kev warn warns patch patches flaw flaws
+zero day zeroday critical actively attack attacks
+""".split())
+GENERIC |= BOILERPLATE
 _TOKEN = re.compile(r"[A-Za-z0-9]+(?:['.&][A-Za-z0-9]+)*")
 _MIXED = re.compile(r"[a-z][A-Z]|[A-Za-z]\d|\d[A-Za-z]")
 
@@ -122,6 +149,22 @@ def shared_story(a: str, b: str) -> bool:
     return len(shared) >= 3 and any(_proper(s, a, b, da, db) for s in shared)
 
 
+def stripped(title: str) -> list[str]:
+    """The title's words without stopwords, boilerplate and bare numbers."""
+    return [
+        w for w in normalize(title).split()
+        if w not in STOPWORDS and w not in BOILERPLATE and _stem(w) not in BOILERPLATE and not w.isdigit()
+    ]
+
+
+def stripped_similar(a: str, b: str) -> bool:
+    """Similarity > 0.85 on what is left once boilerplate is removed, with at least 3 words left."""
+    wa, wb = stripped(a), stripped(b)
+    if min(len(wa), len(wb)) < 3:
+        return False
+    return SequenceMatcher(None, " ".join(wa), " ".join(wb)).ratio() > SIMILARITY
+
+
 def titles_match(a: str, b: str, vendor_a: int | None, vendor_b: int | None, matcher: VendorMatcher) -> bool:
     if vendor_a is not None and vendor_b is not None and vendor_a != vendor_b:
         return False
@@ -131,31 +174,26 @@ def titles_match(a: str, b: str, vendor_a: int | None, vendor_b: int | None, mat
         if ZERO_DAY.search(a) and ZERO_DAY.search(b) and matcher.products(vendor_a, a) & matcher.products(vendor_a, b):
             return True
         return False
-    # At least one side has no vendor: fall back to shared distinctive words.
-    return shared_story(a, b)
+    # At least one side has no vendor: the boilerplate-free titles.
+    return stripped_similar(a, b) or shared_story(a, b)
 
 
 def title_merge_ok(
-    title: str, published: datetime | None, vendor_id: int | None, cves,
-    other_title: str, other_published: datetime | None, other_vendor_id: int | None, other_cves,
+    title: str, published: datetime | None, vendor_id: int | None,
+    other_title: str, other_published: datetime | None, other_vendor_id: int | None,
     matcher: VendorMatcher,
 ) -> bool:
-    """A title merge: publish times within 72h, a shared CVE ID or the same vendor, and the
-    titles match. Boilerplate titles alone ("CISA Adds Two ...") never merge."""
+    """A title merge: publish times within 72h and the titles match (titles_match)."""
     if published is None or other_published is None or abs(published - other_published) > TITLE_WINDOW:
-        return False
-    same_vendor = vendor_id is not None and vendor_id == other_vendor_id
-    if not same_vendor and not (set(cves) & set(other_cves)):
         return False
     return titles_match(title, other_title, vendor_id, other_vendor_id, matcher)
 
 
 async def find_title_cluster(
-    session: AsyncSession, title: str, vendor_id: int | None, published: datetime, matcher: VendorMatcher,
-    cves: list[str] = (),
+    session: AsyncSession, title: str, vendor_id: int | None, published: datetime, matcher: VendorMatcher
 ) -> Item | None:
     """A row with a source published within 72h whose title matches this one (title_merge_ok).
-    Rows holding a CISA KEV alert are never joined by title."""
+    Rows started by a KEV alert are never joined by title, nor are the alerts inside a row."""
     compatible = [] if vendor_id is None else [or_(Item.vendor_id == vendor_id, Item.vendor_id.is_(None))]
     near = select(ItemSource.item_id).where(
         ItemSource.published_at.between(published - TITLE_WINDOW, published + TITLE_WINDOW)
@@ -168,24 +206,51 @@ async def find_title_cluster(
             .order_by(Item.last_event_at.desc())
         )
     ).all()
-    if not candidates:
-        return None
-    row_cves: dict[int, set[str]] = {}
-    ids = [i.id for i in candidates]
-    for item_id, cve_id in (
-        await session.execute(select(ItemCve.item_id, ItemCve.cve_id).where(ItemCve.item_id.in_(ids)))
-    ).all():
-        row_cves.setdefault(item_id, set()).add(cve_id)
     for item in candidates:
-        if is_alert_row(item.sources):
+        if alert_led(item):
             continue
-        theirs = row_cves.get(item.id, set())
         if any(
-            title_merge_ok(title, published, vendor_id, cves, s.title, s.published_at, item.vendor_id, theirs, matcher)
+            title_merge_ok(title, published, vendor_id, s.title, s.published_at, item.vendor_id, matcher)
             for s in item.sources
+            if not is_kev_alert(s.title, s.url)
         ):
             return item
     return None
+
+
+def alert_home_of(alert_cves, rows) -> object | None:
+    """The one row an alert joins: rows are (row, its CVEs, whether it holds an alert). The row
+    must hold every CVE the alert lists and no alert of its own, and be the only row holding
+    them all. None: the alert starts its own row."""
+    wanted = set(alert_cves)
+    if not wanted:
+        return None
+    covering = [(row, alerts) for row, cves, alerts in rows if wanted <= set(cves)]
+    if len(covering) != 1 or covering[0][1]:
+        return None
+    return covering[0][0]
+
+
+async def find_alert_home(session: AsyncSession, alert_cves: list[str]) -> Item | None:
+    """alert_home_of over the board's main rows."""
+    if not alert_cves:
+        return None
+    touching = select(ItemCve.item_id).where(ItemCve.cve_id.in_(alert_cves))
+    items = (
+        await session.scalars(
+            select(Item)
+            .where(Item.stream == Stream.main, Item.id.in_(touching))
+            .options(selectinload(Item.sources).selectinload(ItemSource.source))
+        )
+    ).all()
+    if not items:
+        return None
+    cves: dict[int, set[str]] = {}
+    for item_id, cve_id in (
+        await session.execute(select(ItemCve.item_id, ItemCve.cve_id).where(ItemCve.item_id.in_([i.id for i in items])))
+    ).all():
+        cves.setdefault(item_id, set()).add(cve_id)
+    return alert_home_of(alert_cves, [(i, cves.get(i.id, set()), has_alert(i.sources)) for i in items])
 
 
 # ---------------------------------------------------------------- the rules as a pure plan
@@ -214,31 +279,41 @@ class Group:
     vendor_id: int | None
 
     @property
-    def alert(self) -> bool:
+    def alert_led(self) -> bool:
+        return self.arts[0].alert
+
+    @property
+    def has_alert(self) -> bool:
         return any(a.alert for a in self.arts)
 
     @property
     def time(self) -> datetime:
-        return min(a.published for a in self.arts)
+        return min(a.published for a in time_sources(self.arts))
 
 
 def plan(arts: list[Art], matcher: VendorMatcher, cve_window: timedelta = timedelta(hours=48)) -> list[Group]:
-    """Cluster articles the way live ingest does, oldest first: a KEV alert always starts its
-    own row; otherwise join by a shared CVE (the newest such row within cve_window of its time;
-    an alert row only by one of the alert's CVEs, which are all it holds), else by title
-    (title_merge_ok, never an alert row), else start a row."""
+    """Cluster articles the way live ingest does, oldest first. A KEV alert joins the one group
+    holding all its CVEs (alert_home_of), else starts its own. A news article joins by a shared
+    CVE (the newest such group within cve_window; an alert-led group holds only the alert's
+    CVEs), else by title (title_merge_ok against the group's news articles; never an alert-led
+    group), else starts a group."""
     groups: list[Group] = []
     for a in sorted(arts, key=lambda a: (a.published, str(a.key))):
         if a.alert:
-            groups.append(Group([a], set(a.cves), None))
+            home = alert_home_of(a.cves, [(g, g.cves, g.has_alert) for g in groups])
+            if home is not None:
+                home.arts.append(a)
+            else:
+                groups.append(Group([a], set(a.cves), None))
             continue
         by_cve = [g for g in groups if set(a.cves) & g.cves and abs(a.published - g.time) <= cve_window]
         target = max(by_cve, key=lambda g: g.time) if by_cve else None
         if target is None:
             for g in sorted(groups, key=lambda g: g.time, reverse=True):
-                if not g.alert and any(
-                    title_merge_ok(a.title, a.published, a.vendor_id, a.cves, b.title, b.published, g.vendor_id, g.cves, matcher)
+                if not g.alert_led and any(
+                    title_merge_ok(a.title, a.published, a.vendor_id, b.title, b.published, g.vendor_id, matcher)
                     for b in g.arts
+                    if not b.alert
                 ):
                     target = g
                     break
@@ -246,7 +321,7 @@ def plan(arts: list[Art], matcher: VendorMatcher, cve_window: timedelta = timede
             groups.append(Group([a], set(a.cves), a.vendor_id))
             continue
         target.arts.append(a)
-        if not target.alert:  # an alert row keeps only the alert's CVEs
+        if not target.alert_led:  # an alert-led group keeps only the alert's CVEs
             target.cves |= set(a.cves)
             if target.vendor_id is None:
                 target.vendor_id = a.vendor_id
@@ -314,8 +389,7 @@ async def merge_existing(session: AsyncSession, matcher: VendorMatcher) -> int:
                 return True
             if o["id"] in alerts:  # joined only by one of the alert's CVEs
                 return False
-            same_vendor = n["vendor_id"] is not None and n["vendor_id"] == o["vendor_id"]
-            if abs(pub - o["last_event_at"]) > TITLE_WINDOW or not (shared or same_vendor):
+            if abs(pub - o["last_event_at"]) > TITLE_WINDOW:
                 return False
             return any(
                 titles_match(a, b, n["vendor_id"], o["vendor_id"], matcher)
@@ -349,7 +423,8 @@ async def _merge(session: AsyncSession, o: dict, n: dict, n_pub: datetime) -> No
         {"o": oid, "n": nid},
     )
     # Row time: the earliest of the merged row's news sources (app/rowtime.py), logged.
-    earliest = await session.scalar(text("SELECT min(published_at) FROM item_sources WHERE item_id = :o"), {"o": oid})
+    times = (await session.execute(text("SELECT title, url, published_at FROM item_sources WHERE item_id = :o"), {"o": oid})).all()
+    earliest = rowtime.news_time(t.published_at for t in time_sources(times))
     event, kind = earliest or min(o["last_event_at"], n_pub), rowtime.PUBLISHED
     if event != o["last_event_at"] or o["last_event_kind"] != rowtime.PUBLISHED:
         log.info(

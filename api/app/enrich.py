@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import epss, events, kev, nvd, summaries, topics
+from app import dedupe, epss, events, kev, nvd, summaries, topics
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
@@ -106,7 +106,8 @@ async def roll_up(session: AsyncSession) -> int:
         item.cve_id = primary.id
         item.cvss = primary.base_score
         item.severity = primary.base_severity
-        item.kev = bool(kev_dates) or any(c.kev for c in cves)
+        # A CISA KEV alert on the row counts before the hourly catalog poll catches up.
+        item.kev = bool(kev_dates) or any(c.kev for c in cves) or dedupe.has_alert(item.sources)
         item.epss = primary.epss
         item.patch_status = status or PatchStatus.unverified
         item.patch_url = url

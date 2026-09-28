@@ -43,18 +43,17 @@ async def _arts(session, client, item: Item, matcher: VendorMatcher) -> list[ded
 
 
 def _primary(group: dedupe.Group, by_id: dict[int, ItemSource]) -> ItemSource:
-    """The alert on an alert row; else a vendor PSIRT; else the earliest."""
-    sources = [by_id[a.key] for a in group.arts]
-    alert = [s for s in sources if dedupe.is_kev_alert(s.title, s.url)]
-    if alert:
-        return alert[0]
+    """The alert on a row it started; else a vendor PSIRT; else the earliest news article."""
+    if group.alert_led:
+        return by_id[group.arts[0].key]
+    sources = [by_id[a.key] for a in group.arts if not a.alert]
     return min(sources, key=lambda s: (s.source.vendor_id is None, s.published_at, s.id))
 
 
 def _group_cves(group: dedupe.Group, by_id: dict[int, ItemSource]) -> list[str]:
-    if group.alert:
-        return next(a.cves for a in group.arts if a.alert)
-    sources = [by_id[a.key] for a in group.arts]
+    if group.alert_led:
+        return group.arts[0].cves
+    sources = [by_id[a.key] for a in group.arts if not a.alert]
     return cluster_cves([(s.title, s.excerpt or "", s.body or "") for s in sources])
 
 
@@ -70,7 +69,7 @@ async def main(apply: bool) -> None:
                 .order_by(Item.id)
             )
         ).all()
-        alert_rows = [i for i in items if dedupe.is_alert_row(i.sources)]
+        alert_rows = [i for i in items if dedupe.has_alert(i.sources)]
         splits = []
         for item in alert_rows:
             groups = dedupe.plan(await _arts(session, client, item, matcher), matcher)
@@ -89,7 +88,7 @@ async def main(apply: bool) -> None:
                 primary = _primary(g, by_id)
                 cves = _group_cves(g, by_id)
                 label = f"row {item.id} (kept)" if g is keep else "new row"
-                kind = "KEV alert" if g.alert else "news"
+                kind = "KEV alert" if g.alert_led else ("news + KEV alert" if g.has_alert else "news")
                 print(f"  -> {label}  {g.time.isoformat()}  {kind}  cves={','.join(cves) or '-'}  |  {primary.title[:80]}")
                 for a in sorted(g.arts, key=lambda a: a.published):
                     s = by_id[a.key]
@@ -112,12 +111,13 @@ async def _apply(session, item: Item, groups: list[dedupe.Group], keep: dedupe.G
             row = Item(stream=Stream.main, last_event_at=g.time, last_event_kind=rowtime.PUBLISHED)
             session.add(row)
         row.headline, row.primary_url = primary.title, primary.url
-        row.vendor_id = None if g.alert else g.vendor_id
+        row.vendor_id = None if g.alert_led else g.vendor_id
         row.category = category
         row.cve_id = cves[0] if cves else None
         # Refilled by enrichment (roll_up) for rows with CVEs; cleared for rows without.
         row.cvss = row.severity = row.epss = row.patch_url = None
-        row.kev = row.exploited = row.exploitation = False
+        row.exploited = row.exploitation = False
+        row.kev = g.has_alert
         row.patch_status = PatchStatus.unverified
         row.summary = row.action = None
         row.changed_at = func.now()

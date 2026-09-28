@@ -14,7 +14,7 @@ import sys
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app import rowtime
+from app import dedupe, rowtime
 from app.db import SessionLocal
 from app.models import Item, Stream
 
@@ -24,7 +24,7 @@ def planned(items) -> list[tuple[object, object, object, str]]:
     source. Pure, so it can be tested without a database."""
     out = []
     for item in items:
-        new = rowtime.news_time(s.published_at for s in item.sources)
+        new = rowtime.news_time(s.published_at for s in dedupe.time_sources(item.sources))
         if new is None:
             continue  # no dated news source: nothing better to say
         if new != item.last_event_at or item.last_event_kind != rowtime.PUBLISHED:

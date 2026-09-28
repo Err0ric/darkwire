@@ -4,7 +4,6 @@ import type { ReactNode } from "react"
 import { cn } from "cn"
 
 import type { ElsewhereItem, KevRow, Severity, Status, VendorOut } from "@/lib/api"
-import { DUE_WINDOW_DAYS } from "@/lib/kev"
 import { NewDot, type DotState } from "@/lib/dots"
 import { age, useNow } from "@/lib/time"
 
@@ -164,29 +163,36 @@ function openRow(itemId: number): boolean {
 /** CISA's catalog additions of the last 7 days, newest first. A CVE with a row on the board links
  * to that row (scrolled to and expanded when it is on this view, else its permalink); any other
  * CVE links to NVD. `query` carries the stack and theme on internal links. */
-/** "due Oct 16" in mono, --critical-text within 7 days of CISA's deadline; "overdue" after it. */
-function DueDate({ due, now }: { due: string | null; now: number | null }) {
-  if (!due || now === null) return <span className="w-[74px] shrink-0" />
-  const day = 86_400_000
-  const days = Math.floor(Date.parse(due) / day) - Math.floor(now / day)
-  const label =
-    days < 0
-      ? "overdue"
-      : `due ${new Date(due + "T00:00:00Z").toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" })}`
+const MINI_FILL: Partial<Record<Severity, string>> = {
+  critical: "bg-critical",
+  high: "bg-accent",
+  medium: "bg-medium",
+  low: "bg-dim",
+}
+
+/** CVSS score in mono with a 5-cell bar (one cell per 2 points), colored by severity; an
+ * unscored CVE keeps the space so the rows line up. */
+function MiniScore({ cvss, severity }: { cvss: number | null; severity: Severity | null }) {
+  if (cvss === null) return <span className="w-[62px] shrink-0" />
+  const filled = Math.round(cvss / 2)
+  const fill = (severity && MINI_FILL[severity]) || "bg-medium"
   return (
-    <span
-      title={`CISA due date ${due}`}
-      className={cn(
-        "w-[74px] shrink-0 text-right font-mono text-xs whitespace-nowrap",
-        days <= DUE_WINDOW_DAYS ? "text-critical-text" : "text-dim-text",
-      )}
-    >
-      {label}
+    <span className="flex w-[62px] shrink-0 items-center justify-end gap-2">
+      <span className={cn("font-mono text-xs", cvss >= 7 ? "text-fg" : "text-fg-2")}>{cvss.toFixed(1)}</span>
+      <span role="img" aria-label={`CVSS ${cvss}`} className="flex gap-0.5">
+        {Array.from({ length: 5 }, (_, i) => (
+          <span key={i} className={cn("h-2 w-[4px]", i < filled ? fill : "bg-rule")} />
+        ))}
+      </span>
     </span>
   )
 }
 
-/** CISA's catalog additions of the last 7 days, newest first: CVE ID, vendor, CISA due date.
+/** CISA's catalog additions of the last 7 days, newest first. A CVE with a row on the board links
+ * to that row (scrolled to and expanded when it is on this view, else its permalink); any other
+ * CVE links to NVD. `query` carries the stack and theme on internal links. */
+/** CISA's catalog additions of the last 7 days, newest first: vendor, CVE ID, CVSS with a mini bar
+ * (the due date lives in the expanded row).
  * A CVE with a row on the board links to that row (scrolled to and expanded when it is on this
  * view, else its permalink); any other CVE links to NVD. `query` carries the stack and theme on
  * internal links. When the week has more additions than rows shown, "+N more" opens the wire's
@@ -203,7 +209,6 @@ export function AddedToKev({
   query?: string
   onMore?: () => void
 }) {
-  const now = useNow()
   const more = total !== undefined ? total - kev.length : 0
   return (
     <Section title="Added to KEV">
@@ -214,6 +219,7 @@ export function AddedToKev({
           const itemId = k.item_id
           return (
             <li key={k.cve_id} className="-mx-2 flex h-6 items-center gap-3 px-2 hover:bg-surface">
+              <span className="min-w-0 flex-1 truncate text-muted">{k.vendor}</span>
               {itemId !== null ? (
                 <a
                   href={`/item/${itemId}${query}`}
@@ -236,8 +242,7 @@ export function AddedToKev({
                   {k.cve_id}
                 </a>
               )}
-              <span className="min-w-0 flex-1 truncate text-muted">{k.vendor}</span>
-              <DueDate due={k.due_date} now={now} />
+              <MiniScore cvss={k.cvss} severity={k.severity} />
             </li>
           )
         })}

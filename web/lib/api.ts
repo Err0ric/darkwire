@@ -264,6 +264,8 @@ export interface KevRow {
   date_added: string // YYYY-MM-DD
   due_date: string | null // YYYY-MM-DD, CISA's remediation deadline
   item_id: number | null
+  cvss: number | null
+  severity: Severity | null
 }
 
 /** Recent additions to the whole CISA KEV catalog. */

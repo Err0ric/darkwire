@@ -188,6 +188,8 @@ class KevRow(BaseModel):
     date_added: date
     due_date: date | None  # CISA's remediation deadline
     item_id: int | None  # a row on the board for this CVE, if any
+    cvss: float | None  # NVD base score, when the CVE is on the board and scored
+    severity: Severity | None
 
 
 class Status(BaseModel):

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import Item, ItemCve, KevEntry
+from app.models import Cve, Item, ItemCve, KevEntry
 from app.schemas import KevRow
 from app.throttle import cap, heavy_limit, read_limit
 
@@ -33,14 +33,18 @@ async def kev(
     )
     rows = (
         await session.execute(
-            select(KevEntry, on_board.c.id)
+            select(KevEntry, on_board.c.id, Cve.base_score, Cve.base_severity)
             .outerjoin(on_board, on_board.c.cve_id == KevEntry.cve_id)
+            .outerjoin(Cve, Cve.id == KevEntry.cve_id)
             .where(KevEntry.date_added >= since)
             .order_by(KevEntry.date_added.desc(), KevEntry.cve_id.desc())
             .limit(limit)
         )
     ).all()
     return [
-        KevRow(cve_id=k.cve_id, vendor=k.vendor, product=k.product, date_added=k.date_added, due_date=k.due_date, item_id=item_id)
-        for k, item_id in rows
+        KevRow(
+            cve_id=k.cve_id, vendor=k.vendor, product=k.product, date_added=k.date_added, due_date=k.due_date,
+            item_id=item_id, cvss=float(score) if score is not None else None, severity=severity,
+        )
+        for k, item_id, score, severity in rows
     ]

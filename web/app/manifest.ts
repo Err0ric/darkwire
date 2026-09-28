@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next"
 
-// Installable as an app on a wall display or a phone home screen. Icons are the wordmark's red
-// dot on the page background (public/icon-*.png, app/apple-icon.png, app/icon.svg).
+// Installable as an app on a wall display or a phone home screen. Icons are the red signal
+// trace on black (public/icon-*.png, app/apple-icon.png, app/icon.svg; scripts/make-og.py).
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "darkwire",

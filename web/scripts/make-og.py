@@ -4,10 +4,11 @@
 
 Writes:
 - app/favicon.ico (16 + 32), app/icon.svg, app/apple-icon.png (180), public/icon-192.png,
-  public/icon-512.png: a lowercase "d" in --fg and a dark red block cursor (#991b1b) as tall as the d, on black, drawn
-  cell by cell on a 16 grid so 16 and 32 are crisp (no scaling, no antialiasing). The larger
-  icons keep the mark inside the maskable safe zone. The unseen state (lib/unseen.ts) paints
-  the cursor --critical on a canvas copy.
+  public/icon-512.png: a thin red (#dc2626) signal trace on black, a flat baseline with a small
+  spike then a tall one. 16 and 32 (and the SVG) are drawn cell by cell on a 16 grid, so they
+  are crisp (no scaling, no antialiasing); the larger icons draw the same shape as a smooth
+  polyline inside the maskable safe zone. lib/favicon.json holds the cells and colors; the
+  unseen state (lib/unseen.ts) redraws the trace in #ff4d4d.
 - public/og.<hash>.png: the static lockup ("darkwire" with the red square, faint ".tech", the mono
   tagline right-aligned to the end of ".tech"), 1200x630.
 - public/og.<hash>.gif: frame 1 is that same static lockup (platforms that show one frame get the
@@ -72,54 +73,56 @@ TAG_GAP = 34
 
 # --------------------------------------------------------------------------- icons
 
-# The favicon: a lowercase "d" and a block cursor, drawn cell by cell on a 16 grid so it is
-# crisp at 16 and 32 (32 = each cell 2x2). Inclusive cell ranges (x0, y0, x1, y1).
-# The d spans x 3-9, y 2-14; the cursor is as tall as the d (ascender to baseline), 3 cells
-# wide (about 40% of the d's 7), one empty cell after it. The mark (x 3-13) is centered.
-D_STEM = (8, 2, 9, 14)
-D_BOWL = (3, 5, 8, 14)  # 2-cell stroke, rounded by leaving its two left corners open
-CURSOR_BLOCK = (11, 2, 13, 14)
-ICON_CURSOR = (0x99, 0x1B, 0x1B)  # #991b1b; the unseen state paints it #ef4444 (lib/unseen.ts)
+# The favicon: a thin signal trace on black, a flat baseline with a small spike then a tall one.
+# 16 and 32 are drawn cell by cell on a 16 grid (32 = each cell 2x2), so lines are 1px / 2px and
+# the diagonals stay crisp; the larger icons draw the same shape as a smooth polyline.
+# lib/favicon.json carries the cells and colors for the unseen state (lib/unseen.ts).
+TRACE = [(0, 11), (2, 11), (4, 8), (6, 11), (7, 11), (10, 2), (13, 11), (15, 11)]  # 16-grid vertices
+ICON_RED = (0xDC, 0x26, 0x26)  # #dc2626, as --critical
+ICON_UNSEEN = "#ff4d4d"  # the unseen-items state: a brighter red, drawn by lib/unseen.ts
 
 
-def d_cells() -> set[tuple[int, int]]:
-    cells = set()
-    x0, y0, x1, y1 = D_STEM
-    cells |= {(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)}
-    x0, y0, x1, y1 = D_BOWL
-    for x in range(x0, x1 + 1):
-        for y in range(y0, y1 + 1):
-            if x <= x0 + 1 or y <= y0 + 1 or y >= y1 - 1:  # left stroke, top and bottom strokes
-                cells.add((x, y))
-    cells -= {(x0, y0), (x0, y1)}  # round the bowl's left corners
+def _line_cells(a: tuple[int, int], b: tuple[int, int]) -> set[tuple[int, int]]:
+    """The cells from a to b, one per step along the longer axis (pixel-snapped)."""
+    (x0, y0), (x1, y1) = a, b
+    n = max(abs(x1 - x0), abs(y1 - y0))
+    if not n:
+        return {a}
+    return {(round(x0 + (x1 - x0) * k / n), round(y0 + (y1 - y0) * k / n)) for k in range(n + 1)}
+
+
+def trace_cells() -> set[tuple[int, int]]:
+    cells: set[tuple[int, int]] = set()
+    for a, b in zip(TRACE, TRACE[1:]):
+        cells |= _line_cells(a, b)
     return cells
 
 
-def draw_mark(im: Image.Image, ox: float, oy: float, u: float, cursor=ICON_CURSOR) -> None:
-    """The mark with each 16-grid cell u pixels wide, its grid origin at (ox, oy)."""
-    d = ImageDraw.Draw(im)
-    box = lambda x0, y0, x1, y1: [round(ox + x0 * u), round(oy + y0 * u), round(ox + (x1 + 1) * u) - 1, round(oy + (y1 + 1) * u) - 1]
-    for x, y in d_cells():
-        d.rectangle(box(x, y, x, y), fill=FG)
-    d.rectangle(box(*CURSOR_BLOCK), fill=cursor)
-
-
-def grid_icon(size: int, cursor=ICON_CURSOR) -> Image.Image:
-    """16 and 32: the grid at 1 or 2 pixels per cell, filling the icon."""
+def grid_icon(size: int, color=ICON_RED) -> Image.Image:
+    """16 and 32: the trace at 1 or 2 pixels per cell, filling the icon."""
     im = Image.new("RGB", (size, size), BLACK)
-    draw_mark(im, 0, 0, size / 16, cursor)
+    d = ImageDraw.Draw(im)
+    u = size // 16
+    for x, y in trace_cells():
+        d.rectangle([x * u, y * u, (x + 1) * u - 1, (y + 1) * u - 1], fill=color)
     return im
 
 
 def safe_icon(size: int) -> Image.Image:
-    """Larger icons: the mark (cells x 3-13, y 2-14) scaled into the central 60% (the maskable
-    safe zone), centered, on whole pixels."""
-    im = Image.new("RGB", (size, size), BLACK)
-    u = round(size * 0.6 / 13)
-    ox = round(size / 2 - 8.5 * u)  # mark center x = (3 + 14) / 2 = 8.5 cells
-    oy = round(size / 2 - 8.5 * u)  # mark center y = (2 + 15) / 2 = 8.5 cells
-    draw_mark(im, ox, oy, u)
-    return im
+    """Larger icons: the same trace as a smooth polyline (round joins and ends, stroke about 1/16
+    of the size) inside the central 60% (the maskable safe zone), centered. Drawn at 4x and
+    scaled down for clean edges."""
+    big = size * 4
+    im = Image.new("RGB", (big, big), BLACK)
+    d = ImageDraw.Draw(im)
+    k = big * 0.6 / 15  # the trace spans 15 cells (pixel centers 0.5 .. 15.5)
+    cx, cy = 8.0, (2.5 + 11.5) / 2  # its center in grid units
+    pts = [(big / 2 + (x + 0.5 - cx) * k, big / 2 + (y + 0.5 - cy) * k) for x, y in TRACE]
+    w = round(big / 16)
+    d.line(pts, fill=ICON_RED, width=w, joint="curve")
+    for px, py in (pts[0], pts[-1]):
+        d.ellipse([px - w / 2, py - w / 2, px + w / 2, py + w / 2], fill=ICON_RED)
+    return im.resize((size, size), Image.LANCZOS)
 
 
 def png_bytes(im: Image.Image) -> bytes:
@@ -143,15 +146,21 @@ def write_ico(path: Path, images: list[Image.Image]) -> None:
 
 def icon_svg() -> str:
     """The 16 grid as SVG rects (crispEdges); browsers use it where they prefer SVG."""
-    rects = "".join(f'<rect x="{x}" y="{y}" width="1" height="1" fill="#f5f5f5"/>' for x, y in sorted(d_cells()))
-    x0, y0, x1, y1 = CURSOR_BLOCK
+    red = "#%02x%02x%02x" % ICON_RED
+    rects = "".join(f'<rect x="{x}" y="{y}" width="1" height="1"/>' for x, y in sorted(trace_cells()))
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">'
         '<rect width="16" height="16" fill="#000"/>'
-        + rects
-        + f'<rect x="{x0}" y="{y0}" width="{x1 - x0 + 1}" height="{y1 - y0 + 1}" fill="#991b1b"/>'
-        "</svg>\n"
+        f'<g fill="{red}">' + rects + "</g></svg>\n"
     )
+
+
+def favicon_json() -> str:
+    """lib/favicon.json: the trace's cells and colors, for the unseen-state copy (lib/unseen.ts)."""
+    return json.dumps(
+        {"grid": 16, "cells": sorted(trace_cells()), "color": "#%02x%02x%02x" % ICON_RED, "unseen": ICON_UNSEEN},
+        separators=(",", ":"),
+    ) + "\n"
 
 
 # --------------------------------------------------------------------------- lockup
@@ -298,6 +307,7 @@ def main():
     # Icons
     write_ico(APP / "favicon.ico", [grid_icon(16), grid_icon(32)])
     (APP / "icon.svg").write_text(icon_svg(), encoding="utf-8")
+    (ROOT / "lib" / "favicon.json").write_text(favicon_json(), encoding="utf-8")
     safe_icon(180).save(APP / "apple-icon.png", optimize=True)
     safe_icon(192).save(PUBLIC / "icon-192.png", optimize=True)
     safe_icon(512).save(PUBLIC / "icon-512.png", optimize=True)

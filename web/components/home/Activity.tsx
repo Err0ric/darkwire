@@ -228,7 +228,8 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
   ) // oldest first; the last is the bottom line
   const [typed, setTyped] = useState<number | null>(null) // characters of the bottom line; null = all
   const [cursor, setCursor] = useState(!events.length)
-  const newest = useRef(events[0]?.id ?? 0)
+  // Newness by time: derived events have no id. The newest time shown so far.
+  const newest = useRef(events[0] ? Date.parse(events[0].at) : 0)
   const cycle = useRef(L.lines - 1)
   const eventsRef = useRef(events)
   const lastChange = useRef(0)
@@ -277,8 +278,8 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
   // A new event from the poll: push it now, or on return when the tab is hidden.
   useEffect(() => {
     const top = events[0]
-    if (!top || top.id <= newest.current) return
-    newest.current = top.id
+    if (!top || Date.parse(top.at) <= newest.current) return
+    newest.current = Date.parse(top.at)
     cycle.current = L.lines - 1
     if (!document.hidden) push.current(top)
     else {

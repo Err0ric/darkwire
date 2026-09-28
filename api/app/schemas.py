@@ -222,7 +222,8 @@ class ActivityHour(BaseModel):
 
 
 class BoardEventOut(ORM):
-    id: int
+    id: int | None  # None: derived from the data, not recorded
+    key: str  # stable identity (kind, subject, detail, time)
     at: datetime
     kind: str  # ingest | kev | nvd | cluster | services | summary
     subject: str

@@ -310,7 +310,8 @@ export interface ActivityHour {
 export type BoardEventKind = "ingest" | "kev" | "nvd" | "cluster" | "services" | "summary"
 
 export interface BoardEvent {
-  id: number
+  id: number | null // null: derived from the data, not recorded
+  key: string // stable identity (kind, subject, detail, time)
   at: string
   kind: BoardEventKind
   subject: string
@@ -318,7 +319,8 @@ export interface BoardEvent {
   item_id: number | null
 }
 
-/** The landing's trace (24 hourly counts, oldest first) and log (last 20 events, newest first). */
+/** The landing's trace (24 hourly counts by published time, oldest first) and log (the last 20
+ * events of the last 24 hours, recorded and derived, newest first). */
 export interface Activity {
   hours: ActivityHour[]
   events: BoardEvent[]

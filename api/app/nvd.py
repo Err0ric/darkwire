@@ -275,13 +275,6 @@ def parse(cve: dict, now: datetime) -> dict:
 # ---------------------------------------------------------------- jobs
 
 
-def _scored(values: dict) -> str:
-    """The board event's detail: "scored 9.8 critical"."""
-    severity = values.get("base_severity")
-    severity = str(getattr(severity, "value", severity) or "").lower()
-    return f"scored {values['base_score']}" + (f" {severity}" if severity and severity != "none" else "")
-
-
 async def fetch_new(session: AsyncSession, nvd: Nvd) -> int:
     """CVEs on the board that NVD has never been asked about, newest rows first."""
     latest = (
@@ -312,7 +305,7 @@ async def fetch_new(session: AsyncSession, nvd: Nvd) -> int:
         values = parse(vulns[0]["cve"], now) if vulns else {"fetched_at": now, "nvd_status": "NOT_FOUND"}
         await session.execute(update(Cve).where(Cve.id == cve_id).values(**values))
         if values.get("base_score") is not None:
-            events.record(session, "nvd", cve_id, _scored(values))
+            events.record(session, "nvd", cve_id, events.scored(values))
         await session.commit()
         done += 1
     return done
@@ -349,7 +342,7 @@ async def sync_changes(session: AsyncSession, nvd: Nvd) -> int:
                 values = parse(cve, now)
                 await session.execute(update(Cve).where(Cve.id == cve["id"]).values(**values))
                 if values.get("base_score") is not None and values["base_score"] != scores.get(cve["id"]):
-                    events.record(session, "nvd", cve["id"], _scored(values))
+                    events.record(session, "nvd", cve["id"], events.scored(values))
                 updated += 1
         index += data.get("resultsPerPage") or 0
         if not data.get("resultsPerPage") or index >= (data.get("totalResults") or 0):

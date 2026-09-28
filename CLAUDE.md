@@ -112,7 +112,8 @@ Only the headline text is a link (inline, not stretched across the row). A click
 Rules:
 
 - Every section, line and pair renders only when it has data. No dashes, blanks, "unknown", "null", "No summary yet" or loading text anywhere in the expanded row. Unverified patch status is not shown. KEV `no` shows only once enrichment has checked.
-- Plain news (no CVE) expands to its summary, when there is one, and the Source link. Nothing else.
+- No summary: the expanded row shows the feed's own excerpt instead, in `--fg-2`, attributed: `BleepingComputer: “…”` (the primary article's RSS excerpt, cleaned of markup, "The post … appeared first on …", "Read more" and a repeated title; its first one or two sentences, at most 220 chars; under 40 chars is none; `api/app/excerpt.py`, sent as `excerpt` on `/items/{id}`).
+- Plain news (no CVE) expands to its summary (or the excerpt) and the Source link. Nothing else. A plain row with neither has nothing to expand (`expandable: false` on `/feed`): no chevron (its column keeps its width), no row focus or click, the headline link only.
 - `Copy` (CVE rows) puts a Teams/ticket-ready plain-text block on the clipboard, one fact per line, only lines with data: headline; `CVE · CVSS n.n Severity · CISA KEV`; `Affected:`; `Fixed in:`; `Workaround:`; `KEV due date: YYYY-MM-DD`; blank line; `Source:`, `Vendor advisory:`, `Mitigation:` (only if different from the advisory), `NVD:`.
 - The summary model (`ANTHROPIC_API_KEY`) is optional. Without it, What to do comes from NVD, MSRC and KEV alone.
 

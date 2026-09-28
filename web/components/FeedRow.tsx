@@ -68,6 +68,9 @@ export function FeedRow({
   )
   const detailId = `row-${item.id}-detail`
   const hasData = item.cve_id !== null || item.cvss !== null || hasBadge(item)
+  // A plain row with no summary and no feed excerpt has nothing to show: headline link only,
+  // no chevron (its column keeps its width). Older API responses lack the flag: expandable.
+  const canExpand = item.expandable !== false
 
   function toggle() {
     const next = !expanded
@@ -104,12 +107,15 @@ export function FeedRow({
       {/* The row is the expand toggle: a click anywhere but a link (the headline, the sources,
           the CVE ID) toggles it, and so do Enter / Space while the row has focus. */}
       <div
-        onClick={onRowClick}
-        onKeyDown={onRowKey}
-        role="group"
-        tabIndex={0}
-        aria-label={`${item.headline}. ${expanded ? "Collapse" : "Expand"} details`}
-        className="flex cursor-pointer items-start py-3 outline-offset-[-1px] hover:bg-surface md:min-h-16 md:items-center md:py-2.5 one-line-rows:h-16 one-line-rows:py-0"
+        onClick={canExpand ? onRowClick : undefined}
+        onKeyDown={canExpand ? onRowKey : undefined}
+        role={canExpand ? "group" : undefined}
+        tabIndex={canExpand ? 0 : undefined}
+        aria-label={canExpand ? `${item.headline}. ${expanded ? "Collapse" : "Expand"} details` : undefined}
+        className={cn(
+          "flex items-start py-3 outline-offset-[-1px] hover:bg-surface md:min-h-16 md:items-center md:py-2.5 one-line-rows:h-16 one-line-rows:py-0",
+          canExpand && "cursor-pointer",
+        )}
       >
         <VendorMark item={item} inStack={inStack} />
 
@@ -157,20 +163,24 @@ export function FeedRow({
           <Age iso={item.last_event_at} clock={clockAge} className="w-[51px] text-right" />
         </div>
 
-        <button
-          type="button"
-          onClick={toggle}
-          tabIndex={-1}
-          aria-expanded={expanded}
-          aria-controls={detailId}
-          aria-label={expanded ? "Collapse" : "Expand"}
-          className="max-md:tap relative ml-3 flex size-5 shrink-0 items-center justify-center outline-none after:absolute after:-inset-2 after:content-[''] focus-visible:outline-1 focus-visible:outline-rule md:ml-[25px] md:size-3"
-        >
-          <ChevronDown
-            className={cn("size-3", expanded ? "rotate-180 text-critical-text" : "text-chevron")}
-            strokeWidth={2}
-          />
-        </button>
+        {canExpand ? (
+          <button
+            type="button"
+            onClick={toggle}
+            tabIndex={-1}
+            aria-expanded={expanded}
+            aria-controls={detailId}
+            aria-label={expanded ? "Collapse" : "Expand"}
+            className="max-md:tap relative ml-3 flex size-5 shrink-0 items-center justify-center outline-none after:absolute after:-inset-2 after:content-[''] focus-visible:outline-1 focus-visible:outline-rule md:ml-[25px] md:size-3"
+          >
+            <ChevronDown
+              className={cn("size-3", expanded ? "rotate-180 text-critical-text" : "text-chevron")}
+              strokeWidth={2}
+            />
+          </button>
+        ) : (
+          <span aria-hidden className="ml-3 size-5 shrink-0 md:ml-[25px] md:size-3" />
+        )}
       </div>
 
       {expanded && (
@@ -390,6 +400,12 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
   return (
     <div className="flex flex-col gap-4">
       {d?.summary && <p className="line-clamp-3 max-w-[720px] text-[15px] leading-[1.6] text-summary">{d.summary}</p>}
+      {/* No summary: the outlet's own words, attributed, instead. */}
+      {d && !d.summary && d.excerpt && (
+        <p className="line-clamp-3 max-w-[720px] text-[15px] leading-[1.6] text-fg-2">
+          {d.excerpt.source}: “{d.excerpt.text}”
+        </p>
+      )}
 
       {todo && <WhatToDo todo={todo} />}
 

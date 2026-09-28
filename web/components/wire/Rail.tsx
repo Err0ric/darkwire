@@ -50,9 +50,13 @@ export function Elsewhere({
 }) {
   const now = useNow()
   const shown = elsewhere.slice(0, ELSEWHERE_SHOWN)
+  // The subtitle: this week's three most common topics.
+  const counts = new Map<string, number>()
+  for (const e of elsewhere) if (e.topic) counts.set(e.topic, (counts.get(e.topic) ?? 0) + 1)
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 3).map(([t]) => t)
   const more = elsewhere.length - shown.length
   return (
-    <Section title="Elsewhere" aside="policy · privacy · courts">
+    <Section title="Elsewhere" aside={top.length ? top.join(" · ") : undefined}>
       <ul className="mt-3">
         {shown.map((e) => {
           const dot = dots?.get(e.id)

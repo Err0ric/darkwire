@@ -142,6 +142,15 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
   )
 }
 
+/** How far a glyph's ink starts left of its origin (canvas actualBoundingBoxLeft; negative when
+ * the ink starts to the right, as for most letters). */
+function inkLeftOffset(ch: string, style: CSSStyleDeclaration): number {
+  const ctx = document.createElement("canvas").getContext("2d")
+  if (!ctx) return 0
+  ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+  return ctx.measureText(ch).actualBoundingBoxLeft
+}
+
 /** The x of a glyph's right ink edge: its box's left (the glyph origin) plus the font's
  * actualBoundingBoxRight for that character, so side bearings and tracking do not count. */
 function inkRight(left: number, ch: string, style: CSSStyleDeclaration): number {
@@ -180,6 +189,17 @@ function Lockup({ state }: { state: SyncState }) {
       range.setEnd(text, content.length)
       const tagRight = inkRight(range.getBoundingClientRect().left, content.slice(-1), getComputedStyle(tag))
       tag.style.transform = `translateX(${hRight - tagRight}px)`
+      // The lockup's visible width ("d" ink to "h" ink), for the activity trace (--lockup-ink).
+      const word = box.querySelector("h1 [aria-hidden] > span")?.firstChild
+      const main = box.closest("main")
+      if (word && word.nodeType === Node.TEXT_NODE && main) {
+        const first = document.createRange()
+        first.setStart(word, 0)
+        first.setEnd(word, 1)
+        const style = getComputedStyle(word.parentElement as Element)
+        const dLeft = first.getBoundingClientRect().left - inkLeftOffset(word.textContent?.[0] ?? "d", style)
+        main.style.setProperty("--lockup-ink", `${Math.round(hRight - dLeft)}px`)
+      }
     }
     place()
     const ro = new ResizeObserver(place)

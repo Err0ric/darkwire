@@ -10,7 +10,7 @@ export default function HomeLoading() {
         <Bar className="h-[clamp(40px,3.2vw,64px)] w-[clamp(220px,17vw,340px)]" />
         <Bar className="mt-7 h-3 w-[300px]" />
         {/* The activity trace (60px + its label line) and the log, as on the page. */}
-        <div className="mt-[clamp(28px,4.4vh,56px)] flex w-full max-w-[760px] flex-col">
+        <div className="mt-[clamp(28px,4.4vh,56px)] flex w-[clamp(280px,calc(clamp(40px,3.2vw,64px)*5.54),520px)] max-w-full flex-col">
           <div className="flex h-[60px] items-end pb-2">
             <Bar className="h-px w-full" />
           </div>

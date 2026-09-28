@@ -12,7 +12,12 @@ import { pad } from "@/lib/clock"
 export const ACTIVITY = {
   trace: {
     on: true,
-    width: 760, // px, the most it grows to; narrower screens scale it down
+    width: 760, // px, the log block's widest (the trace itself follows fit)
+    // The trace's width: the landing lockup's visible width ("darkwire.tech", ink edge to ink
+    // edge; --lockup-ink, measured by the lockup), clamped to min..max px. `fallback` stands in
+    // until it is measured (server render): the lockup's ink is about 5.54em of its font size
+    // (clamp(40px, 3.2vw, 64px)), so the measured width lands within a pixel or two, no jump.
+    fit: { min: 280, fallback: "calc(clamp(40px, 3.2vw, 64px) * 5.54)", max: 520 },
     height: 60,
     baseline: 52, // y of the flat line inside the 60px box
     maxSpike: 46, // px, the busiest hour of the 24
@@ -84,11 +89,11 @@ function useReducedMotion(): boolean {
 
 // ---------------------------------------------------------------- trace
 
-function spikes(hours: ActivityHour[], peak7d: number) {
+function spikes(hours: ActivityHour[], peak7d: number, width: number) {
   const T = ACTIVITY.trace
   const f = T.scale === "sqrt" ? Math.sqrt : (n: number) => n
   const max = Math.max(1, T.scaleBasis === "7d" ? f(peak7d) : 0, ...hours.map((h) => f(h.items)))
-  const slot = T.width / Math.max(1, hours.length)
+  const slot = width / Math.max(1, hours.length)
   return hours.map((h, i) => ({
     x: (i + 0.5) * slot,
     h: h.items ? Math.max(T.minSpike, (Math.min(f(h.items), max) / max) * T.maxSpike) : 0,
@@ -96,22 +101,33 @@ function spikes(hours: ActivityHour[], peak7d: number) {
   }))
 }
 
-function tracePath(hours: ActivityHour[], peak7d: number): string {
+function tracePath(hours: ActivityHour[], peak7d: number, width: number): string {
   const T = ACTIVITY.trace
   const d = [`M0 ${T.baseline}`]
-  for (const s of spikes(hours, peak7d)) {
+  for (const s of spikes(hours, peak7d, width)) {
     if (!s.h) continue
     d.push(`L${s.x - T.spikeHalfWidth} ${T.baseline}`, `L${s.x} ${T.baseline - s.h}`, `L${s.x + T.spikeHalfWidth} ${T.baseline}`)
   }
-  d.push(`L${T.width} ${T.baseline}`)
+  d.push(`L${width} ${T.baseline}`)
   return d.join(" ")
 }
 
 function Trace({ hours, peak7d, animate }: { hours: ActivityHour[]; peak7d: number; animate: boolean }) {
   const T = ACTIVITY.trace
   const P = ACTIVITY.pulse
-  const d = useMemo(() => tracePath(hours, peak7d), [hours, peak7d])
-  const hot = useMemo(() => spikes(hours, peak7d).filter((s) => s.hot && s.h), [hours, peak7d])
+  // Drawn at its real pixel width (so spikes keep their shape at any width), re-measured when
+  // the box resizes; the fit width before the first measurement.
+  const box = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(T.fit.max)
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setWidth(Math.max(1, Math.round(el.clientWidth))))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const d = useMemo(() => tracePath(hours, peak7d, width), [hours, peak7d, width])
+  const hot = useMemo(() => spikes(hours, peak7d, width).filter((s) => s.hot && s.h), [hours, peak7d, width])
   const pulse = useRef<SVGPathElement>(null)
   const head = useRef<HTMLSpanElement>(null)
 
@@ -128,23 +144,23 @@ function Trace({ hours, peak7d, animate }: { hours: ActivityHour[]; peak7d: numb
       const at = ((t / 1000) % P.seconds) / P.seconds
       path.style.strokeDashoffset = `${P.length - at * (total + P.length)}`
       const p = path.getPointAtLength(Math.min(total, at * (total + P.length)))
-      dot.style.left = `${(p.x / T.width) * 100}%`
+      dot.style.left = `${(p.x / width) * 100}%`
       dot.style.top = `${p.y}px`
       frame = requestAnimationFrame(tick)
     }
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [animate, d, P.on, P.length, P.seconds, T.width])
+  }, [animate, d, P.on, P.length, P.seconds, width])
 
   const all = hours.reduce((n, h) => n + h.items, 0)
   const critical = hours.reduce((n, h) => n + h.critical, 0)
   return (
-    <div className="w-full" style={{ maxWidth: T.width }}>
+    <div ref={box} className="max-w-full" style={{ width: `clamp(${T.fit.min}px, var(--lockup-ink, ${T.fit.fallback}), ${T.fit.max}px)` }}>
       <div className="relative" style={{ height: T.height }}>
         <svg
           role="img"
           aria-label={`Rows per hour over the last 24 hours: ${all} items, ${critical} critical or KEV`}
-          viewBox={`0 0 ${T.width} ${T.height}`}
+          viewBox={`0 0 ${width} ${T.height}`}
           preserveAspectRatio="none"
           className="absolute inset-0 h-full w-full overflow-visible"
         >

@@ -3,8 +3,9 @@
 
 import type { ElsewhereItem, FeedPage, FeedQuery, KevRow, ServicesOut, Severity, Status, Tab, VendorOut } from "@/lib/api"
 
-/** "stack" is the My stack tab: every category, only the viewer's vendors. */
-export type WireTab = Tab | "stack"
+/** "stack" is the My stack tab: every category, only the viewer's vendors. "elsewhere" lists
+ * the Elsewhere stream (policy, privacy, courts) of the last 7 days instead of the feed. */
+export type WireTab = Tab | "stack" | "elsewhere"
 
 export interface Filters {
   tab: WireTab
@@ -48,6 +49,7 @@ export function feedQuery(f: Filters, stack: string[]): FeedQuery {
     window: f.severity && f.window ? f.window : undefined,
   }
   if (f.tab === "stack") return { ...base, tab: "all", vendors: stack.join(",") || undefined }
+  if (f.tab === "elsewhere") return { ...base, tab: "all" } // the tab shows Elsewhere items, not this feed
   return { ...base, tab: f.tab }
 }
 
@@ -59,7 +61,7 @@ export const stackCriticalQuery = (stack: string[]) => ({
   limit: 1,
 })
 
-export const TABS: [Tab, string][] = [
+export const TABS: [WireTab, string][] = [
   ["all", "All"],
   ["vulnerabilities", "Vulnerabilities"],
   ["breaches", "Breaches"],
@@ -67,4 +69,5 @@ export const TABS: [Tab, string][] = [
   ["advisories", "Advisories"],
   ["research", "Research"],
   ["kev", "KEV"],
+  ["elsewhere", "Elsewhere"],
 ]

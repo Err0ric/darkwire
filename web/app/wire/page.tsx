@@ -28,7 +28,7 @@ export default async function Wire({ searchParams }: PageProps<"/wire">) {
     getFeed({ ...feedQuery(filters, stack), limit: 50 }),
     getStatus(),
     getVendors("active"),
-    getElsewhere(5),
+    getElsewhere(100, 7),
     getKev(7, 8),
     stack.length ? getFeed(stackCriticalQuery(stack)).then((p) => p.total) : Promise.resolve(null),
     getServices(watched.join(",") || undefined),

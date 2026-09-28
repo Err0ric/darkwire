@@ -5,11 +5,23 @@ import { cn } from "cn"
 
 import type { ElsewhereItem, KevRow, Severity, Status, VendorOut } from "@/lib/api"
 import { DUE_WINDOW_DAYS } from "@/lib/kev"
+import { NewDot, type DotState } from "@/lib/dots"
 import { age, useNow } from "@/lib/time"
 
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const
+const ELSEWHERE_SHOWN = 6
 
-function Section({ title, aside, children, className }: { title: string; aside?: string; children: ReactNode; className?: string }) {
+function Section({
+  title,
+  aside,
+  children,
+  className,
+}: {
+  title: string
+  aside?: string
+  children: ReactNode
+  className?: string
+}) {
   return (
     <section className={className}>
       <div className="flex items-baseline justify-between">
@@ -21,27 +33,61 @@ function Section({ title, aside, children, className }: { title: string; aside?:
   )
 }
 
-
 // Model not usable (no key, bad key, out of quota, failing): new rows arrive without summaries.
 const SUMMARIES_PAUSED: ReadonlySet<string> = new Set(["no_key", "auth_failing", "quota", "error"])
 
-export function Elsewhere({ elsewhere }: { elsewhere: ElsewhereItem[] }) {
+/** Six most recent Elsewhere items: headline (2 lines) over "source · age · topic"; new ones get
+ * the new-row dot. "+ N more" opens the wire's Elsewhere tab (all of the last 7 days). */
+export function Elsewhere({
+  elsewhere,
+  dots,
+  onSeen,
+  onMore,
+}: {
+  elsewhere: ElsewhereItem[]
+  dots?: ReadonlyMap<number, DotState>
+  onSeen?: (id: number) => void
+  onMore?: () => void
+}) {
   const now = useNow()
+  const shown = elsewhere.slice(0, ELSEWHERE_SHOWN)
+  const more = elsewhere.length - shown.length
   return (
-    <Section title="Elsewhere" aside="policy · privacy · culture">
+    <Section title="Elsewhere" aside="policy · privacy · courts">
       <ul className="mt-3">
-        {elsewhere.map((e) => (
-          <li key={e.id} className="-mx-2 mb-1.5 px-2 py-1 hover:bg-surface">
-            <a href={e.url} {...EXTERNAL} className="max-md:tap line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg">
-              {e.headline}
-            </a>
-            <p className="mt-1 text-[11px] min-[2200px]:text-[12px] leading-4 text-dim-text">
-              {e.source}
-              {e.published_at && now !== null && <> · {age(e.published_at, now)}</>}
-            </p>
-          </li>
-        ))}
+        {shown.map((e) => {
+          const dot = dots?.get(e.id)
+          return (
+            <li key={e.id} className="relative -mx-2 mb-1.5 px-2 py-1 hover:bg-surface">
+              {dot && <NewDot state={dot} className="top-[12px] -left-[7px]" />}
+              <a
+                href={e.url}
+                {...EXTERNAL}
+                onClick={() => onSeen?.(e.id)}
+                className="max-md:tap line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+              >
+                {e.headline}
+              </a>
+              <p className="mt-1 text-[11px] leading-4 text-dim-text min-[2200px]:text-[12px]">
+                {e.source}
+                {e.published_at && now !== null && <> · {age(e.published_at, now)}</>}
+                {e.topic && <span className="font-mono text-[11px]"> · {e.topic}</span>}
+              </p>
+            </li>
+          )
+        })}
         {elsewhere.length === 0 && <li className="text-dim-text">Nothing yet.</li>}
+        {more > 0 && onMore && (
+          <li className="-mx-2 px-2">
+            <button
+              type="button"
+              onClick={onMore}
+              className="max-md:tap text-dim-text outline-none hover:text-fg-2 focus-visible:text-fg-2"
+            >
+              + {more} more
+            </button>
+          </li>
+        )}
       </ul>
     </Section>
   )
@@ -73,12 +119,20 @@ export function MostActive({
                 onClick={() => onVendor(v.slug)}
                 aria-pressed={on}
                 className={cn(
-                  "max-md:tap", "w-28 shrink-0 truncate text-left outline-none hover:text-fg focus-visible:text-fg",
+                  "max-md:tap",
+                  "w-28 shrink-0 truncate text-left outline-none hover:text-fg focus-visible:text-fg",
                   on ? "text-fg" : "text-fg-2",
                 )}
               >
                 {/* Names take a fixed column so the bars line up; the active one is underlined. */}
-                <span className={cn("relative", on && "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg")}>{v.name}</span>
+                <span
+                  className={cn(
+                    "relative",
+                    on && "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg",
+                  )}
+                >
+                  {v.name}
+                </span>
               </button>
               {/* A thin bar scaled to the most active vendor. */}
               <span aria-hidden className="mr-3 h-[3px] min-w-6 flex-1 bg-rule">
@@ -115,11 +169,17 @@ function DueDate({ due, now }: { due: string | null; now: number | null }) {
   if (!due || now === null) return <span className="w-[74px] shrink-0" />
   const day = 86_400_000
   const days = Math.floor(Date.parse(due) / day) - Math.floor(now / day)
-  const label = days < 0 ? "overdue" : `due ${new Date(due + "T00:00:00Z").toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" })}`
+  const label =
+    days < 0
+      ? "overdue"
+      : `due ${new Date(due + "T00:00:00Z").toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" })}`
   return (
     <span
       title={`CISA due date ${due}`}
-      className={cn("w-[74px] shrink-0 text-right font-mono text-xs whitespace-nowrap", days <= DUE_WINDOW_DAYS ? "text-critical-text" : "text-dim-text")}
+      className={cn(
+        "w-[74px] shrink-0 text-right font-mono text-xs whitespace-nowrap",
+        days <= DUE_WINDOW_DAYS ? "text-critical-text" : "text-dim-text",
+      )}
     >
       {label}
     </span>
@@ -167,7 +227,12 @@ export function AddedToKev({
                   {k.cve_id}
                 </a>
               ) : (
-                <a href={`https://nvd.nist.gov/vuln/detail/${k.cve_id}`} {...EXTERNAL} title={`${title} · NVD`} className={cls}>
+                <a
+                  href={`https://nvd.nist.gov/vuln/detail/${k.cve_id}`}
+                  {...EXTERNAL}
+                  title={`${title} · NVD`}
+                  className={cls}
+                >
                   {k.cve_id}
                 </a>
               )}
@@ -179,7 +244,11 @@ export function AddedToKev({
         {kev.length === 0 && <li className="text-dim-text">No additions this week.</li>}
         {more > 0 && onMore && (
           <li className="-mx-2 flex h-6 items-center px-2">
-            <button type="button" onClick={onMore} className="max-md:tap text-dim-text outline-none hover:text-fg-2 focus-visible:text-fg-2">
+            <button
+              type="button"
+              onClick={onMore}
+              className="max-md:tap text-dim-text outline-none hover:text-fg-2 focus-visible:text-fg-2"
+            >
               +{more} more
             </button>
           </li>

@@ -9,6 +9,7 @@ import { SiteFooter } from "@/components/SiteFooter"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AddedToKev, Elsewhere, LastSevenDays, MostActive, SourcesLine } from "@/components/wire/Rail"
 import { PAGE_HEADER } from "@/components/PageHeader"
+import { ElsewhereList } from "@/components/wire/ElsewhereList"
 import { Services } from "@/components/wire/Services"
 import { WireClock } from "@/components/wire/WireClock"
 import { NEW_ROWS_EVENT } from "@/components/Wordmark"
@@ -274,11 +275,27 @@ export function WireBoard({ initial }: { initial: WireData }) {
     return () => window.removeEventListener("scroll", onScroll)
   }, [flush])
 
+  // Elsewhere: polled every minute like the feed. Items not seen before get the new-row dot
+  // (nothing on screen at load does); the rail shows six, the Elsewhere tab all of the week.
+  const { dots: elseDots, add: addElseDots, clear: clearElseDot } = useDots()
+  const elseSeen = useRef(new Set(initial.elsewhere.map((e) => e.id)))
+  useEffect(() => {
+    const poll = async () => {
+      const next = await getElsewhere(100, 7).catch(() => null)
+      if (!next) return
+      const fresh = next.filter((e) => !elseSeen.current.has(e.id)).map((e) => e.id)
+      fresh.forEach((id) => elseSeen.current.add(id))
+      setElsewhere(next)
+      addElseDots(fresh)
+    }
+    const timer = setInterval(poll, LIVE_POLL_MS)
+    return () => clearInterval(timer)
+  }, [addElseDots])
+
   // The slower rail sections.
   useEffect(() => {
     const poll = async () => {
-      const [els, act, kv] = await Promise.allSettled([getElsewhere(5), getVendors("active"), getKev(7, 8)])
-      if (els.status === "fulfilled") setElsewhere(els.value)
+      const [act, kv] = await Promise.allSettled([getVendors("active"), getKev(7, 8)])
       if (act.status === "fulfilled") setVendors(act.value)
       if (kv.status === "fulfilled") setKev(kv.value)
     }
@@ -482,71 +499,77 @@ export function WireBoard({ initial }: { initial: WireData }) {
             </div>
           )}
 
-          <div ref={list} className={cn(loading && "opacity-60")} aria-busy={loading}>
-            {/* One section per local day of last_event_at (the sort key, also what the age column
+          {filters.tab === "elsewhere" ? (
+            <ElsewhereList items={elsewhere} dots={elseDots} onSeen={clearElseDot} />
+          ) : (
+            <>
+              <div ref={list} className={cn(loading && "opacity-60")} aria-busy={loading}>
+                {/* One section per local day of last_event_at (the sort key, also what the age column
                 uses). The day label pins to the top while its rows scroll past; the next day's
                 section pushes it out. Labels are not rows: no dot, not counted, not <article>. */}
-            {(now === null ? [{ key: "all", name: "", date: "", today: true, items }] : groupByDay(items, now)).map(
-              (g, gi) => (
-                <section
-                  key={g.key}
-                  aria-label={g.name || undefined}
-                  className={cn("[&>article:last-child]:border-b-0", gi > 0 && "mt-8")}
-                >
-                  {g.name && (
-                    <div
-                      role="separator"
-                      aria-label={`${g.name}, ${g.items.length} rows`}
-                      className={cn(
-                        "sticky top-0 z-[5] flex h-9 items-center border-t bg-bg text-[13px]",
-                        // The tabs row's rule is already right above the first label.
-                        gi === 0 ? "border-transparent" : "border-rule",
-                      )}
+                {(now === null ? [{ key: "all", name: "", date: "", today: true, items }] : groupByDay(items, now)).map(
+                  (g, gi) => (
+                    <section
+                      key={g.key}
+                      aria-label={g.name || undefined}
+                      className={cn("[&>article:last-child]:border-b-0", gi > 0 && "mt-8")}
                     >
-                      <span className="font-semibold text-fg-2">{g.name}</span>
-                      <span className="text-dim-text">
-                        {g.name !== g.date && <>&nbsp;· {g.date}</>}&nbsp;· {g.items.length}{" "}
-                        {g.items.length === 1 ? "item" : "items"}
-                      </span>
-                    </div>
-                  )}
-                  {g.items.map((item) => (
-                    <FeedRow
-                      key={item.id}
-                      item={item}
-                      fresh={fresh.has(item.id)}
-                      dot={dots.get(item.id)}
-                      onSeen={() => clearDot(item.id)}
-                      clockAge={!g.today}
-                      inStack={filters.tab !== "stack" && !!item.vendor && stack.includes(item.vendor.slug)}
-                    />
-                  ))}
-                </section>
-              ),
-            )}
-          </div>
+                      {g.name && (
+                        <div
+                          role="separator"
+                          aria-label={`${g.name}, ${g.items.length} rows`}
+                          className={cn(
+                            "sticky top-0 z-[5] flex h-9 items-center border-t bg-bg text-[13px]",
+                            // The tabs row's rule is already right above the first label.
+                            gi === 0 ? "border-transparent" : "border-rule",
+                          )}
+                        >
+                          <span className="font-semibold text-fg-2">{g.name}</span>
+                          <span className="text-dim-text">
+                            {g.name !== g.date && <>&nbsp;· {g.date}</>}&nbsp;· {g.items.length}{" "}
+                            {g.items.length === 1 ? "item" : "items"}
+                          </span>
+                        </div>
+                      )}
+                      {g.items.map((item) => (
+                        <FeedRow
+                          key={item.id}
+                          item={item}
+                          fresh={fresh.has(item.id)}
+                          dot={dots.get(item.id)}
+                          onSeen={() => clearDot(item.id)}
+                          clockAge={!g.today}
+                          inStack={filters.tab !== "stack" && !!item.vendor && stack.includes(item.vendor.slug)}
+                        />
+                      ))}
+                    </section>
+                  ),
+                )}
+              </div>
 
-          {failed && items.length === 0 ? (
-            <p className="py-10 text-[15px] text-muted">
-              The feed is unreachable right now. It retries on the next refresh.
-            </p>
-          ) : items.length === 0 && !loading ? (
-            <p className="py-10 text-[15px] text-muted">Nothing here in the last {windowText}.</p>
-          ) : (
-            <div className="flex items-baseline justify-between pt-6 text-[15px]">
-              <span className="text-muted">
-                {items.length} of {total} in the last {windowText}
-              </span>
-              {items.length < total && (
-                <button
-                  type="button"
-                  onClick={showMore}
-                  className="max-md:tap text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
-                >
-                  Show more
-                </button>
+              {failed && items.length === 0 ? (
+                <p className="py-10 text-[15px] text-muted">
+                  The feed is unreachable right now. It retries on the next refresh.
+                </p>
+              ) : items.length === 0 && !loading ? (
+                <p className="py-10 text-[15px] text-muted">Nothing here in the last {windowText}.</p>
+              ) : (
+                <div className="flex items-baseline justify-between pt-6 text-[15px]">
+                  <span className="text-muted">
+                    {items.length} of {total} in the last {windowText}
+                  </span>
+                  {items.length < total && (
+                    <button
+                      type="button"
+                      onClick={showMore}
+                      className="max-md:tap text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+                    >
+                      Show more
+                    </button>
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
         </div>
 
@@ -582,7 +605,12 @@ export function WireBoard({ initial }: { initial: WireData }) {
               />
             </div>
             <div className="order-1 min-[1200px]:order-5 min-[2200px]:order-2">
-              <Elsewhere elsewhere={elsewhere} />
+              <Elsewhere
+                elsewhere={elsewhere}
+                dots={elseDots}
+                onSeen={clearElseDot}
+                onMore={() => apply({ tab: "elsewhere" })}
+              />
             </div>
             <div className="order-6 min-[2200px]:hidden">
               <SourcesLine status={status} />

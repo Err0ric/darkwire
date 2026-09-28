@@ -85,6 +85,7 @@ Environment variables (see the `.env.example` files; all but the first are optio
 - This product uses the NVD API but is not endorsed or certified by the NVD.
 - Known exploited vulnerabilities come from the [CISA KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog).
 - Exploit prediction scores come from [FIRST EPSS](https://www.first.org/epss/).
+- The Elsewhere column (policy, privacy, courts) reads EFF Deeplinks, 404 Media, Citizen Lab, Lawfare, Wired Security, TechCrunch and Ars Technica security, Schneier on Security and CyberScoop policy; each item is kept only if it is on one of those topics (keywords, then a one-word classification by claude-haiku-4-5).
 - Service status comes from each provider's official status page.
 - Headlines, excerpts and summaries point to the original publishers. Every headline and source name links to the publisher's article, and full articles are not republished.
 

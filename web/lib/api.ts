@@ -127,6 +127,8 @@ export interface ElsewhereItem {
   url: string
   source: string
   published_at: string | null
+  /** privacy, surveillance, disinfo, courts, policy, rights, cybercrime; null = not tagged. */
+  topic: string | null
 }
 
 export interface SourceStatus {
@@ -249,8 +251,9 @@ export const getCves = (query: CvesQuery = {}, init?: RequestInit) =>
 export const getVendors = (sort: "name" | "active" = "name", init?: RequestInit) =>
   get<VendorOut[]>("/vendors", { sort }, init)
 
-export const getElsewhere = (limit = 5, init?: RequestInit) =>
-  get<ElsewhereItem[]>("/elsewhere", { limit }, init)
+/** Elsewhere items, newest first, off-topic ones left out; `days` limits them to that window. */
+export const getElsewhere = (limit = 6, days?: number, init?: RequestInit) =>
+  get<ElsewhereItem[]>("/elsewhere", days ? { limit, days } : { limit }, init)
 
 export const getStatus = (init?: RequestInit) => get<Status>("/status", {}, init)
 

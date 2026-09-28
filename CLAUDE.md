@@ -144,6 +144,8 @@ Three layouts by viewport width:
 - 1200 to 2199px: feed plus one 340px right rail, 48px apart: Services, Most active this week, Last 7 days, Added to KEV, Elsewhere, Sources line.
 - Under 1200px: the rail stacks below the feed: Elsewhere, Most active, Added to KEV, Last 7 days, Sources line (Services sits above the feed).
 
+Rail hierarchy (wire only): section titles `--fg-2`, item text `--muted`, numbers and CVE IDs `--dim-text` (only the Last 7 days Critical count stays `--critical-text`), Elsewhere headlines `--fg-2`, Services keeps its state colors; feed headlines stay `--fg`, the brightest text on the page. Rail bars are quieter than the feed's: Last 7 days `--rail-critical` #7f1d1d, `--rail-high` #5a1a1a, `--rail-medium` #3a3a3a, `--rail-low` #2a2a2a; Most active top vendor `--rail-top` #5a5a5a, others `--rail-bar` #3a3a3a. A 1px `--rule` line sits midway in the gap between each rail and the feed, as tall as the rail's content.
+
 Rails are `position: sticky` in the two- and three-column layouts: a rail shorter than the window pins 24px from the top; a taller one scrolls with the page until its bottom is 24px above the window's bottom, then holds (`web/lib/sticky.ts`). The nav is not sticky, so rails pin to the window top.
 
 Sections:

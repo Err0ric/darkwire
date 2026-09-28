@@ -31,7 +31,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
     return (
       <section aria-label="Services" className="flex items-baseline justify-between gap-3">
         <p className="leading-[19px] text-muted">
-          <span className="font-medium text-fg">Services</span>
+          <span className="font-medium text-fg-2">Services</span>
           {" · "}
           {silent ? `${ok} operational · ${silent} not reporting` : `all ${ok} operational`}
         </p>
@@ -43,7 +43,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
   return (
     <section aria-label="Services">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-[13px] font-medium text-fg">Services</h2>
+        <h2 className="text-[13px] font-medium text-fg-2">Services</h2>
         <span className="text-[11px] min-[2200px]:text-[12px] text-dim-text">{all}</span>
       </div>
       <ul className="mt-3">
@@ -51,7 +51,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
           <li key={s.slug} className="-mx-2 mb-1 px-2 py-1 hover:bg-surface">
             <p className="flex items-center gap-2 leading-[18px]">
               <StateDot state={s.state} />
-              <span className="text-fg">{s.name}</span>
+              <span className="text-muted">{s.name}</span>
               <span className={s.state === "major" ? "text-critical-text" : "text-degraded"}>
                 {s.state === "major" ? "major outage" : "degraded"}
               </span>
@@ -62,7 +62,7 @@ export function Services({ data }: { data: ServicesOut | null }) {
             <a
               href={s.incident?.url ?? s.page}
               {...EXTERNAL}
-              className="max-md:tap mt-0.5 ml-3.5 line-clamp-2 leading-[18px] text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+              className="max-md:tap mt-0.5 ml-3.5 line-clamp-2 leading-[18px] text-muted outline-none hover:text-fg-2 focus-visible:text-fg-2"
             >
               {s.incident?.title ?? "Status page"} <span aria-hidden className="text-[11px] text-critical-text">↗</span>
             </a>

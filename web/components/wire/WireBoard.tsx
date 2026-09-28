@@ -350,7 +350,8 @@ export function WireBoard({ initial }: { initial: WireData }) {
           aria-label="This week"
           className="sticky mt-[103px] hidden w-(--left-rail-w) shrink-0 text-[13px] min-[2200px]:block"
         >
-          <div className="flex flex-col gap-10">
+          {/* A 1px rule midway between this rail and the feed, as tall as the rail's content. */}
+          <div className="-mr-[calc(var(--col-gap)/2)] flex flex-col gap-10 border-r border-rule pr-[calc(var(--col-gap)/2)]">
             <MostActive
               active={active}
               vendor={filters.vendor}
@@ -582,7 +583,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
           {/* Orders: under 1200 Elsewhere, Most active, Added to KEV, Last 7 days, Sources (Services
               sits above the feed). 1200-2199 Services, Most active, Last 7 days, Added to KEV,
               Elsewhere, Sources. 2200+ Services, Elsewhere; the rest is in the left rail. */}
-          <div className="flex max-w-[640px] flex-col gap-10 min-[1200px]:max-w-none">
+          <div className="flex max-w-[640px] flex-col gap-10 min-[1200px]:-ml-6 min-[1200px]:max-w-none min-[1200px]:border-l min-[1200px]:border-rule min-[1200px]:pl-6 min-[2200px]:-ml-[calc(var(--col-gap)/2)] min-[2200px]:pl-[calc(var(--col-gap)/2)]">
             <div className="hidden min-[1200px]:order-1 min-[1200px]:block">
               <Services data={services} />
             </div>

@@ -33,6 +33,13 @@
   --on-critical: #ffffff; /* CRITICAL badge text */
   --degraded: #d97706; /* service degraded (amber); major outages use --critical */
   --strip-ok: #1c1c1c; /* operational hour on the /outages strip: barely above --bg */
+  /* Wire rail bars, quieter than the feed's: Last 7 days by severity, Most active. */
+  --rail-critical: #7f1d1d;
+  --rail-high: #5a1a1a;
+  --rail-medium: #3a3a3a;
+  --rail-low: #2a2a2a;
+  --rail-top: #5a5a5a;
+  --rail-bar: #3a3a3a;
 
   color-scheme: dark;
 }
@@ -140,6 +147,12 @@ html[data-theme="high-contrast"] {
   --color-on-critical: var(--on-critical);
   --color-degraded: var(--degraded);
   --color-strip-ok: var(--strip-ok);
+  --color-rail-critical: var(--rail-critical);
+  --color-rail-high: var(--rail-high);
+  --color-rail-medium: var(--rail-medium);
+  --color-rail-low: var(--rail-low);
+  --color-rail-top: var(--rail-top);
+  --color-rail-bar: var(--rail-bar);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);

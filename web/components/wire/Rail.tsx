@@ -24,7 +24,7 @@ function Section({
   return (
     <section className={className}>
       <div className="flex items-baseline justify-between">
-        <h2 className="text-[13px] font-medium text-fg">{title}</h2>
+        <h2 className="text-[13px] font-medium text-fg-2">{title}</h2>
         {aside && <span className="text-[11px] min-[2200px]:text-[12px] text-dim-text">{aside}</span>}
       </div>
       {children}
@@ -123,8 +123,8 @@ export function MostActive({
                 aria-pressed={on}
                 className={cn(
                   "max-md:tap",
-                  "w-28 shrink-0 truncate text-left outline-none hover:text-fg focus-visible:text-fg",
-                  on ? "text-fg" : "text-fg-2",
+                  "w-28 shrink-0 truncate text-left outline-none hover:text-fg-2 focus-visible:text-fg-2",
+                  on ? "text-fg-2" : "text-muted",
                 )}
               >
                 {/* Names take a fixed column so the bars line up; the active one is underlined. */}
@@ -140,11 +140,11 @@ export function MostActive({
               {/* A thin bar scaled to the most active vendor. */}
               <span aria-hidden className="mr-3 h-[3px] min-w-6 flex-1 bg-rule">
                 <span
-                  className={cn("block h-full", i === 0 ? "bg-fg-2" : "bg-medium")}
+                  className={cn("block h-full", i === 0 ? "bg-rail-top" : "bg-rail-bar")}
                   style={{ width: `${(v.items_7d / top) * 100}%` }}
                 />
               </span>
-              <span className="w-6 text-right font-mono text-xs text-muted">{v.items_7d}</span>
+              <span className="w-6 text-right font-mono text-xs text-dim-text">{v.items_7d}</span>
             </li>
           )
         })}
@@ -182,7 +182,7 @@ function MiniScore({ cvss, severity }: { cvss: number | null; severity: Severity
   const fill = (severity && MINI_FILL[severity]) || "bg-medium"
   return (
     <span className="flex w-[62px] shrink-0 items-center justify-end gap-2">
-      <span className={cn("font-mono text-xs", cvss >= 7 ? "text-fg" : "text-fg-2")}>{cvss.toFixed(1)}</span>
+      <span className="font-mono text-xs text-dim-text">{cvss.toFixed(1)}</span>
       <span role="img" aria-label={`CVSS ${cvss}`} className="flex gap-0.5">
         {Array.from({ length: 5 }, (_, i) => (
           <span key={i} className={cn("h-2 w-[4px]", i < filled ? fill : "bg-rule")} />
@@ -219,7 +219,7 @@ export function AddedToKev({
       <ul className="mt-2.5">
         {kev.map((k) => {
           const title = `Added ${k.date_added}${k.product ? ` · ${k.product}` : ""}`
-          const cls = "max-md:tap shrink-0 font-mono text-xs text-fg-2 outline-none hover:text-fg focus-visible:text-fg"
+          const cls = "max-md:tap shrink-0 font-mono text-xs text-dim-text outline-none hover:text-fg-2 focus-visible:text-fg-2"
           const itemId = k.item_id
           return (
             <li key={k.cve_id} className="-mx-2 flex h-6 items-center gap-3 px-2 hover:bg-surface">
@@ -280,10 +280,10 @@ export function LastSevenDays({
   const counts = status?.counts
   const week: [Severity, string, number, string][] = counts
     ? [
-        ["critical", "Critical", counts.critical_7d, "bg-critical"],
-        ["high", "High", counts.high_7d, "bg-accent"],
-        ["medium", "Medium", counts.medium_7d, "bg-dim"],
-        ["low", "Low", counts.low_7d, "bg-outline-medium"],
+        ["critical", "Critical", counts.critical_7d, "bg-rail-critical"],
+        ["high", "High", counts.high_7d, "bg-rail-high"],
+        ["medium", "Medium", counts.medium_7d, "bg-rail-medium"],
+        ["low", "Low", counts.low_7d, "bg-rail-low"],
       ]
     : []
   const peak = Math.max(1, ...week.map(([, , n]) => n))
@@ -299,7 +299,7 @@ export function LastSevenDays({
                 <span
                   className={cn(
                     "relative",
-                    on ? "text-fg" : "text-muted",
+                    on ? "text-fg-2" : "text-muted",
                     n > 0 && !on && "group-hover:text-fg-2",
                     on && "after:absolute after:inset-x-0 after:-bottom-1 after:h-px after:bg-fg",
                   )}
@@ -310,7 +310,7 @@ export function LastSevenDays({
               <span className="relative h-[3px] flex-1 bg-rule" aria-hidden>
                 <span className={cn("absolute inset-y-0 left-0", fill)} style={{ width: `${(n / peak) * 100}%` }} />
               </span>
-              <span className="w-8 text-right font-mono text-xs text-fg-2">{n}</span>
+              <span className={cn("w-8 text-right font-mono text-xs", key === "critical" && n > 0 ? "text-critical-text" : "text-dim-text")}>{n}</span>
             </>
           )
           return (

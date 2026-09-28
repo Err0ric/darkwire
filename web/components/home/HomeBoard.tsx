@@ -7,7 +7,8 @@ import { cn } from "cn"
 import { Ticker } from "@/components/home/Ticker"
 import { PrefsControls } from "@/components/PrefsControls"
 import { CURSOR_RESERVE_EM, NEW_ROWS_EVENT, Wordmark } from "@/components/Wordmark"
-import { getFeed, getStatus, type FeedItem, type Status } from "@/lib/api"
+import { Expanded, type Detail } from "@/components/FeedRow"
+import { getFeed, getItem, getStatus, type FeedItem, type Status } from "@/lib/api"
 import { pad, useMinuteClock, utcHHMM, zoneName } from "@/lib/clock"
 import { NewDot, useDots, type DotState } from "@/lib/dots"
 import { isImportant, kevDueIn } from "@/lib/kev"
@@ -275,11 +276,38 @@ function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
     </span>
   )
 
+  // Only the headline is a link (to the article); a click anywhere else on the row, or Enter /
+  // Space while it has focus, opens the wire's expanded view under it.
+  const [open, setOpen] = useState(false)
+  const [detail, setDetail] = useState<Detail>({ state: "idle" })
+  const detailId = `rightnow-${item.id}-detail`
+  function toggle() {
+    const next = !open
+    setOpen(next)
+    if (next && (detail.state === "idle" || detail.state === "error")) {
+      setDetail({ state: "loading" })
+      getItem(item.id)
+        .then((d) => setDetail({ state: "ready", item: d }))
+        .catch(() => setDetail({ state: "error" }))
+    }
+  }
+
   return (
-    <li className="border-b border-hairline hover:bg-surface">
-      <Link
-        href={`/item/${item.id}${query()}`}
-        className="max-md:tap group block py-3 outline-none focus-visible:bg-surface sm:flex sm:h-11 sm:items-center sm:py-0"
+    <li className={cn("border-b border-hairline", open ? "bg-surface" : "hover:bg-surface")}>
+      <div
+        role="group"
+        tabIndex={0}
+        aria-label={`${item.headline}. ${open ? "Collapse" : "Expand"} details`}
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("a, button")) return
+          toggle()
+        }}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return
+          e.preventDefault()
+          toggle()
+        }}
+        className="block cursor-pointer py-3 outline-offset-[-1px] sm:flex sm:h-11 sm:items-center sm:py-0"
       >
         {/* Wide: score · bar · badge · headline · tag · age on one line. Narrow: headline, then the rest, no bar. */}
         <span className="hidden w-10 shrink-0 pl-1 sm:block">{score}</span>
@@ -299,8 +327,15 @@ function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
         {/* The wrapper is not clipped, so the dot can sit in the gutter left of the headline. */}
         <span className="relative block min-w-0 flex-1">
           {dot && <NewDot state={dot} className="top-[7px] -left-[10px] sm:-left-[15px]" />}
-          <span className="block text-[15px] leading-5 font-medium tracking-[-0.01em] text-fg group-hover:underline sm:truncate">
-            {item.headline}
+          <span className="block text-[15px] leading-5 font-medium tracking-[-0.01em] text-fg sm:truncate">
+            <a
+              href={item.primary_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="max-md:tap outline-none hover:underline focus-visible:underline"
+            >
+              {item.headline}
+            </a>
           </span>
         </span>
         <span className="mt-1.5 flex items-center gap-3 sm:mt-0 sm:ml-5 sm:gap-0">
@@ -311,7 +346,16 @@ function RightNowRow({ item, dot }: { item: FeedItem; dot?: DotState }) {
             {now !== null && age(item.last_event_at, now)}
           </span>
         </span>
-      </Link>
+      </div>
+      {open && (
+        <div id={detailId} className="pb-5 text-left" aria-busy={detail.state === "loading"}>
+          {detail.state === "ready" && <Expanded item={detail.item} detail={detail} />}
+          {detail.state === "error" && <p className="text-[13px] text-muted">Could not load this row. Try again.</p>}
+          <Link href={`/item/${item.id}${query()}`} className="max-md:tap mt-3 inline-block text-[13px] text-muted outline-none hover:text-fg-2 focus-visible:text-fg-2">
+            Permalink
+          </Link>
+        </div>
+      )}
     </li>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type MouseEvent, type ReactNode } from "react"
+import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { cn } from "cn"
 import { Bug, ChevronDown, FileText, FlaskConical, Newspaper, ShieldAlert, type LucideIcon } from "lucide-react"
 
@@ -86,6 +86,12 @@ export function FeedRow({
     toggle()
   }
 
+  function onRowKey(e: KeyboardEvent) {
+    if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return
+    e.preventDefault()
+    toggle()
+  }
+
   return (
     <article
       id={`row-${item.id}`}
@@ -95,21 +101,30 @@ export function FeedRow({
         expanded && "-mx-4 bg-surface px-4 md:-mx-6 md:px-6",
       )}
     >
+      {/* The row is the expand toggle: a click anywhere but a link (the headline, the sources,
+          the CVE ID) toggles it, and so do Enter / Space while the row has focus. */}
       <div
         onClick={onRowClick}
-        className="flex cursor-pointer items-start py-3 hover:bg-surface md:min-h-16 md:items-center md:py-2.5 one-line-rows:h-16 one-line-rows:py-0"
+        onKeyDown={onRowKey}
+        role="group"
+        tabIndex={0}
+        aria-label={`${item.headline}. ${expanded ? "Collapse" : "Expand"} details`}
+        className="flex cursor-pointer items-start py-3 outline-offset-[-1px] hover:bg-surface md:min-h-16 md:items-center md:py-2.5 one-line-rows:h-16 one-line-rows:py-0"
       >
         <VendorMark item={item} inStack={inStack} />
 
         <div className="relative min-w-0 flex-1 md:mr-[22px]">
           {dot && <NewDot state={dot} className="top-[7px] -left-[9px] md:-left-[13px]" />}
-          <a
-            href={item.primary_url}
-            {...EXTERNAL}
-            className="max-md:tap line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] text-fg outline-none focus-visible:underline one-line-rows:block one-line-rows:truncate"
-          >
-            {item.headline}
-          </a>
+          {/* Only the headline text is the link (inline), so the space beside it toggles the row. */}
+          <p className="line-clamp-2 text-[15px] leading-5 font-medium tracking-[-0.01em] text-fg one-line-rows:block one-line-rows:truncate">
+            <a
+              href={item.primary_url}
+              {...EXTERNAL}
+              className="max-md:tap outline-none hover:underline focus-visible:underline"
+            >
+              {item.headline}
+            </a>
+          </p>
           {/* Phones: the age ends the meta line (right-aligned), and the score / bar / badge line
               shows only when the row has one. The chevron stays in its column. */}
           <MetaLine
@@ -145,6 +160,7 @@ export function FeedRow({
         <button
           type="button"
           onClick={toggle}
+          tabIndex={-1}
           aria-expanded={expanded}
           aria-controls={detailId}
           aria-label={expanded ? "Collapse" : "Expand"}

@@ -96,7 +96,7 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 
 ## Expanded row
 
-Click anywhere on the row except a link. Background `--surface`, extends 24px past the row edges. Contents in order:
+Only the headline text is a link (inline, not stretched across the row). A click anywhere else on the row, including the blank space beside the headline, toggles it; so do Enter and Space while the row has focus (visible focus ring). Source links, the CVE ID and the links in the expanded row keep their own behavior. Same on the wire, `/cves` and the landing's Right now (which opens the same expanded view, plus a permalink). Background `--surface`, extends 24px past the row edges. Contents in order:
 
 1. Summary, 3 lines max, 15px, `#b5b5b5`, max-width 720px. Generated once on ingest, cached. Prompt: what it is, who is affected, is there a fix. No adjectives.
 2. What to do (CVE rows only), label then label/value lines:

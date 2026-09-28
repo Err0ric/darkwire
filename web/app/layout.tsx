@@ -1,3 +1,4 @@
+// Root layout: fonts, theme script, nav and the page frame shared by every route.
 import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { headers } from "next/headers"

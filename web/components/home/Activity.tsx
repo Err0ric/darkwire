@@ -43,6 +43,7 @@ export const ACTIVITY = {
     // trace; 0 keeps it, with "watching N sources…" when empty.
     hideWhenFewer: 3,
     collapseMs: 200,
+    widthMs: 200, // the centered block follows its longest line
     lines: 3, // newest on the bottom
     lineHeight: 18, // px
     // Older lines are dimmer, bottom (newest) to top. Text must clear 4.5:1 on --bg (axe), which
@@ -318,8 +319,21 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
 
   const bottom = lines.length - 1
   const latest = [...lines].reverse().find((l) => l.event)?.event ?? null
+  // The block is as wide as its longest visible line (full length, so typing does not grow it),
+  // in ch: Geist Mono is fixed-width, so characters are exact. Plus 2ch for the cursor.
+  const widest = lines
+    .filter((_, i) => bottom - i < L.lines)
+    .reduce((n, l) => Math.max(n, l.event ? lineParts(l.event).reduce((m, p) => m + p.text.length, 0) : 24), 0)
   return (
-    <div className="w-full pt-3" style={{ maxWidth: ACTIVITY.trace.width }}>
+    // Centered on the page axis under the trace; the lines stay left-aligned inside, so the time,
+    // type and detail columns line up. The width animates (L.widthMs) when the lines change.
+    <div
+      className="max-w-full pt-3 font-mono text-[12.5px]"
+      style={{
+        width: `min(${widest + 2}ch, ${ACTIVITY.trace.width}px)`,
+        transition: animate ? `width ${L.widthMs}ms ease-out` : undefined,
+      }}
+    >
       {/* Lines are stacked from the bottom; a line's slot sets its offset and opacity, so a new
           line moves the others up and fades the one leaving the top (CSS transitions). The
           height of all L.lines is reserved from the first render. */}

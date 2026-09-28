@@ -301,4 +301,29 @@ export interface ServicesOut {
 export const getServices = (slugs?: string, init?: RequestInit) =>
   get<ServicesOut>("/services", slugs ? { slugs } : {}, init)
 
+export interface ActivityHour {
+  start: string // UTC hour
+  items: number // main rows first seen in this hour
+  critical: number // of those, now Critical, KEV or exploited
+}
+
+export type BoardEventKind = "ingest" | "kev" | "nvd" | "cluster" | "services" | "summary"
+
+export interface BoardEvent {
+  id: number
+  at: string
+  kind: BoardEventKind
+  subject: string
+  detail: string
+  item_id: number | null
+}
+
+/** The landing's trace (24 hourly counts, oldest first) and log (last 20 events, newest first). */
+export interface Activity {
+  hours: ActivityHour[]
+  events: BoardEvent[]
+}
+
+export const getActivity = (init?: RequestInit) => get<Activity>("/activity", {}, init)
+
 export const getKev = (days = 7, limit = 20, init?: RequestInit) => get<KevRow[]>("/kev", { days, limit }, init)

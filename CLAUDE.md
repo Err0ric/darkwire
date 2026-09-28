@@ -181,6 +181,10 @@ The nav shows the current UTC time ("19:08 UTC", 12px mono `--dim`) before "Sync
 - Elsewhere is assigned per feed, not per article.
 - Timezone: viewer's local, fall back to UTC. Never hardcode PT.
 
+## Board events and /activity
+
+`board_events` (`api/app/events.py`, recorded by the existing pipeline in the same transaction as what they describe, pruned after 7 days by ingest): `ingest` (a main feed added rows: source, "+3 items"), `kev` (a CVE on the board entered KEV: "CVE-… added"), `nvd` (a CVE got its first score or a new one: "scored 9.8 critical"), `cluster` (another outlet joined a story: headline, "4 sources"), `services` (a service changed between known states: "Cloudflare degraded"), `summary` (a row got its summary: headline, "done"). Public facts only. `GET /activity` (no-store): 24 hourly counts of main rows by `first_seen_at` (all, and those now Critical, KEV or exploited), oldest first, the last being the current hour; and the last 20 events, newest first.
+
 ## Sources
 
 Seeded from `api/app/seed.py`. Keep this table and that file in sync. Main feeds become rows. Elsewhere feeds only appear in the rail. Enrichment feeds never become rows; their entries are stored keyed by CVE and attached to rows about that CVE. A vendor feed is linked to its vendor and wins primary-source selection.

@@ -338,3 +338,19 @@ class ServiceHour(Base):
     slug: Mapped[str] = mapped_column(String(64), primary_key=True)
     hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     worst: Mapped[str] = mapped_column(String(16))
+
+
+class BoardEvent(Base):
+    """What the board just did, for the landing's one-line log (GET /activity): ingest (a feed
+    added rows), kev (a CVE on the board entered KEV), nvd (a CVE got or changed its score),
+    cluster (another outlet joined a story), services (a service changed state), summary (a
+    row got its summary). Public facts only; kept 7 days."""
+
+    __tablename__ = "board_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    subject: Mapped[str] = mapped_column(Text)  # source name, CVE ID, headline or service name
+    detail: Mapped[str] = mapped_column(Text)  # "+3 items", "added", "scored 9.8", "4 sources", ...
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("items.id", ondelete="SET NULL"))

@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import cleanup, dedupe, jobstate, msrc
+from app import cleanup, dedupe, events, jobstate, msrc
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Category, Cve, Health, Item, ItemCve, ItemSource, Source, Stream, SyncRun, Vendor
@@ -243,6 +243,7 @@ async def ingest_source(
                 await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
             await link_cves(session, cluster, cves)
             cluster.changed_at = func.now()  # a new source alone does not touch the row's columns
+            events.record(session, "cluster", cluster.headline, f"{len(cluster.sources)} sources", cluster.id)
             stored.merged += 1
         else:
             # cve_id starts as the first CVE mentioned; enrichment re-points it at the highest-scored one.
@@ -359,6 +360,8 @@ async def run_ingest() -> None:
                         source.last_counts = {"not_modified": True}
                     elif source.stream != Stream.enrichment:
                         source.last_counts = stored.counts()
+                    if stored.added and source.stream == Stream.main:
+                        events.record(session, "ingest", source.name, f"+{stored.added} {'item' if stored.added == 1 else 'items'}")
                     await session.commit()
                     run.items_added += stored.added
                     run.skipped_ads += stored.skipped_ads
@@ -399,6 +402,7 @@ async def run_ingest() -> None:
                 log.exception("ingest: merge failed, retried next run")
             await dedupe.refresh_exploited(session)
             dropped = await prune(session, now)
+            await events.prune(session, now)
             failing = [by_id[r.source_id].name for r in results if r.error]
             run.ok = True
             run.error = f"failing: {', '.join(failing)}" if failing else None

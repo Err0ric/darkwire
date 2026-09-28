@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import epss, kev, nvd, summaries, topics
+from app import epss, events, kev, nvd, summaries, topics
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
@@ -33,6 +33,8 @@ async def apply_kev(session: AsyncSession) -> None:
         row = rows.get(c.id)
         kev_at, due_at = (at(row.date_added), at(row.due_date)) if row else (None, None)
         if c.kev != bool(row) or c.kev_added_at != kev_at or c.kev_due_date != due_at:
+            if row and not c.kev:
+                events.record(session, "kev", c.id, "added")
             c.kev, c.kev_added_at, c.kev_due_date = bool(row), kev_at, due_at
     await session.execute(
         update(MsrcUpdate)

@@ -40,7 +40,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import jobstate
+from app import events, jobstate
 from app.db import SessionLocal
 from app.models import ServiceHour, ServiceIncident, ServiceStatus
 
@@ -380,6 +380,8 @@ async def store(
         return
     if row.state != state:
         row.changed_at = now
+        if row.state and row.state != UNKNOWN and state != UNKNOWN:
+            events.record(session, "services", svc.name, "major outage" if state == MAJOR else state)
     row.state = state
     row.incident_title = reading.title if reading and state in (DEGRADED, MAJOR) else None
     row.incident_url = reading.url if reading and state in (DEGRADED, MAJOR) else None

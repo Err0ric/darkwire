@@ -31,7 +31,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import fetcher, jobstate
+from app import events, fetcher, jobstate
 from app.config import get_settings
 from app.models import Item, ItemCve, PatchStatus, Stream
 
@@ -434,6 +434,8 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         if text is None:
             log.info("summaries: item %d rejected (%s, %d chars of input): %r", item.id, why, len(material[item.id]), raw[:160])
         item.summary = text or ""
+        if text is not None:
+            events.record(session, "summary", item.headline, "done", item.id)
         written += text is not None
     await session.commit()
     log.info("summaries: pass: %s", ", ".join(f"{k} {v}" for k, v in sorted(reasons.items())))

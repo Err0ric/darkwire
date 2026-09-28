@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.enrich import schedule as schedule_enrich
 from app.ingest import scheduler, start_scheduler
-from app.routers import cves, feed, kev, services, status, vendors
+from app.routers import activity, cves, feed, kev, services, status, vendors
 from app.services import schedule as schedule_services
 from app.seed import seed
 from app.throttle import limiter, rate_limited
@@ -52,7 +52,7 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET"], allow_headers=[])
-for r in (feed.router, cves.router, kev.router, vendors.router, status.router, services.router):
+for r in (feed.router, cves.router, kev.router, vendors.router, status.router, services.router, activity.router):
     app.include_router(r)
 
 

@@ -213,3 +213,23 @@ class Status(BaseModel):
     sources: list[SourceStatus]
     counts: Counts
     summaries: SummariesStatus
+
+
+class ActivityHour(BaseModel):
+    start: datetime  # UTC hour
+    items: int  # main rows first seen in this hour
+    critical: int  # of those, now Critical, KEV or exploited
+
+
+class BoardEventOut(ORM):
+    id: int
+    at: datetime
+    kind: str  # ingest | kev | nvd | cluster | services | summary
+    subject: str
+    detail: str
+    item_id: int | None
+
+
+class Activity(BaseModel):
+    hours: list[ActivityHour]  # 24, oldest first; the last is the current hour
+    events: list[BoardEventOut]  # newest first

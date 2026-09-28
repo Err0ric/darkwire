@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import cleanup, dedupe, events, jobstate, msrc, rowtime
+from app import alerts, cleanup, dedupe, events, fetcher, jobstate, msrc, rowtime
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Category, Cve, Health, Item, ItemCve, ItemSource, Source, Stream, SyncRun, Vendor
@@ -215,19 +215,28 @@ async def ingest_source(
             stored.added += 1
             continue
 
-        cves = headline_cves(a.title, a.excerpt, a.text, a.body)
+        alert = dedupe.is_kev_alert(a.title, a.url)
+        if alert:
+            # A CISA KEV alert: its own row, holding only the CVEs it lists (app/alerts.py).
+            async with fetcher.client() as client:
+                cves = await alerts.listed_cves(session, client, a.title, a.url, a.published_at, a.text, a.body)
+        else:
+            cves = headline_cves(a.title, a.excerpt, a.text, a.body)
         if cves:
             # Placeholder rows so the FKs hold. Enrichment fills them in.
             await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
         vendor_id = source.vendor_id or matcher.match(a.title, a.excerpt)
         category = guess_category(a.title, a.excerpt, bool(cves))
 
-        cluster = await find_cve_cluster(session, cves, a.published_at) or await dedupe.find_title_cluster(
-            session, a.title, vendor_id, a.published_at, matcher
-        )
+        cluster = None
+        if not alert:
+            cluster = await find_cve_cluster(session, cves, a.published_at) or await dedupe.find_title_cluster(
+                session, a.title, vendor_id, a.published_at, matcher, cves
+            )
         if cluster is not None:
+            alert_row = dedupe.is_alert_row(cluster.sources)
             current = next((s for s in cluster.sources if s.url == cluster.primary_url), None)
-            if _is_better_primary(link, source, current):
+            if not alert_row and _is_better_primary(link, source, current):
                 cluster.headline, cluster.primary_url = a.title, a.url
             cluster.sources.append(link)
             # Row time: the earliest of its news sources (app/rowtime.py); logged when it moves.
@@ -239,12 +248,13 @@ async def ingest_source(
             if cluster.category == Category.news:
                 cluster.category = category
             # The cluster's count can tie more IDs than this article alone ("2 zero-days" in one
-            # headline, the bulletin list in another).
-            texts = [(s.title, s.excerpt or "", s.body or "") for s in cluster.sources if s is not link]
-            cves = cluster_cves([*texts, (a.title, a.excerpt or "", " ".join(t or "" for t in (a.text, a.body)))])
-            if cves:
-                await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
-            await link_cves(session, cluster, cves)
+            # headline, the bulletin list in another). A KEV alert row keeps only the alert's CVEs.
+            if not alert_row:
+                texts = [(s.title, s.excerpt or "", s.body or "") for s in cluster.sources if s is not link]
+                cves = cluster_cves([*texts, (a.title, a.excerpt or "", " ".join(t or "" for t in (a.text, a.body)))])
+                if cves:
+                    await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
+                await link_cves(session, cluster, cves)
             cluster.changed_at = func.now()  # a new source alone does not touch the row's columns
             events.record(session, "cluster", cluster.headline, f"{len(cluster.sources)} sources", cluster.id)
             stored.merged += 1

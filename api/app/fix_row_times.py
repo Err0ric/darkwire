@@ -3,6 +3,7 @@ older KEV / score-change times and any other drift.
 
     python -m app.fix_row_times            # dry run: one line per row that would change
     python -m app.fix_row_times --apply    # writes, logging every change (old, new, reason)
+    python -m app.fix_row_times --rows 79 [--apply]   # only these row ids (comma-separated)
 
 Uses DATABASE_URL like the app. Never run --apply against production without sign-off.
 """
@@ -31,11 +32,12 @@ def planned(items) -> list[tuple[object, object, object, str]]:
     return out
 
 
-async def main(apply: bool) -> None:
+async def main(apply: bool, rows: list[int] | None = None) -> None:
     async with SessionLocal() as session:
-        items = (
-            await session.scalars(select(Item).where(Item.stream == Stream.main).options(selectinload(Item.sources)))
-        ).all()
+        query = select(Item).where(Item.stream == Stream.main).options(selectinload(Item.sources))
+        if rows:
+            query = query.where(Item.id.in_(rows))
+        items = (await session.scalars(query)).all()
         changes = planned(items)
         print(f"{'applying' if apply else 'dry run'}: {len(changes)} of {len(items)} rows change")
         for item, old, new, kind in changes:
@@ -46,5 +48,15 @@ async def main(apply: bool) -> None:
             await session.commit()
 
 
+def parse_rows(argv: list[str]) -> list[int] | None:
+    """The ids after --rows ("79" or "79,93"), else None for every row."""
+    if "--rows" not in argv:
+        return None
+    i = argv.index("--rows")
+    if i + 1 >= len(argv):
+        raise SystemExit("--rows needs ids, e.g. --rows 79")
+    return [int(x) for x in argv[i + 1].split(",") if x.strip()]
+
+
 if __name__ == "__main__":
-    asyncio.run(main("--apply" in sys.argv))
+    asyncio.run(main("--apply" in sys.argv, parse_rows(sys.argv)))

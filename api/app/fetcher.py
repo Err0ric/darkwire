@@ -1,4 +1,5 @@
-"""Article text for the summary model, fetched on demand and never stored.
+"""Article text for the summary model (and a CISA KEV alert's CVE list, app/alerts.py),
+fetched on demand and never stored.
 
 For summarization only: the article URL is fetched server-side, its main text extracted
 (trafilatura) and cut to about ARTICLE_CHARS, then handed to the model in memory. Nothing

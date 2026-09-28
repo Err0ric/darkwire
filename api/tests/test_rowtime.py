@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from app import rowtime
-from app.fix_row_times import planned
+from app.fix_row_times import parse_rows, planned
 
 THN = datetime(2026, 9, 26, 11, 46, 40, tzinfo=UTC)  # The Hacker News, the earliest article
 BC = datetime(2026, 9, 26, 19, 3, 34, tzinfo=UTC)  # BleepingComputer, later
@@ -70,6 +70,11 @@ class TheCase(unittest.TestCase):
 
     def test_the_fix_leaves_correct_rows_alone(self):
         self.assertEqual(planned([row(THN, "published", THN, BC)]), [])
+
+    def test_rows_option(self):
+        self.assertIsNone(parse_rows(["fix_row_times", "--apply"]))
+        self.assertEqual(parse_rows(["fix_row_times", "--rows", "79"]), [79])
+        self.assertEqual(parse_rows(["fix_row_times", "--rows", "79,93", "--apply"]), [79, 93])
 
 
 if __name__ == "__main__":

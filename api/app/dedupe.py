@@ -1,28 +1,52 @@
-"""Clustering rules shared by live ingest and the one-time merge of existing rows.
+"""Clustering rules shared by live ingest, the one-time merge of existing rows and the split
+of bad clusters (app/split_clusters.py).
 
-CLAUDE.md: cluster by CVE ID first; else normalized-title similarity > 0.85 within 48h,
-same vendor. Also: same vendor + a shared product alias + "zero-day" in both titles, which
-catches two outlets' very different headlines about the same zero-day.
+CLAUDE.md: cluster by CVE ID first. A title merge (normalized-title similarity > 0.85, same
+vendor; or same vendor + a shared product alias + "zero-day" in both titles; or shared
+distinctive words) also needs publish times within 72h AND a shared CVE ID or vendor, so
+boilerplate titles alone never merge. CISA's "Adds N Known Exploited Vulnerabilities to
+Catalog" alerts never merge with anything: each is its own row, and a news article joins one
+only by sharing a CVE the alert lists (the row's CVEs are the alert's own, app/alerts.py).
 """
 
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
+from urllib.parse import urlsplit
 
 from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app import jobstate, rowtime
-from app.models import Item, ItemSource, Stream
+from app.models import Item, ItemCve, ItemSource, Stream
 from app.tagging import ZERO_DAY, VendorMatcher
 
 log = logging.getLogger(__name__)
 
-WINDOW = timedelta(hours=48)
+WINDOW = timedelta(hours=48)  # CVE merges of existing rows (merge_existing)
+TITLE_WINDOW = timedelta(hours=72)  # title merges: publish times at most this far apart
 SIMILARITY = 0.85
 _NON_WORD = re.compile(r"[^a-z0-9]+")
+
+KEV_ALERT = re.compile(
+    r"^\s*CISA Adds (?:\w+) Known Exploited Vulnerabilit(?:y|ies) to (?:the |Its )?(?:KEV )?Catalog\b",
+    re.IGNORECASE,
+)
+
+
+def is_kev_alert(title: str | None, url: str | None) -> bool:
+    """CISA's own "Adds N Known Exploited Vulnerabilities to Catalog" alert (on cisa.gov).
+    Another outlet's story with the same wording is ordinary news."""
+    host = (urlsplit(url or "").hostname or "").lower()
+    return bool(KEV_ALERT.match(title or "")) and (host == "cisa.gov" or host.endswith(".cisa.gov"))
+
+
+def is_alert_row(sources) -> bool:
+    """A row holding a CISA KEV alert (sources: anything with .title and .url)."""
+    return any(is_kev_alert(s.title, s.url) for s in sources)
 
 
 def normalize(title: str) -> str:
@@ -111,28 +135,122 @@ def titles_match(a: str, b: str, vendor_a: int | None, vendor_b: int | None, mat
     return shared_story(a, b)
 
 
+def title_merge_ok(
+    title: str, published: datetime | None, vendor_id: int | None, cves,
+    other_title: str, other_published: datetime | None, other_vendor_id: int | None, other_cves,
+    matcher: VendorMatcher,
+) -> bool:
+    """A title merge: publish times within 72h, a shared CVE ID or the same vendor, and the
+    titles match. Boilerplate titles alone ("CISA Adds Two ...") never merge."""
+    if published is None or other_published is None or abs(published - other_published) > TITLE_WINDOW:
+        return False
+    same_vendor = vendor_id is not None and vendor_id == other_vendor_id
+    if not same_vendor and not (set(cves) & set(other_cves)):
+        return False
+    return titles_match(title, other_title, vendor_id, other_vendor_id, matcher)
+
+
 async def find_title_cluster(
-    session: AsyncSession, title: str, vendor_id: int | None, published: datetime, matcher: VendorMatcher
+    session: AsyncSession, title: str, vendor_id: int | None, published: datetime, matcher: VendorMatcher,
+    cves: list[str] = (),
 ) -> Item | None:
-    """Within 48h, vendor-compatible, and a headline of the cluster matches this title."""
+    """A row with a source published within 72h whose title matches this one (title_merge_ok).
+    Rows holding a CISA KEV alert are never joined by title."""
     compatible = [] if vendor_id is None else [or_(Item.vendor_id == vendor_id, Item.vendor_id.is_(None))]
+    near = select(ItemSource.item_id).where(
+        ItemSource.published_at.between(published - TITLE_WINDOW, published + TITLE_WINDOW)
+    )
     candidates = (
         await session.scalars(
             select(Item)
-            .where(
-                Item.stream == Stream.main,
-                *compatible,
-                Item.last_event_at.between(published - WINDOW, published + WINDOW),
-            )
+            .where(Item.stream == Stream.main, *compatible, Item.id.in_(near))
             .options(selectinload(Item.sources).selectinload(ItemSource.source))
             .order_by(Item.last_event_at.desc())
         )
     ).all()
+    if not candidates:
+        return None
+    row_cves: dict[int, set[str]] = {}
+    ids = [i.id for i in candidates]
+    for item_id, cve_id in (
+        await session.execute(select(ItemCve.item_id, ItemCve.cve_id).where(ItemCve.item_id.in_(ids)))
+    ).all():
+        row_cves.setdefault(item_id, set()).add(cve_id)
     for item in candidates:
-        titles = {item.headline, *(s.title for s in item.sources)}
-        if any(titles_match(title, t, vendor_id, item.vendor_id, matcher) for t in titles):
+        if is_alert_row(item.sources):
+            continue
+        theirs = row_cves.get(item.id, set())
+        if any(
+            title_merge_ok(title, published, vendor_id, cves, s.title, s.published_at, item.vendor_id, theirs, matcher)
+            for s in item.sources
+        ):
             return item
     return None
+
+
+# ---------------------------------------------------------------- the rules as a pure plan
+
+
+@dataclass
+class Art:
+    """One article as the clustering rules see it."""
+
+    key: object  # item_sources.id, or anything unique in tests
+    title: str
+    url: str
+    published: datetime
+    vendor_id: int | None = None
+    cves: list[str] = field(default_factory=list)  # tied to its headline; for an alert, the ones it lists
+
+    @property
+    def alert(self) -> bool:
+        return is_kev_alert(self.title, self.url)
+
+
+@dataclass
+class Group:
+    arts: list[Art]
+    cves: set[str]
+    vendor_id: int | None
+
+    @property
+    def alert(self) -> bool:
+        return any(a.alert for a in self.arts)
+
+    @property
+    def time(self) -> datetime:
+        return min(a.published for a in self.arts)
+
+
+def plan(arts: list[Art], matcher: VendorMatcher, cve_window: timedelta = timedelta(hours=48)) -> list[Group]:
+    """Cluster articles the way live ingest does, oldest first: a KEV alert always starts its
+    own row; otherwise join by a shared CVE (the newest such row within cve_window of its time;
+    an alert row only by one of the alert's CVEs, which are all it holds), else by title
+    (title_merge_ok, never an alert row), else start a row."""
+    groups: list[Group] = []
+    for a in sorted(arts, key=lambda a: (a.published, str(a.key))):
+        if a.alert:
+            groups.append(Group([a], set(a.cves), None))
+            continue
+        by_cve = [g for g in groups if set(a.cves) & g.cves and abs(a.published - g.time) <= cve_window]
+        target = max(by_cve, key=lambda g: g.time) if by_cve else None
+        if target is None:
+            for g in sorted(groups, key=lambda g: g.time, reverse=True):
+                if not g.alert and any(
+                    title_merge_ok(a.title, a.published, a.vendor_id, a.cves, b.title, b.published, g.vendor_id, g.cves, matcher)
+                    for b in g.arts
+                ):
+                    target = g
+                    break
+        if target is None:
+            groups.append(Group([a], set(a.cves), a.vendor_id))
+            continue
+        target.arts.append(a)
+        if not target.alert:  # an alert row keeps only the alert's CVEs
+            target.cves |= set(a.cves)
+            if target.vendor_id is None:
+                target.vendor_id = a.vendor_id
+    return groups
 
 
 async def refresh_exploited(session: AsyncSession) -> None:
@@ -176,8 +294,11 @@ async def merge_existing(session: AsyncSession, matcher: VendorMatcher) -> int:
     for item_id, cve_id in (await session.execute(text("SELECT item_id, cve_id FROM item_cves"))).all():
         cves.setdefault(item_id, set()).add(cve_id)
     titles: dict[int, set[str]] = {}
-    for item_id, title in (await session.execute(text("SELECT item_id, title FROM item_sources"))).all():
+    alerts: set[int] = set()
+    for item_id, title, url in (await session.execute(text("SELECT item_id, title, url FROM item_sources"))).all():
         titles.setdefault(item_id, set()).add(title)
+        if is_kev_alert(title, url):
+            alerts.add(item_id)
 
     order = sorted((dict(r) for r in rows), key=lambda r: (r["first_pub"] or r["last_event_at"], r["id"]))
     survivors: list[dict] = []
@@ -186,10 +307,16 @@ async def merge_existing(session: AsyncSession, matcher: VendorMatcher) -> int:
         pub = n["first_pub"] or n["last_event_at"]
 
         def joins(o: dict) -> bool:
-            if abs(pub - o["last_event_at"]) > WINDOW:
+            if n["id"] in alerts:  # a KEV alert never joins another row
                 return False
-            if cves.get(o["id"], set()) & cves.get(n["id"], set()):
+            shared = cves.get(o["id"], set()) & cves.get(n["id"], set())
+            if shared and abs(pub - o["last_event_at"]) <= WINDOW:
                 return True
+            if o["id"] in alerts:  # joined only by one of the alert's CVEs
+                return False
+            same_vendor = n["vendor_id"] is not None and n["vendor_id"] == o["vendor_id"]
+            if abs(pub - o["last_event_at"]) > TITLE_WINDOW or not (shared or same_vendor):
+                return False
             return any(
                 titles_match(a, b, n["vendor_id"], o["vendor_id"], matcher)
                 for a in titles.get(n["id"], ())

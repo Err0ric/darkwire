@@ -137,6 +137,7 @@ class ElsewhereItem(BaseModel):
     url: str
     source: str
     published_at: datetime | None
+    topic: str | None  # app/topics.py; None until classified
 
 
 class SourceStatus(ORM):

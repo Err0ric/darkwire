@@ -157,6 +157,9 @@ class Item(Base):
         ForeignKey("vendors.id", ondelete="SET NULL"), index=True
     )
     category: Mapped[Category] = mapped_column(_enum(Category, "category"), default=Category.news)
+    # Elsewhere only (app/topics.py): privacy, surveillance, disinfo, courts, policy, rights,
+    # cybercrime, "off-topic" (hidden), "" (asked, no usable answer), NULL (not classified yet).
+    topic: Mapped[str | None] = mapped_column(String(24))
     # Not unique: coverage of the same CVE more than 48h apart starts a new row.
     cve_id: Mapped[str | None] = mapped_column(
         ForeignKey("cves.id", ondelete="SET NULL"), index=True

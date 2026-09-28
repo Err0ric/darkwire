@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.db import get_session
 from app.staleness import is_stale, not_stale
 from app.models import Category, Item, ItemCve, ItemSource, MsrcUpdate, Severity, Stream, Vendor
+from app.topics import OFF_TOPIC
 from app.schemas import (
     CveDetail,
     ElsewhereItem,
@@ -184,18 +185,25 @@ async def item_detail(request: Request, item_id: int, session: AsyncSession = De
 @read_limit
 @heavy_limit
 async def elsewhere(
-    request: Request, limit: int = Query(5, ge=1, le=500), session: AsyncSession = Depends(get_session)
+    request: Request,
+    limit: int = Query(6, ge=1, le=500),
+    days: int | None = Query(None, ge=1, le=14, description="only items from the last N days"),
+    session: AsyncSession = Depends(get_session),
 ) -> list[ElsewhereItem]:
+    """Policy / privacy / society items, newest first. Off-topic items (app/topics.py) are left
+    out; items not classified yet are included, untagged."""
     limit = cap(request, limit)
-    rows = await session.scalars(
+    stmt = (
         select(Item)
-        .where(Item.stream == Stream.elsewhere)
+        .where(Item.stream == Stream.elsewhere, or_(Item.topic.is_(None), Item.topic != OFF_TOPIC))
         .options(selectinload(Item.sources).selectinload(ItemSource.source))
         .order_by(Item.last_event_at.desc())
         .limit(limit)
     )
+    if days:
+        stmt = stmt.where(Item.last_event_at >= datetime.now(UTC) - timedelta(days=days))
     out = []
-    for item in rows:
+    for item in await session.scalars(stmt):
         first = item.sources[0] if item.sources else None
         out.append(
             ElsewhereItem(
@@ -204,6 +212,7 @@ async def elsewhere(
                 url=item.primary_url,
                 source=first.source.name if first else "",
                 published_at=(first.published_at if first else None) or item.last_event_at,
+                topic=item.topic or None,
             )
         )
     return out

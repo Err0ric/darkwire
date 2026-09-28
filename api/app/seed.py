@@ -6,7 +6,7 @@ overwrite it in the database. Add rows freely. Change existing ones with a migra
 
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,13 +30,16 @@ SOURCES: list[dict] = [
     # enrichment: fetched for data keyed by CVE, never rows. Handler in app/ingest.py.
     {"name": "MSRC", "feed_url": "https://api.msrc.microsoft.com/update-guide/rss", "site_url": "https://msrc.microsoft.com/update-guide", "stream": Stream.enrichment, "vendor_slug": "microsoft"},
     # elsewhere: policy, privacy, culture. Shown in the right rail only.
-    {"name": "EFF", "feed_url": "https://www.eff.org/rss/updates.xml", "site_url": "https://www.eff.org", "stream": Stream.elsewhere},
+    # Section feeds where they exist. Every item passes the relevance filter (app/topics.py).
+    {"name": "EFF Deeplinks", "feed_url": "https://www.eff.org/deeplinks.xml", "site_url": "https://www.eff.org/deeplinks", "stream": Stream.elsewhere},
     {"name": "404 Media", "feed_url": "https://www.404media.co/rss/", "site_url": "https://www.404media.co", "stream": Stream.elsewhere},
     {"name": "Citizen Lab", "feed_url": "https://citizenlab.ca/feed/", "site_url": "https://citizenlab.ca", "stream": Stream.elsewhere},
     {"name": "Lawfare", "feed_url": "https://www.lawfaremedia.org/feeds/articles", "site_url": "https://www.lawfaremedia.org", "stream": Stream.elsewhere},
     {"name": "Wired", "feed_url": "https://www.wired.com/feed/category/security/latest/rss", "site_url": "https://www.wired.com/category/security/", "stream": Stream.elsewhere},
     {"name": "TechCrunch", "feed_url": "https://techcrunch.com/category/security/feed/", "site_url": "https://techcrunch.com/category/security/", "stream": Stream.elsewhere},
     {"name": "Ars Technica", "feed_url": "https://arstechnica.com/security/feed/", "site_url": "https://arstechnica.com/security/", "stream": Stream.elsewhere},
+    {"name": "Schneier on Security", "feed_url": "https://www.schneier.com/feed/atom/", "site_url": "https://www.schneier.com", "stream": Stream.elsewhere},
+    {"name": "CyberScoop", "feed_url": "https://cyberscoop.com/news/policy/feed/", "site_url": "https://cyberscoop.com/news/policy/", "stream": Stream.elsewhere},
 ]
 
 # Aliases are matched case-insensitively on word boundaries (see app/tagging.py). The
@@ -119,5 +122,9 @@ async def seed(session: AsyncSession) -> None:
     await session.execute(
         insert(Source).values(sources).on_conflict_do_nothing(index_elements=["feed_url"])
     )
+    # A feed no longer listed here (replaced by a section feed, or dropped) stops being fetched;
+    # its rows stay until they age out.
+    listed = [s["feed_url"] for s in SOURCES]
+    await session.execute(update(Source).where(Source.feed_url.not_in(listed)).values(enabled=False))
     await session.commit()
     log.info("seed: %d sources, %d vendors ensured", len(SOURCES), len(VENDORS))

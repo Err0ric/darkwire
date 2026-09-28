@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import epss, kev, nvd, summaries
+from app import epss, kev, nvd, summaries, topics
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
@@ -147,6 +147,7 @@ async def run_enrich() -> None:
         try:
             counts["summaries"] = await summaries.summarize_pending(session)
             counts["actions"] = await summaries.actions_pending(session)
+            counts["topics"] = await topics.classify_pending(session)
         except Exception:
             log.exception("enrich: summaries failed")
             await session.rollback()

@@ -78,7 +78,6 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
       )
       if (!page) return
       const d = diff(known, page.items)
-      const now = Date.now()
       setLatest((prev) => applyDiff(prev, d).slice(0, 10))
       if (d.fresh.length) void addUnseen(d.fresh.length, d.fresh.some(isImportant))
       // NEW rows re-type the wordmark's ".tech" (nav and lockup).
@@ -97,7 +96,7 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
           <Lockup state={syncState(status, statusFailed || status?.sync.last_ok === false, minute?.getTime() ?? null)} />
           <DateLine now={minute} />
         </div>
-        <Activity data={activity} />
+        <Activity data={activity} sources={status?.sources_total ?? null} />
         <Ticker items={latest} />
 
         <Link
@@ -149,10 +148,19 @@ function inkRight(left: number, ch: string, style: CSSStyleDeclaration): number 
   return left + ctx.measureText(ch).actualBoundingBoxRight
 }
 
-/** Moves the tagline so its last glyph's ink ends exactly where the "h" of ".tech" ends when
- * fully typed (the wordmark's invisible reserve, so typing never moves it). A transform, so the
- * layout does not shift. Re-measured on resize and once fonts are ready. */
-function useTaglineAlign(lockup: React.RefObject<HTMLDivElement | null>, tagline: React.RefObject<HTMLParagraphElement | null>) {
+/** The landing's centerpiece, the og.png lockup: the nav's wordmark (red i-dot, typing
+ * ".tech") at landing size, and "live security news + CVEs" under it, its last glyph's ink
+ * ending exactly under the ink of the "h" in ".tech" (measured below). */
+function Lockup({ state }: { state: SyncState }) {
+  // The cursor's reserved space after ".tech" hangs outside the layout box (negative margin),
+  // so the block centers on the visible "darkwire.tech".
+  const size = "clamp(40px, 3.2vw, 64px)"
+  const lockup = useRef<HTMLDivElement>(null)
+  const tagline = useRef<HTMLParagraphElement>(null)
+
+  // Moves the tagline so its last glyph's ink ends exactly where the "h" of ".tech" ends when
+  // fully typed (the wordmark's invisible reserve, so typing never moves it). A transform, so
+  // the layout does not shift. Re-measured on resize and once fonts are ready.
   useLayoutEffect(() => {
     const box = lockup.current
     const tag = tagline.current
@@ -179,25 +187,13 @@ function useTaglineAlign(lockup: React.RefObject<HTMLDivElement | null>, tagline
       ro.disconnect()
       window.removeEventListener("resize", place)
     }
-  }, [lockup, tagline])
-}
-
-/** The landing's centerpiece, the og.png lockup: the nav's wordmark (red i-dot, typing
- * ".tech") at landing size, and "live security news + CVEs" under it, its last glyph's ink
- * ending exactly under the ink of the "h" in ".tech" (measured, see useTaglineAlign). */
-function Lockup({ state }: { state: SyncState }) {
-  // The cursor's reserved space after ".tech" hangs outside the layout box (negative margin),
-  // so the block centers on the visible "darkwire.tech".
-  const size = "clamp(40px, 3.2vw, 64px)"
-  const box = useRef<HTMLDivElement>(null)
-  const tag = useRef<HTMLParagraphElement>(null)
-  useTaglineAlign(box, tag)
+  }, [])
   return (
-    <div ref={box} className="inline-flex flex-col items-end">
+    <div ref={lockup} className="inline-flex flex-col items-end">
       <h1 aria-label="darkwire.tech" style={{ fontSize: size, marginRight: `calc(${size} * ${-CURSOR_RESERVE_EM})` }}>
         <Wordmark state={state} />
       </h1>
-      <p ref={tag} className="mt-2 font-mono text-[13px] leading-4 text-muted">live security news + CVEs</p>
+      <p ref={tagline} className="mt-2 font-mono text-[13px] leading-4 text-muted">live security news + CVEs</p>
     </div>
   )
 }

@@ -16,8 +16,9 @@ export const ACTIVITY = {
     height: 60,
     baseline: 52, // y of the flat line inside the 60px box
     maxSpike: 46, // px, the busiest hour of the 24
+    minSpike: 3, // px, the smallest non-zero hour, so a quiet hour is still a visible bump
     spikeHalfWidth: 5, // px each side of an hour's peak
-    scale: "sqrt" as "sqrt" | "linear", // sqrt keeps quiet hours visible next to a busy one
+    scale: "sqrt" as "sqrt" | "linear", // sqrt of the count (capped at the max): one busy hour does not flatten the rest
     lineColor: "#3a1414",
     lineWidth: 1,
     hotColor: "var(--critical)", // hours with a Critical, KEV or exploited row
@@ -32,9 +33,18 @@ export const ACTIVITY = {
   },
   log: {
     on: true,
+    lines: 3, // newest on the bottom
+    lineHeight: 18, // px
+    // Older lines are dimmer, bottom (newest) to top. Text must clear 4.5:1 on --bg (axe), which
+    // rules out opacity on text (50% of even --fg-2 fails), so they step down through the text
+    // tokens instead: the middle line's type column goes --muted, the top line is all
+    // --dim-text. lineOpacity stays 1; lower it only if that contrast rule is dropped.
+    lineOpacity: [1, 1, 1],
+    lineColors: [null, { kind: "var(--muted)" }, { all: "var(--dim-text)" }] as ({ kind?: string; all?: string } | null)[],
+    slideMs: 300, // older lines move up, the top one fades out
     typingMs: 25, // per character
-    cycleMs: 30_000, // no new event for this long: show an older one
-    cycleCount: 5, // how far back the cycle goes
+    cycleMs: 30_000, // no new event for this long: bring back an older one
+    cycleCount: 10, // how far back the cycle goes
     cursorColor: "#4a4a4a",
     cursorFadeMs: 700,
     // The faintest text that clears 4.5:1 on --bg (#555 would be about 2.9:1).
@@ -42,7 +52,7 @@ export const ACTIVITY = {
     kindColor: "var(--fg-2)",
     detailColor: "var(--dim-text)",
     hotColor: "var(--critical-text)",
-    hotWords: /\b(KEV|critical|exploited)\b/i,
+    hotWords: /\b(?:KEV|critical|exploited)\b/i, // non-capturing: the split below adds its own group
     kindWidth: 9, // characters, the type column
   },
 }
@@ -70,7 +80,7 @@ function spikes(hours: ActivityHour[]) {
   const slot = T.width / Math.max(1, hours.length)
   return hours.map((h, i) => ({
     x: (i + 0.5) * slot,
-    h: h.items ? Math.max(2, (f(h.items) / max) * T.maxSpike) : 0,
+    h: h.items ? Math.max(T.minSpike, (Math.min(f(h.items), max) / max) * T.maxSpike) : 0,
     hot: h.critical > 0,
   }))
 }
@@ -157,11 +167,8 @@ function Trace({ hours, animate }: { hours: ActivityHour[]; animate: boolean }) 
           />
         )}
       </div>
-      <p className="mt-1.5 flex justify-between font-mono text-[11px] leading-4 text-dim-text">
+      <p aria-hidden className="mt-1.5 flex justify-between font-mono text-[11px] leading-4 text-dim-text">
         <span>-24h</span>
-        <span>
-          {all} {all === 1 ? "item" : "items"} · {critical} critical/KEV
-        </span>
         <span>now</span>
       </p>
     </div>
@@ -172,49 +179,84 @@ function Trace({ hours, animate }: { hours: ActivityHour[]; animate: boolean }) 
 
 type Part = { text: string; color: string }
 
-function lineParts(e: BoardEvent): Part[] {
+function lineParts(e: BoardEvent, slot = 0): Part[] {
   const L = ACTIVITY.log
+  const over = L.lineColors[slot] ?? null
   const at = new Date(e.at)
   const joiner = e.kind === "cluster" || e.kind === "summary" ? " · " : " "
   const detail = `${e.subject}${joiner}${e.detail}`
   return [
-    { text: `${pad(at.getHours())}:${pad(at.getMinutes())}  `, color: L.timeColor },
-    { text: e.kind.padEnd(L.kindWidth), color: L.kindColor },
+    { text: `${pad(at.getHours())}:${pad(at.getMinutes())}  `, color: over?.all ?? L.timeColor },
+    { text: e.kind.padEnd(L.kindWidth), color: over?.all ?? over?.kind ?? L.kindColor },
     ...detail
       .split(HOT_SPLIT)
       .filter(Boolean)
-      .map((text) => ({ text, color: L.hotWords.test(text) ? L.hotColor : L.detailColor })),
+      .map((text) => ({ text, color: over?.all ?? (L.hotWords.test(text) ? L.hotColor : L.detailColor) })),
   ]
 }
 
-function LogLine({ events, animate }: { events: BoardEvent[]; animate: boolean }) {
+type Line = { key: number; event: BoardEvent | null }
+
+/** The parts cut to the first `typed` characters (all of them when null). */
+function Parts({ parts, typed }: { parts: Part[]; typed: number | null }) {
+  const starts = parts.map((_, i) => parts.slice(0, i).reduce((n, p) => n + p.text.length, 0))
+  return (
+    <>
+      {parts.map((p, i) => (
+        <span key={i} style={{ color: p.color }}>
+          {typed === null ? p.text : p.text.slice(0, Math.max(0, typed - starts[i]))}
+        </span>
+      ))}
+    </>
+  )
+}
+
+/** The board's log: L.lines lines, newest on the bottom. A new event (or, after L.cycleMs of
+ * quiet, an older one brought back) enters on the bottom line and types in; the older lines
+ * move up a line and the top one fades out. No events yet: "watching N sources…". */
+function Log({ events, sources, animate }: { events: BoardEvent[]; sources: number | null; animate: boolean }) {
   const L = ACTIVITY.log
-  const [shown, setShown] = useState<BoardEvent | null>(events[0] ?? null)
-  const [typed, setTyped] = useState<number | null>(null) // null: fully shown
-  const [cursor, setCursor] = useState(false)
+  // Line keys: the first render's lines take 0..L.lines-1, later ones count up from L.lines.
+  const seq = useRef(L.lines)
+  const [lines, setLines] = useState<Line[]>(() =>
+    events.length
+      ? events
+          .slice(0, L.lines)
+          .reverse()
+          .map((event, i) => ({ key: i, event }))
+      : [{ key: 0, event: null }],
+  ) // oldest first; the last is the bottom line
+  const [typed, setTyped] = useState<number | null>(null) // characters of the bottom line; null = all
+  const [cursor, setCursor] = useState(!events.length)
   const newest = useRef(events[0]?.id ?? 0)
-  const cycle = useRef(0)
+  const cycle = useRef(L.lines - 1)
   const eventsRef = useRef(events)
   const lastChange = useRef(0)
   useLayoutEffect(() => {
     eventsRef.current = events
   })
 
-  // Types `e` in (or shows it at once under reduced motion).
-  const typeIn = useRef<(e: BoardEvent) => void>(() => undefined)
+  // Pushes `e` on the bottom line and types it in (at once under reduced motion). The line that
+  // leaves the top stays one slide long so it can fade out.
+  const push = useRef<(e: BoardEvent) => void>(() => undefined)
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
-    typeIn.current = (e: BoardEvent) => {
+    let drop: ReturnType<typeof setTimeout> | undefined
+    push.current = (e: BoardEvent) => {
       clearTimeout(timer)
-      setShown(e)
       lastChange.current = Date.now()
+      setLines((prev) => [...prev.filter((l) => l.event).slice(-L.lines), { key: seq.current++, event: e }])
+      clearTimeout(drop)
+      drop = setTimeout(() => setLines((prev) => prev.slice(-L.lines)), animate ? L.slideMs + 50 : 0)
       if (!animate) {
         setTyped(null)
+        setCursor(false)
         return
       }
       const length = lineParts(e).reduce((n, p) => n + p.text.length, 0)
       let n = 0
       setCursor(true)
+      setTyped(0)
       const step = () => {
         n += 1
         setTyped(n)
@@ -224,84 +266,106 @@ function LogLine({ events, animate }: { events: BoardEvent[]; animate: boolean }
           timer = setTimeout(() => setCursor(false), 400)
         }
       }
-      step()
+      timer = setTimeout(step, L.slideMs / 2)
     }
-    return () => clearTimeout(timer)
-  }, [animate, L.typingMs])
+    return () => {
+      clearTimeout(timer)
+      clearTimeout(drop)
+    }
+  }, [animate, L.lines, L.slideMs, L.typingMs])
 
-  // A new event (the poll brought one): type it in now, or on return when the tab is hidden.
+  // A new event from the poll: push it now, or on return when the tab is hidden.
   useEffect(() => {
     const top = events[0]
     if (!top || top.id <= newest.current) return
     newest.current = top.id
-    cycle.current = 0
-    if (!document.hidden) typeIn.current(top)
+    cycle.current = L.lines - 1
+    if (!document.hidden) push.current(top)
     else {
       const onShow = () => {
         if (document.hidden) return
         document.removeEventListener("visibilitychange", onShow)
-        typeIn.current(eventsRef.current[0])
+        push.current(eventsRef.current[0])
       }
       document.addEventListener("visibilitychange", onShow)
       return () => document.removeEventListener("visibilitychange", onShow)
     }
-  }, [events])
+  }, [events, L.lines])
 
-  // Quiet for L.cycleMs: step back through the last L.cycleCount events, one per interval.
+  // Quiet for L.cycleMs: bring back the last L.cycleCount events, older each time, one per interval.
   useEffect(() => {
-    if (!animate || !L.on) return
+    if (!animate) return
     lastChange.current = Date.now()
     const timer = setInterval(() => {
       const list = eventsRef.current.slice(0, L.cycleCount)
-      if (document.hidden || list.length < 2 || Date.now() - lastChange.current < L.cycleMs) return
+      if (document.hidden || list.length <= L.lines || Date.now() - lastChange.current < L.cycleMs) return
       cycle.current = (cycle.current + 1) % list.length
-      typeIn.current(list[cycle.current])
+      push.current(list[cycle.current])
     }, 1000)
     return () => clearInterval(timer)
-  }, [animate, L.on, L.cycleCount, L.cycleMs])
+  }, [animate, L.cycleCount, L.cycleMs, L.lines])
 
-  const parts = shown ? lineParts(shown) : []
-  let left = typed ?? Infinity
-  const visible = parts.map((p) => {
-    const text = p.text.slice(0, Math.max(0, left))
-    left -= p.text.length
-    return { ...p, text }
-  })
+  const bottom = lines.length - 1
+  const latest = [...lines].reverse().find((l) => l.event)?.event ?? null
   return (
     <div className="mt-3 w-full" style={{ maxWidth: ACTIVITY.trace.width }}>
-      {/* The typed line is for the eye (it changes a character at a time); screen readers get
-          the whole event in plain text. */}
-      <p aria-hidden className="h-[18px] overflow-hidden text-left font-mono text-[12.5px] leading-[18px] text-ellipsis whitespace-pre">
-        {visible.map((p, i) => (
-          <span key={i} style={{ color: p.color }}>
-            {p.text}
-          </span>
-        ))}
-        {animate && (
-          <span
-            className="ml-px inline-block h-[13px] w-[7px] align-[-2px]"
-            style={{ background: L.cursorColor, opacity: cursor ? 1 : 0, transition: `opacity ${L.cursorFadeMs}ms` }}
-          />
-        )}
+      {/* Lines are stacked from the bottom; a line's slot sets its offset and opacity, so a new
+          line moves the others up and fades the one leaving the top (CSS transitions). The
+          height of all L.lines is reserved from the first render. */}
+      <div aria-hidden className="relative overflow-hidden font-mono text-[12.5px]" style={{ height: L.lines * L.lineHeight }}>
+        {lines.map((line, i) => {
+          const slot = bottom - i // 0 = bottom
+          const parts = line.event
+            ? lineParts(line.event, Math.min(slot, L.lines - 1))
+            : [{ text: `watching ${sources ?? "the"} ${sources === 1 ? "source" : "sources"}…`, color: L.detailColor }]
+          return (
+            <p
+              key={line.key}
+              className="absolute inset-x-0 bottom-0 overflow-hidden text-left text-ellipsis whitespace-pre motion-reduce:transition-none"
+              style={{
+                height: L.lineHeight,
+                lineHeight: `${L.lineHeight}px`,
+                transform: `translateY(${-slot * L.lineHeight}px)`,
+                opacity: slot < L.lines ? (L.lineOpacity[slot] ?? 0.5) : 0,
+                transition: animate ? `transform ${L.slideMs}ms ease-out, opacity ${L.slideMs}ms ease-out` : undefined,
+              }}
+            >
+              <Parts parts={parts} typed={slot === 0 && line.event ? typed : null} />
+              {slot === 0 && (
+                <span
+                  className="ml-px inline-block h-[13px] w-[7px] align-[-2px]"
+                  style={{
+                    background: L.cursorColor,
+                    opacity: cursor || !line.event ? 1 : 0,
+                    transition: animate ? `opacity ${L.cursorFadeMs}ms` : undefined,
+                  }}
+                />
+              )}
+            </p>
+          )
+        })}
+      </div>
+      <p className="sr-only">
+        {latest
+          ? `Latest board event: ${lineParts(latest)
+              .map((p) => p.text)
+              .join("")
+              .replace(/\s+/g, " ")}`
+          : `Watching ${sources ?? ""} sources.`}
       </p>
-      {shown && (
-        <p className="sr-only">
-          Latest board event: {parts.map((p) => p.text).join("").replace(/\s+/g, " ")}
-        </p>
-      )}
     </div>
   )
 }
 
 /** The landing's activity: a 24-hour trace of rows per hour and one line of the board's log.
  * Heights are fixed from the first render, so nothing moves when data arrives. */
-export function Activity({ data }: { data: ActivityData | null }) {
+export function Activity({ data, sources }: { data: ActivityData | null; sources: number | null }) {
   const reduced = useReducedMotion()
   const animate = !reduced
   return (
     <section aria-label="Activity" className="mt-[clamp(28px,4.4vh,56px)] flex w-full flex-col items-center">
       {ACTIVITY.trace.on && <Trace hours={data?.hours ?? []} animate={animate} />}
-      {ACTIVITY.log.on && <LogLine events={data?.events ?? []} animate={animate} />}
+      {ACTIVITY.log.on && <Log events={data?.events ?? []} sources={sources} animate={animate} />}
     </section>
   )
 }

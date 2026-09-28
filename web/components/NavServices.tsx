@@ -9,15 +9,15 @@ import { Tooltip } from "@/components/Tooltip"
 import { usePrefs } from "@/lib/prefs"
 import { useLiveServices } from "@/lib/services-live"
 
-/** The nav's "Services" link (styled like CVEs), from the same watched set and poll as the
- * wire's rail block. A dot before the word only when something is wrong: amber when any
+/** The nav's "Services" link (styled like CVEs), from the same poll as the wire's rail block
+ * (every tracked service). A dot before the word only when something is wrong: amber when any
  * service is degraded, red when any has a major outage (worst wins). Hover and focus show the
  * detail at once ("Cloudflare degraded", "AWS major outage +1", "All services operational");
  * the dot's aria-label says the same. */
 export function NavServices() {
   const pathname = usePathname()
   const prefs = usePrefs()
-  const data = useLiveServices(prefs.ready ? prefs.services.join(",") : null)
+  const data = useLiveServices("all")
   const active = pathname === "/services"
 
   const impacted = data ? [...data.services].sort(byImpact).filter(isImpacted) : []

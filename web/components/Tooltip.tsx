@@ -10,11 +10,14 @@ export function Tooltip({
   children,
   side = "top",
   className,
+  tipClassName,
 }: {
   label: ReactNode
   children: (props: { "aria-describedby": string; onMouseEnter: () => void; onMouseLeave: () => void; onFocus: () => void; onBlur: () => void }) => ReactElement
   side?: "top" | "bottom"
   className?: string
+  /** Extra classes for the label itself (e.g. a max width that lets a long label wrap). */
+  tipClassName?: string
 }) {
   const id = useId()
   const [open, setOpen] = useState(false)
@@ -34,6 +37,7 @@ export function Tooltip({
           "pointer-events-none absolute right-0 z-20 rounded-control border border-rule bg-surface px-2 py-1 font-mono text-[11px] leading-4 whitespace-nowrap text-fg-2",
           side === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5",
           open ? "block" : "hidden",
+          tipClassName,
         )}
       >
         {label}

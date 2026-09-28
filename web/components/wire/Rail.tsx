@@ -336,13 +336,14 @@ export function LastSevenDays({
   )
 }
 
+/** The wire's footer text: sources and their health. */
 export function SourcesLine({ status }: { status: Status | null }) {
   if (!status) return null
   return (
-    <p className="leading-[19px] text-muted">
+    <>
       Sources: NVD, CISA KEV, vendor PSIRTs, {status.sources_total} feeds.{" "}
       {status.sources_failing === 0 ? "All healthy." : `${status.sources_failing} failing.`}
       {SUMMARIES_PAUSED.has(status.summaries.state) && " Summaries paused."} Rows update every minute.
-    </p>
+    </>
   )
 }

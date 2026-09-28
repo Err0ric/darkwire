@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { cn } from "cn"
 
 import { PageHeader } from "@/components/PageHeader"
@@ -20,7 +20,7 @@ const POLL_MS = 3 * 60 * 1000
 
 const STATE_WORD = { major: "major", degraded: "degraded" } as const
 
-export function ServicesBoard({ initial }: { initial: ServicesOut | null }) {
+export function ServicesBoard({ initial, open = null }: { initial: ServicesOut | null; open?: string | null }) {
   const [data, setData] = useState(initial)
   const now = useNow()
 
@@ -55,7 +55,7 @@ export function ServicesBoard({ initial }: { initial: ServicesOut | null }) {
         <div className="mt-10 grid gap-x-12 gap-y-10 min-[1200px]:grid-cols-2 min-[1600px]:grid-cols-4">
           {data.groups.map((group) => {
             const rows = all.filter((s) => s.group === group).sort(byImpact)
-            return rows.length ? <Group key={group} name={group} services={rows} /> : null
+            return rows.length ? <Group key={group} name={group} services={rows} open={open} /> : null
           })}
         </div>
       )}
@@ -129,7 +129,7 @@ function Legend() {
   )
 }
 
-function Group({ name, services }: { name: string; services: ServiceOut[] }) {
+function Group({ name, services, open }: { name: string; services: ServiceOut[]; open: string | null }) {
   return (
     <section aria-label={name} className="min-w-0">
       <h2 className="border-b border-rule pb-2.5 text-[13px] font-medium text-fg">{name}</h2>
@@ -144,7 +144,7 @@ function Group({ name, services }: { name: string; services: ServiceOut[] }) {
       </div>
       <ul className="mt-1">
         {services.map((s) => (
-          <ServiceLine key={s.slug} s={s} />
+          <ServiceLine key={s.slug} s={s} startOpen={open === s.slug} />
         ))}
       </ul>
     </section>
@@ -262,13 +262,18 @@ function when(iso: string): string {
 }
 
 /** A service's name line (the name opens its incidents of the last 7 days) and its strip. */
-function ServiceLine({ s }: { s: ServiceOut }) {
+function ServiceLine({ s, startOpen }: { s: ServiceOut; startOpen: boolean }) {
   const now = useNow()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(startOpen)
+  const row = useRef<HTMLLIElement>(null)
   const panel = `svc-${s.slug}-incidents`
+  // Opened from a link (?open=slug): scroll it into view.
+  useEffect(() => {
+    if (startOpen) row.current?.scrollIntoView({ block: "center" })
+  }, [startOpen])
   const incidents = s.incidents ?? []
   return (
-    <li className="-mx-2 px-2 py-2 hover:bg-surface max-md:py-3">
+    <li ref={row} className="-mx-2 px-2 py-2 hover:bg-surface max-md:py-3">
       <p className="flex items-center gap-2.5 text-[15px] leading-5">
         <StateDot state={s.state} />
         <button

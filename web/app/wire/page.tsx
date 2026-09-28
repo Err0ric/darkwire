@@ -15,7 +15,6 @@ export default async function Wire({ searchParams }: PageProps<"/wire">) {
   const params = await searchParams
   const tab = one(params.tab) as WireTab
   const stack = parseStack(one(params.stack))
-  const watched = parseStack(one(params.services))
   const filters: Filters = {
     tab: TABS.some(([t]) => t === tab) || (tab === "stack" && stack.length > 0) ? tab : "all",
     vendor: one(params.vendor),
@@ -31,7 +30,7 @@ export default async function Wire({ searchParams }: PageProps<"/wire">) {
     getElsewhere(100, 7),
     getKev(7, 8),
     stack.length ? getFeed(stackCriticalQuery(stack)).then((p) => p.total) : Promise.resolve(null),
-    getServices(watched.join(",") || undefined),
+    getServices("all"),
   ])
   const value = <T,>(r: PromiseSettledResult<T>, fallback: T) => (r.status === "fulfilled" ? r.value : fallback)
 

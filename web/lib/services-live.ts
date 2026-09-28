@@ -4,9 +4,9 @@ import { useEffect, useState } from "react"
 
 import { getServices, type ServicesOut } from "@/lib/api"
 
-// One services poll for the whole page: the nav's status indicator and the wire's rail block
-// read the same data, fetched every 3 minutes while anything is subscribed. `key` is the
-// ?services= set ("" = the API's default set); a new key starts over.
+// One services poll for the whole page: the nav's status link and the wire's rail block read
+// the same data, fetched every 3 minutes while anything is subscribed. `key` is the API's slugs
+// parameter ("all" for every tracked service, "" for its default set); a new key starts over.
 
 const POLL_MS = 180_000
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { cn } from "cn"
 
@@ -192,16 +192,12 @@ export function WireBoard({ initial }: { initial: WireData }) {
     }
   }
 
-  // Services: the shared 3-minute poll (lib/services-live.ts, also read by the nav). The
-  // server's data seeds it when it is for the same ?services= set; a remembered set that differs
-  // is fetched at once. A service newly in a major outage fires the unseen indicator like a
-  // Critical row.
-  const watched = prefs.ready ? prefs.services.join(",") : null
-  const serverSet = useMemo(() => {
-    const listed = (initial.services?.services ?? []).map((s) => s.slug).join(",")
-    return listed === (initial.services?.defaults ?? []).join(",") ? "" : listed
-  }, [initial.services])
-  const live = useLiveServices(watched, watched === serverSet ? initial.services : null)
+  // Services: every tracked service from the shared 3-minute poll (lib/services-live.ts, also
+  // read by the nav), seeded by the server's data. A service newly in a major outage fires the
+  // unseen indicator like a Critical row, but only one the viewer watches: their ?services=
+  // picks, else the API's default set.
+  const live = useLiveServices("all", initial.services)
+  const watched = (prefs.services.length ? prefs.services : (services?.defaults ?? [])).join(",")
   const majors = useRef(
     new Set((initial.services?.services ?? []).filter((s) => s.state === "major").map((s) => s.slug)),
   )
@@ -209,10 +205,11 @@ export function WireBoard({ initial }: { initial: WireData }) {
     if (!live) return
     setServices(live)
     const nowMajor = new Set(live.services.filter((s) => s.state === "major").map((s) => s.slug))
-    const fresh = [...nowMajor].filter((s) => !majors.current.has(s))
+    const mine = watched.split(",")
+    const fresh = [...nowMajor].filter((s) => !majors.current.has(s) && mine.includes(s))
     majors.current = nowMajor
     if (fresh.length) void addUnseen(fresh.length, true)
-  }, [live, addUnseen])
+  }, [live, addUnseen, watched])
 
   // The stack can change after first paint: restored from storage, or edited in another page.
   // Refetch what depends on it; a URL asking for tab=stack gets it once a stack exists.
@@ -388,7 +385,6 @@ export function WireBoard({ initial }: { initial: WireData }) {
               query={prefs.query()}
               onMore={() => apply({ tab: "kev" })}
             />
-            <SourcesLine status={status} />
           </div>
         </aside>
 
@@ -464,9 +460,10 @@ export function WireBoard({ initial }: { initial: WireData }) {
             {stack.length > 0 && stackCritical === 0 && (
               <p className="mt-1 text-[13px] leading-5 text-muted">Nothing critical in your stack today.</p>
             )}
-            {/* Rail stacked under the feed (< 1200px): Services moves up here so an outage is seen. */}
+            {/* Rail stacked under the feed (< 1200px): impacted services show up here so an outage
+                is seen without scrolling; the full block ends the stacked rail. */}
             <div data-chrome className="mt-6 max-w-[640px] text-[13px] min-[1200px]:hidden">
-              <Services data={services} />
+              <Services data={services} compact />
             </div>
           </header>
 
@@ -638,13 +635,11 @@ export function WireBoard({ initial }: { initial: WireData }) {
           ref={rightRail}
           className="mt-16 text-[13px] min-[1200px]:sticky min-[1200px]:mt-[103px] min-[1200px]:w-[340px] min-[1200px]:shrink-0 min-[2200px]:w-(--rail-w)"
         >
-          {/* Orders: under 1200 Elsewhere, Most active, Added to KEV, Last 7 days, Sources (Services
-              sits above the feed). 1200-2199 Services, Most active, Last 7 days, Added to KEV,
-              Elsewhere, Sources. 2200+ Services, Elsewhere; the rest is in the left rail. */}
+          {/* Orders: under 1200 Elsewhere, Most active, Added to KEV, Last 7 days, Services (its
+              impacted lines also sit above the feed). 1200-2199 Elsewhere, Most active, Last 7
+              days, Added to KEV, Services. 2200+ Elsewhere, Services; the rest is in the left
+              rail. The sources line is in the page footer. */}
           <div className="flex max-w-[640px] flex-col gap-10 min-[1200px]:-ml-6 min-[1200px]:max-w-none min-[1200px]:border-l min-[1200px]:border-rule min-[1200px]:pl-6 min-[2200px]:-ml-[calc(var(--col-gap)/2)] min-[2200px]:pl-[calc(var(--col-gap)/2)]">
-            <div className="hidden min-[1200px]:order-1 min-[1200px]:block">
-              <Services data={services} />
-            </div>
             <div className="order-2 min-[2200px]:hidden">
               <MostActive
                 active={active}
@@ -663,7 +658,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 onMore={() => apply({ tab: "kev" })}
               />
             </div>
-            <div className="order-1 min-[1200px]:order-5 min-[2200px]:order-2">
+            <div className="order-1">
               <Elsewhere
                 elsewhere={elsewhere}
                 dots={elseDots}
@@ -671,13 +666,15 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 onMore={() => apply({ tab: "elsewhere" })}
               />
             </div>
-            <div className="order-6 min-[2200px]:hidden">
-              <SourcesLine status={status} />
+            <div className="order-5">
+              <Services data={services} />
             </div>
           </div>
         </aside>
       </div>
-      <SiteFooter data-chrome className="mt-16" />
+      <SiteFooter data-chrome className="mt-16">
+        <SourcesLine status={status} />
+      </SiteFooter>
     </main>
   )
 }

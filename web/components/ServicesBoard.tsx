@@ -159,14 +159,24 @@ function cellStart(i: number, count: number, nowMs: number): Date {
   return new Date(Math.floor(nowMs / HOUR) * HOUR - (count - 1 - i) * HOUR)
 }
 
-/** "100%" when every tracked hour was operational, else "major 2h · degraded 6h"; plus
- * "since 16:00" when tracking covers less than 24 hours. */
-function Summary({ hours, now }: { hours: ServiceState[]; now: number | null }) {
+/** Impacted now: only the impacted hours in the state's color ("6h of 24h", or "6h since 11:00"
+ * when tracking covers less than 24 hours). Otherwise "100%" when every tracked hour was
+ * operational, else "major 2h · degraded 6h", plus "since 16:00" for a shorter window. */
+function Summary({ hours, now, state }: { hours: ServiceState[]; now: number | null; state: ServiceState }) {
   const major = hours.filter((h) => h === "major").length
   const degraded = hours.filter((h) => h === "degraded").length
   const first = hours.findIndex((h) => h !== "unknown")
   const since = now !== null && first > 0 ? hm(cellStart(first, hours.length, now)) : null
   if (first < 0) return <span className="ml-auto shrink-0 pl-2 font-mono text-xs text-dim-text">no data</span>
+  // Impacted now: the name line already says the state, so only how long, in its color.
+  if (state === "major" || state === "degraded") {
+    const hrs = major + degraded
+    return (
+      <span className={cn("ml-auto shrink-0 pl-2 font-mono text-xs whitespace-nowrap", state === "major" ? "text-critical-text" : "text-degraded")}>
+        {since ? `${hrs}h since ${since}` : `${hrs}h of 24h`}
+      </span>
+    )
+  }
   return (
     <span className="ml-auto shrink-0 pl-2 font-mono text-xs whitespace-nowrap">
       {major > 0 && <span className="text-critical-text">major {major}h</span>}
@@ -275,7 +285,7 @@ function ServiceLine({ s }: { s: ServiceOut }) {
             {s.state === "major" ? STATE_WORD.major : STATE_WORD.degraded}
           </span>
         )}
-        <Summary hours={s.hours} now={now} />
+        <Summary hours={s.hours} now={now} state={s.state} />
       </p>
       <Strip hours={s.hours} name={s.name} />
       {open && (

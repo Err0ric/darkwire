@@ -1,4 +1,4 @@
-<p align="center"><img src="web/public/og.png" alt="darkwire" width="100%"></p>
+<p align="center"><img src="docs/banner.png" alt="darkwire" width="100%"></p>
 
 Security news and CVEs on one live board. No accounts. No ads. No tracking.
 

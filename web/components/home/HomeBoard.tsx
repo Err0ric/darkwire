@@ -163,7 +163,7 @@ export function HomeBoard({ initial }: { initial: HomeData }) {
   )
 }
 
-/** The landing's centerpiece, the og.png lockup: the nav's wordmark (red square, typing
+/** The landing's centerpiece, the og.png lockup: the nav's wordmark (red i-dot, typing
  * ".tech") at landing size, and "live security news + CVEs" under it, right-aligned to the
  * reserved end of ".tech". */
 function Lockup({ state }: { state: SyncState }) {

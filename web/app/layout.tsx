@@ -6,6 +6,7 @@ import { AutoUpdate } from "@/components/AutoUpdate"
 import { Kiosk } from "@/components/Kiosk"
 import { Nav } from "@/components/nav"
 import { PrefsProvider } from "@/lib/prefs"
+import OG from "@/lib/og-images.json"
 import { THEME_SCRIPT } from "@/lib/stack"
 
 import "./globals.css"
@@ -23,7 +24,8 @@ const geistMono = Geist_Mono({
 const DESCRIPTION = "Security news and CVEs on one live board. No accounts. No ads. No bullshit."
 
 // Link previews (Discord, Slack, X, iMessage, Teams). The images are static files made by
-// scripts/make-og.py (npm run og): og.gif pulses the dot, og.png is the still for X.
+// scripts/make-og.py (npm run og) writes og.<hash>.gif (the typing lockup) and og.<hash>.png (the
+// still, for X); lib/og-images.json has the current names, so each change is a new URL.
 // Pages set only a title; the template adds " · darkwire" and everything else is inherited.
 export const metadata: Metadata = {
   metadataBase: new URL("https://darkwire.tech"),
@@ -35,13 +37,13 @@ export const metadata: Metadata = {
     url: "/",
     title: "darkwire",
     description: DESCRIPTION,
-    images: [{ url: "/og.gif", width: 1200, height: 630, type: "image/gif", alt: "darkwire" }],
+    images: [{ url: OG.gif, width: 1200, height: 630, type: "image/gif", alt: "darkwire" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "darkwire",
     description: DESCRIPTION,
-    images: ["/og.png"],
+    images: [OG.png],
   },
 }
 

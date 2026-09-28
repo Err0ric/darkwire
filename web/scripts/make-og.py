@@ -8,9 +8,9 @@ Writes:
   cell by cell on a 16 grid so 16 and 32 are crisp (no scaling, no antialiasing). The larger
   icons keep the mark inside the maskable safe zone. The unseen state (lib/unseen.ts) paints
   the cursor --critical on a canvas copy.
-- public/og.png: the static lockup ("darkwire" with the red square, faint ".tech", the mono
+- public/og.<hash>.png: the static lockup ("darkwire" with the red square, faint ".tech", the mono
   tagline right-aligned to the end of ".tech"), 1200x630.
-- public/og.gif: frame 1 is that same static lockup (platforms that show one frame get the
+- public/og.<hash>.gif: frame 1 is that same static lockup (platforms that show one frame get the
   finished mark); then ".tech" fades out, types back in (each character a dim red binary digit
   that flips once, then fades to the character, a faint block cursor after it), the cursor
   and the square blink twice in sync, and it holds. One fixed 8-color palette for every frame,
@@ -20,6 +20,8 @@ Deterministic: fonts come from the geist npm package in node_modules, never the 
 Wordmark numbers mirror WORDMARK in components/Wordmark.tsx; keep them in step.
 """
 
+import hashlib
+import json
 import math
 import struct
 from io import BytesIO
@@ -299,21 +301,29 @@ def main():
     safe_icon(512).save(PUBLIC / "icon-512.png", optimize=True)
 
     lock = Lockup()
-    lock.draw().save(PUBLIC / "og.png", optimize=True)
+    # Link previews get content-hashed names (og.<hash>.png / .gif): every change is a new URL,
+    # so chat apps that cache by URL (Discord, Slack) fetch the new image. og.png and og.gif
+    # stay as redirects (next.config.ts) for old links. lib/og-images.json tells the page
+    # metadata and the redirects which names are current.
+    for old in list(PUBLIC.glob("og.*.png")) + list(PUBLIC.glob("og.*.gif")) + [PUBLIC / "og.png", PUBLIC / "og.gif"]:
+        old.unlink(missing_ok=True)
+    buf = BytesIO()
+    lock.draw().save(buf, format="PNG", optimize=True)
+    png = buf.getvalue()
 
     pal = palette_image()
     frames = [(im.quantize(palette=pal, dither=Image.Dither.NONE), ms) for im, ms in gif_frames(lock)]
     first, rest = frames[0][0], [f for f, _ in frames[1:]]
-    first.save(
-        PUBLIC / "og.gif",
-        save_all=True,
-        append_images=rest,
-        duration=[ms for _, ms in frames],
-        loop=0,
-        optimize=False,
-        disposal=1,
-    )
-    for name in ("app/favicon.ico", "app/icon.svg", "app/apple-icon.png", "public/icon-192.png", "public/icon-512.png", "public/og.png", "public/og.gif"):
+    gbuf = BytesIO()
+    first.save(gbuf, format="GIF", save_all=True, append_images=rest, duration=[ms for _, ms in frames], loop=0, optimize=False, disposal=1)
+    gif = gbuf.getvalue()
+
+    names = {"png": f"og.{hashlib.sha256(png).hexdigest()[:6]}.png", "gif": f"og.{hashlib.sha256(gif).hexdigest()[:6]}.gif"}
+    (PUBLIC / names["png"]).write_bytes(png)
+    (PUBLIC / names["gif"]).write_bytes(gif)
+    (ROOT / "lib" / "og-images.json").write_text(json.dumps({k: "/" + v for k, v in names.items()}, indent=2) + "\n", encoding="utf-8")
+    (ROOT.parent / "docs" / "banner.png").write_bytes(png)  # the README banner, a stable path
+    for name in ("app/favicon.ico", "app/icon.svg", "app/apple-icon.png", "public/icon-192.png", "public/icon-512.png", f"public/{names['png']}", f"public/{names['gif']}"):
         print(name, (ROOT / name).stat().st_size)
 
 

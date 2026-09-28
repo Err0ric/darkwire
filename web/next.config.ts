@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+import OG from "./lib/og-images.json";
+
 // Security headers on every response. The Content-Security-Policy is set per request in
 // proxy.ts (it carries a nonce).
 const SECURITY_HEADERS = [
@@ -19,7 +21,12 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // /outages was renamed /services; keep old links working.
   async redirects() {
-    return [{ source: "/outages", destination: "/services", permanent: true }]
+    return [
+      { source: "/outages", destination: "/services", permanent: true },
+      // Old link-preview URLs point at the current content-hashed images (not permanent: they move).
+      { source: "/og.png", destination: OG.png, permanent: false },
+      { source: "/og.gif", destination: OG.gif, permanent: false },
+    ]
   },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];

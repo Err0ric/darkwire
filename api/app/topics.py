@@ -31,7 +31,7 @@ OFF_TOPIC = "off-topic"
 TOPICS = ["surveillance", "privacy", "disinfo", "courts", "policy", "rights", "cybercrime", "security", "ai-security"]
 PER_RUN = 100
 # Bump to re-classify the last 7 days under new rules (logs every item whose status changes).
-RULES_VERSION = "2"
+RULES_VERSION = "3"
 RULES_STATE = "topics_rules"
 
 # Strong phrases only: a hit settles the topic without the model. Anything ambiguous (a bare
@@ -47,8 +47,9 @@ KEYWORDS: list[tuple[str, list[str]]] = [
                  "data protection", "age verification"]),
     ("disinfo", ["disinformation", "misinformation", "influence operation", "influence operations", "propaganda",
                  "election interference", "deepfake", "deepfakes", "troll farm"]),
-    ("courts", ["supreme court", "lawsuit", "class action", "indicted", "indictment", "pleads guilty", "subpoena",
-                "fisa", "section 702", "extradited"]),
+    # Only phrases that are tech cases by definition; any other case goes to the model, which
+    # keeps it only when the case itself is about technology (see SYSTEM).
+    ("courts", ["fisa court", "section 702", "geofence warrant", "keyword warrant"]),
     ("policy", ["regulation", "regulators", "legislation", "lawmakers", "congress", "senate", "ftc", "fcc",
                 "executive order", "sanctions", "european commission", "eu commission", "parliament"]),
     ("rights", ["civil liberties", "free speech", "first amendment", "censorship", "content moderation", "section 230",
@@ -70,7 +71,7 @@ Reply with exactly one word from this list and nothing else:
 surveillance: surveillance, spyware, tracking of people.
 privacy: personal data, data brokers, privacy law.
 disinfo: disinformation, influence operations.
-courts: court cases, rulings or prosecutions that involve technology, privacy, surveillance, speech online or cybercrime. Any other case is {OFF_TOPIC}.
+courts: court cases, rulings or prosecutions where the case itself is about technology, data, privacy, surveillance, online speech or cybercrime. A trial where technology is incidental is {OFF_TOPIC}: "AI Love Song for Mistress Played at Murder Trial Is Most Excruciating Watch in Recent Memory" is a murder trial, so {OFF_TOPIC}. Any other case is {OFF_TOPIC}.
 policy: security policy, regulation, government action on technology.
 rights: civil liberties online, speech, encryption, censorship.
 cybercrime: criminals, fraud, ransomware, arrests.

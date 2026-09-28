@@ -36,6 +36,9 @@ export const ACTIVITY = {
   },
   log: {
     on: true,
+    // Only these kinds: no article headlines on the landing (cluster and summary events are still
+    // recorded, and shown nowhere else yet).
+    kinds: ["ingest", "kev", "nvd", "services"] as string[],
     lines: 3, // newest on the bottom
     lineHeight: 18, // px
     // Older lines are dimmer, bottom (newest) to top. Text must clear 4.5:1 on --bg (axe), which
@@ -366,10 +369,12 @@ function Log({ events, sources, animate }: { events: BoardEvent[]; sources: numb
 export function Activity({ data, sources }: { data: ActivityData | null; sources: number | null }) {
   const reduced = useReducedMotion()
   const animate = !reduced
+  const L = ACTIVITY.log
+  const events = useMemo(() => (data?.events ?? []).filter((e) => L.kinds.includes(e.kind)), [data?.events, L.kinds])
   return (
     <section aria-label="Activity" className="mt-[clamp(28px,4.4vh,56px)] flex w-full flex-col items-center">
       {ACTIVITY.trace.on && <Trace hours={data?.hours ?? []} peak7d={data?.peak_7d ?? 0} animate={animate} />}
-      {ACTIVITY.log.on && <Log events={data?.events ?? []} sources={sources} animate={animate} />}
+      {ACTIVITY.log.on && <Log events={events} sources={sources} animate={animate} />}
     </section>
   )
 }

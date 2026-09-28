@@ -13,7 +13,8 @@ from app.throttle import read_limit
 router = APIRouter(tags=["activity"])
 
 HOURS = 24
-EVENTS = 20
+# The landing filters by kind (no headlines), so send enough to fill its lines.
+EVENTS = 40
 PEAK_DAYS = 7
 # A derived event is the same as a recorded one: same kind and subject, and for ingest and
 # services within this much time (kev and nvd: at any time, plus the same detail for nvd).

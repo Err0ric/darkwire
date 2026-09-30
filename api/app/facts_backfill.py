@@ -206,6 +206,34 @@ async def _live_check(session) -> None:
                      f" = {value!r}" if value else "", fact.get("quote", "")[:300], _source(item, fact.get("quote", "")))
 
 
+REVALIDATE_STATE = "facts_live_revalidate"
+REVALIDATE_VERSION = "1"  # facts.recheck rules of 2026-09-30
+
+
+async def _revalidate_live(session) -> None:
+    """Once per REVALIDATE_VERSION: facts the live path stored before the content rules
+    (facts.recheck) are checked against them; any that fail are removed, each removal logged.
+    The quotes were already verified against their articles when written."""
+    rows = (
+        await session.scalars(
+            select(Item).where(Item.stream == Stream.main, Item.first_seen_at >= LIVE_SINCE, Item.facts.is_not(None)).order_by(Item.id)
+        )
+    ).all()
+    removed_total = 0
+    for item in rows:
+        kept, removed = facts.recheck(item.facts, item.cve_id)
+        for key, why in removed:
+            fact = item.facts[key]
+            value = fact.get("text") or fact.get("version") or ""
+            log.info("facts revalidate: item %d | removed %s%s (%s) | quote %r | %s", item.id, key,
+                     f" = {value!r}" if value else "", why, fact.get("quote", "")[:300], item.headline[:80])
+        if removed:
+            item.facts = kept
+            removed_total += len(removed)
+    await session.commit()
+    log.info("facts revalidate: %d live rows checked, %d facts removed", len(rows), removed_total)
+
+
 async def run_once() -> None:
     from app.db import SessionLocal
 
@@ -214,6 +242,10 @@ async def run_once() -> None:
         return
     try:
         async with SessionLocal() as session:
+            if await jobstate.get(session, REVALIDATE_STATE) != REVALIDATE_VERSION:
+                await _revalidate_live(session)
+                await jobstate.put(session, REVALIDATE_STATE, REVALIDATE_VERSION)
+                await session.commit()
             if not await jobstate.get(session, LIVE_STATE):
                 await _live_check(session)
                 await jobstate.put(session, LIVE_STATE, "1")

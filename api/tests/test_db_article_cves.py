@@ -197,6 +197,33 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
         self.assertIn("The Record: 'Attackers are exploiting CVE-2026-35273 in PeopleSoft.'", text)
         self.assertIn("explain item 999999: gone", text)
 
+    async def test_live_revalidation_removes_failing_facts(self):
+        from app import facts_backfill
+
+        async with self.Session() as s:
+            src = Source(name="The Hacker News", feed_url="https://test.invalid/thn2", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            citrix = await self._row(s, src, "Citrix NetScaler CVE-2026-88772 Exploit Details", datetime.now(UTC),
+                                     ["CVE-2026-88772", "CVE-2026-88771"])
+            citrix.facts = {
+                "affected": {"text": "Citrix NetScaler ADC and NetScaler Gateway", "quote": "Citrix NetScaler ADC and NetScaler Gateway contain a flaw."},
+                "public_poc": {"quote": "The company released a proof-of-concept (PoC) for CVE-2026-88771"},
+            }
+            breach = await self._row(s, src, "Pentagon personnel data breach", datetime.now(UTC))
+            breach.facts = {"affected": {"text": "2.76 million living individuals", "quote": "the breach impacts 2.76 million living individuals"}}
+            await s.commit()
+            with self.assertLogs("app.facts_backfill", level="INFO") as logs:
+                await facts_backfill._revalidate_live(s)
+            ids = (citrix.id, breach.id)
+        async with self.Session() as s:
+            self.assertEqual(set((await s.get(Item, ids[0])).facts), {"affected"})
+            self.assertEqual((await s.get(Item, ids[1])).facts, {})
+        text = "\n".join(logs.output)
+        self.assertIn(f"item {ids[0]} | removed public_poc (about another CVE (CVE-2026-88771))", text)
+        self.assertIn(f"item {ids[1]} | removed affected = '2.76 million living individuals'", text)
+        self.assertIn("2 live rows checked, 2 facts removed", text)
+
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)
         async with self.Session() as s:

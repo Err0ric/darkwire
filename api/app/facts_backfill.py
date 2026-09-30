@@ -18,6 +18,7 @@ import asyncio
 import inspect
 import json
 import logging
+import random
 from datetime import UTC, datetime, timedelta
 
 import anthropic
@@ -26,7 +27,7 @@ from sqlalchemy.orm import selectinload
 
 from app import facts, jobstate, summaries
 from app.config import get_settings
-from app.models import Item, Stream
+from app.models import Item, ItemSource, Stream
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ DAYS = 14
 VERSION = "1"
 MODE = "dry-run"  # "dry-run" or "apply" (only with sign-off)
 STATE = "facts_backfill"
+REPORT_VERSION = "1"  # once the dry run is done: log its results for review, once per version
 POLL = 60
 
 
@@ -122,6 +124,51 @@ async def _apply(session, state: dict) -> None:
     log.info("facts backfill (apply): wrote facts on %d rows", written)
 
 
+def _source(item: Item, quote: str) -> str:
+    """The outlet whose stored text holds the quote; else the row's outlets (the quote came from
+    an article fetched for the batch, which is not stored)."""
+    q = facts._norm(quote)
+    for s in item.sources:
+        if q and q in facts._norm(f"{s.title}\n{s.excerpt or ''}\n{s.body or ''}"):
+            return s.source.name
+    return "fetched article, one of: " + ", ".join(sorted({s.source.name for s in item.sources}))
+
+
+async def _report(session, state: dict) -> None:
+    """Logs the dry run's kept results for review (nothing is written to items): counts per fact
+    type, every row that would gain POC with its quote and source, and 10 other rows at random
+    (seeded) with their facts and quotes."""
+    results: dict[str, dict] = state.get("results") or {}
+    rows = {k: v for k, v in results.items() if v}
+    counts = {key: sum(1 for v in rows.values() if key in v) for key in ("public_poc", "affected", "fixed", "exploited_in_wild")}
+    log.info("facts report: %d rows gain facts: POC %d, affected %d, fixed %d, other (exploited in the wild) %d",
+             len(rows), counts["public_poc"], counts["affected"], counts["fixed"], counts["exploited_in_wild"])
+    ids = [int(k) for k in rows]
+    items = {
+        i.id: i for i in (
+            await session.scalars(
+                select(Item).where(Item.id.in_(ids)).options(selectinload(Item.sources).selectinload(ItemSource.source))
+            )
+        ).all()
+    }
+
+    def describe(tag: str, item_id: int, found: dict) -> None:
+        item = items.get(item_id)
+        head = item.headline[:90] if item else state.get("headlines", {}).get(str(item_id), "")
+        for key, fact in found.items():
+            value = fact.get("text") or fact.get("version") or ""
+            source = _source(item, fact["quote"]) if item else "row gone"
+            log.info("facts report: %s item %d | %s%s | quote %r | source %s | %s",
+                     tag, item_id, key, f" = {value!r}" if value else "", fact["quote"][:300], source, head)
+
+    poc = sorted(i for i in ids if "public_poc" in rows[str(i)])
+    for i in poc:
+        describe("POC", i, rows[str(i)])
+    others = sorted(set(ids) - set(poc))
+    for i in sorted(random.Random(20260930).sample(others, min(10, len(others)))):
+        describe("sample", i, rows[str(i)])
+
+
 async def run_once() -> None:
     from app.db import SessionLocal
 
@@ -140,6 +187,11 @@ async def run_once() -> None:
                 state["applied"] = True
             else:
                 if state.get("done"):
+                    if state.get("reported") != REPORT_VERSION:
+                        await _report(session, state)
+                        state["reported"] = REPORT_VERSION
+                        await jobstate.put(session, STATE, json.dumps(state))
+                        await session.commit()
                     return
                 async with anthropic.AsyncAnthropic(api_key=key, max_retries=3) as client:
                     state |= await _dry_run(session, client, state)

@@ -140,6 +140,29 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             # Unscored subject CVEs: the first mentioned.
             self.assertEqual(await cve_facts.pick_pinned(s, ["CVE-2026-20001", "CVE-2026-20002"], {"CVE-2026-20002", "CVE-2026-20001"}), "CVE-2026-20001")
 
+    async def test_facts_report_logs_counts_poc_quotes_and_sources(self):
+        from app import facts_backfill
+
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            src = Source(name="BleepingComputer", feed_url="https://test.invalid/bc", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            poc = await self._row(s, src, "Exploit released for Ubuntu flaw", now, excerpt="A proof-of-concept exploit is now public on GitHub.")
+            other = await self._row(s, src, "Kiteworks fixes flaw", now)
+            await s.commit()
+            state = {"results": {
+                str(poc.id): {"public_poc": {"quote": "A proof-of-concept exploit is now public on GitHub."}},
+                str(other.id): {"fixed": {"version": "9.5.1", "quote": "Kiteworks released version 9.5.1 to fix it."}},
+            }}
+            with self.assertLogs("app.facts_backfill", level="INFO") as logs:
+                await facts_backfill._report(s, state)
+        text = "\n".join(logs.output)
+        self.assertIn("2 rows gain facts: POC 1, affected 0, fixed 1", text)
+        self.assertIn(f"POC item {poc.id} | public_poc | quote 'A proof-of-concept exploit is now public on GitHub.' | source BleepingComputer", text)
+        self.assertIn(f"sample item {other.id} | fixed = '9.5.1'", text)
+        self.assertIn("source fetched article, one of: BleepingComputer", text)
+
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)
         async with self.Session() as s:

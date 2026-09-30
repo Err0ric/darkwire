@@ -201,30 +201,14 @@ function MiniScore({ cvss, severity }: { cvss: number | null; severity: Severity
   )
 }
 
-/** CISA's catalog additions of the last 7 days, newest first. A CVE with a row on the board links
- * to that row (scrolled to and expanded when it is on this view, else its permalink); any other
- * CVE links to NVD. `query` carries the stack and theme on internal links. */
-/** CISA's catalog additions of the last 7 days, newest first: vendor, CVE ID, CVSS with a mini bar
- * (the due date lives in the expanded row).
- * A CVE with a row on the board links to that row (scrolled to and expanded when it is on this
- * view, else its permalink); any other CVE links to NVD. `query` carries the stack and theme on
- * internal links. When the week has more additions than rows shown, "+N more" opens the wire's
- * KEV tab. */
-export function AddedToKev({
-  kev,
-  total,
-  query = "",
-  onMore,
-}: {
-  kev: KevRow[]
-  /** The header's "added to KEV this week" count. */
-  total?: number
-  query?: string
-  onMore?: () => void
-}) {
-  const more = total !== undefined ? total - kev.length : 0
+/** Every CISA catalog addition of the last 7 days, newest first, as many as the header's "N added
+ * to KEV this week" (the API returns the whole week): vendor, CVE ID, CVSS with a mini bar (the
+ * due date lives in the expanded row). A CVE with a row on the board links to that row (scrolled
+ * to and expanded when it is on this view, else its permalink); any other CVE links to NVD.
+ * `query` carries the stack and theme on internal links. */
+export function AddedToKev({ kev, query = "" }: { kev: KevRow[]; query?: string }) {
   return (
-    <Section title="Added to KEV">
+    <Section title="Added to KEV this week">
       <ul className="mt-2.5">
         {kev.map((k) => {
           const title = `Added ${k.date_added}${k.product ? ` · ${k.product}` : ""}`
@@ -261,17 +245,6 @@ export function AddedToKev({
           )
         })}
         {kev.length === 0 && <li className="text-dim-text">No additions this week.</li>}
-        {more > 0 && onMore && (
-          <li className="-mx-2 flex h-6 items-center px-2">
-            <button
-              type="button"
-              onClick={onMore}
-              className="max-md:tap text-dim-text outline-none hover:text-fg-2 focus-visible:text-fg-2"
-            >
-              +{more} more
-            </button>
-          </li>
-        )}
       </ul>
     </Section>
   )

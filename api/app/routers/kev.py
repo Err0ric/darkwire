@@ -11,6 +11,13 @@ from app.throttle import cap, heavy_limit, read_limit
 
 router = APIRouter(tags=["kev"])
 
+WEEK = 7
+
+
+def kev_since(days: int):
+    """The first date_added in a window of `days` (UTC). /status counts the week with it too."""
+    return (datetime.now(UTC) - timedelta(days=days)).date()
+
 
 @router.get("/kev", response_model=list[KevRow])
 @read_limit
@@ -18,12 +25,17 @@ router = APIRouter(tags=["kev"])
 async def kev(
     request: Request,
     days: int = Query(7, ge=1, le=90),
-    limit: int = Query(20, ge=1, le=200),
+    limit: int | None = Query(None, ge=1, le=200),
     session: AsyncSession = Depends(get_session),
 ) -> list[KevRow]:
-    limit = cap(request, limit)
-    """Recent additions to the whole CISA KEV catalog, newest first, with a board row when one exists."""
-    since = (datetime.now(UTC) - timedelta(days=days)).date()
+    """Recent additions to the whole CISA KEV catalog, newest first, with a board row when one exists.
+    With no limit, a window of a week or less returns every addition in it (the wire's "Added to
+    KEV this week", which must match /status kev_added_7d); a longer one the newest 20."""
+    if limit is not None:
+        limit = cap(request, limit)
+    elif days > WEEK:
+        limit = 20
+    since = kev_since(days)
     on_board = (
         select(ItemCve.cve_id, Item.id)
         .join(Item, Item.id == ItemCve.item_id)

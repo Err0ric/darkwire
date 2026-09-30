@@ -28,7 +28,7 @@ export default async function Wire({ searchParams }: PageProps<"/wire">) {
     getStatus(),
     getVendors("active"),
     getElsewhere(100, 7),
-    getKev(7, 8),
+    getKev(7), // every addition of the week: the rail matches the header count
     stack.length ? getFeed(stackCriticalQuery(stack)).then((p) => p.total) : Promise.resolve(null),
     getServices("all"),
   ])

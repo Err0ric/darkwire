@@ -473,6 +473,33 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertTrue((await s.get(Item, ids["passes"])).summary.startswith("An integer underflow in MikroTik RouterOS"))
             self.assertEqual((await s.get(Item, ids["conflicts"])).summary, "CISA industrial control systems advisory for MikroTik RouterOS, covering 1 CVE.")
 
+    async def test_added_to_kev_rail_matches_the_weekly_count(self):
+        # The rail lists every catalog addition of the week, no cap: as many as the header's
+        # "N added to KEV this week" (/status kev_added_7d). A heavy week of 25 and older ones.
+        import httpx
+
+        from app.db import get_session
+        from app.main import app
+
+        today = datetime.now(UTC).date()
+        async with self.Session() as s:
+            s.add_all(KevEntry(cve_id=f"CVE-2026-9{i:04d}", vendor="Vendor", product="Product",
+                               date_added=today - timedelta(days=i % 7)) for i in range(25))
+            s.add_all(KevEntry(cve_id=f"CVE-2025-8{i:04d}", vendor="Old", date_added=today - timedelta(days=8 + i)) for i in range(5))
+            await s.commit()
+
+        async def session():
+            async with self.Session() as s:
+                yield s
+
+        app.dependency_overrides[get_session] = session
+        self.addCleanup(app.dependency_overrides.clear)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            status = (await client.get("/status")).json()
+            kev = (await client.get("/kev", params={"days": 7})).json()
+        self.assertEqual(status["counts"]["kev_added_7d"], 25)
+        self.assertEqual(len(kev), status["counts"]["kev_added_7d"])
+
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)
         async with self.Session() as s:

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import get_session
+from app.routers.kev import WEEK, kev_since
 from app.ingest import next_run_at
 from app.staleness import not_stale
 from app.models import Cve, Health, Item, ItemSource, KevEntry, Severity, Source, Stream, SyncRun
@@ -53,7 +54,7 @@ async def status(request: Request, session: AsyncSession = Depends(get_session))
     )
     # Whole catalog, not just CVEs on the board: "4 added to KEV this week".
     kev_added_7d = await session.scalar(
-        select(func.count()).select_from(KevEntry).where(KevEntry.date_added >= (now - timedelta(days=7)).date())
+        select(func.count()).select_from(KevEntry).where(KevEntry.date_added >= kev_since(WEEK))
     )
 
     # Board CVEs in KEV whose due date is today or in the next 6 days.

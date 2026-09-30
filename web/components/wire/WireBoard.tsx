@@ -89,9 +89,10 @@ export function WireBoard({ initial }: { initial: WireData }) {
   // feed and is not sticky (no position: sticky there), so its computed top does nothing.
   const leftRail = useRef<HTMLElement>(null)
   const rightRail = useRef<HTMLElement>(null)
-  // Rails pin under the condensed bar (--bar-h, 0 in kiosk), 24px below it.
-  useStickyTop(leftRail, 24, "--bar-h")
-  useStickyTop(rightRail, 24, "--bar-h", "scroll")  // taller than the window: scrolls normally
+  // Rails pin under the condensed bar (--bar-h, 0 in kiosk), 24px below it, when they fit in the
+  // window; a taller one scrolls with the page.
+  useStickyTop(leftRail, 24, "--bar-h", "scroll")
+  useStickyTop(rightRail, 24, "--bar-h", "scroll")
 
   // The condensed bar (in the nav) shows once the tabs row reaches it: a marker right above the
   // tabs row leaving the area under the bar sets html[data-wire-stuck]. The tabs row's height
@@ -338,7 +339,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
   // The slower rail sections.
   useEffect(() => {
     const poll = async () => {
-      const [act, kv] = await Promise.allSettled([getVendors("active"), getKev(7, 8)])
+      const [act, kv] = await Promise.allSettled([getVendors("active"), getKev(7)])
       if (act.status === "fulfilled") setVendors(act.value)
       if (kv.status === "fulfilled") setKev(kv.value)
     }
@@ -402,12 +403,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
               onVendor={(slug) => apply({ vendor: filters.vendor === slug ? "" : slug })}
             />
             <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
-            <AddedToKev
-              kev={kev}
-              total={counts?.kev_added_7d}
-              query={prefs.query()}
-              onMore={() => apply({ tab: "kev" })}
-            />
+            <AddedToKev kev={kev} query={prefs.query()} />
           </div>
         </aside>
 
@@ -674,12 +670,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
               <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
             </div>
             <div className="order-3 wire2:order-4 wire3:hidden">
-              <AddedToKev
-                kev={kev}
-                total={counts?.kev_added_7d}
-                query={prefs.query()}
-                onMore={() => apply({ tab: "kev" })}
-              />
+              <AddedToKev kev={kev} query={prefs.query()} />
             </div>
             <div className="order-1">
               <Elsewhere

@@ -339,4 +339,5 @@ export interface Activity {
 
 export const getActivity = (init?: RequestInit) => get<Activity>("/activity", {}, init)
 
-export const getKev = (days = 7, limit = 20, init?: RequestInit) => get<KevRow[]>("/kev", { days, limit }, init)
+/** CISA KEV catalog additions of the last `days`. With no limit, a week or less comes back whole. */
+export const getKev = (days = 7, limit?: number, init?: RequestInit) => get<KevRow[]>("/kev", { days, limit }, init)

@@ -435,6 +435,8 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
   // The list already carries the summary: it shows at once, before the detail arrives.
   const summary = item.summary ?? d?.summary ?? null
   const patch = d && item.cve_id && d.patch_status !== "unverified" ? d.patch_status : null
+  // kev=false is only a fact once enrichment has run; before that it is a default.
+  const kev = !d || !item.cve_id ? null : cve?.kev || d.kev ? "yes" : cve?.fetched_at ? "no" : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -449,7 +451,12 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
         </div>
       )}
 
-      {todo && <WhatToDo todo={todo} />}
+      <Facts
+        todo={todo}
+        affected={affectedText ? { text: affectedText, perArticle: false } : affectedPerArticle ? { text: affectedPerArticle, perArticle: true } : null}
+        kev={kev}
+        exploited={!!d && item.exploited}
+      />
 
       {(chips.length > 0 || metrics.length > 0) && (
         <div className="flex flex-wrap items-end gap-x-12 gap-y-5">
@@ -465,20 +472,9 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
       )}
 
       <div className="flex flex-col gap-3 text-[13px] leading-5 md:flex-row md:items-baseline md:justify-between">
-        {affectedText || affectedPerArticle || patch ? (
+        {patch ? (
           <p className="min-w-0 text-muted">
-            {affectedText && (
-              <>
-                Affected <span className="text-fg-2">{affectedText}</span>
-              </>
-            )}
-            {affectedPerArticle && (
-              <>
-                Affected <span className="text-fg-2">{affectedPerArticle}</span> per article
-              </>
-            )}
-            {(affectedText || affectedPerArticle) && patch && <Sep wide />}
-            {patch && <Patch status={patch} url={d?.patch_url ?? null} />}
+            <Patch status={patch} url={d?.patch_url ?? null} />
           </p>
         ) : (
           <span />
@@ -504,14 +500,38 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
   )
 }
 
-function WhatToDo({ todo }: { todo: Todo }) {
+/** Affected, Fixed, KEV (or Exploited), Workaround, in that order: vendor, NVD and CISA data
+ * first, the articles' own words only as a fallback, labeled "per article". Values share one
+ * size; KEV "yes" is red. */
+function Facts({
+  todo,
+  affected,
+  kev,
+  exploited,
+}: {
+  todo: Todo | null
+  affected: { text: string; perArticle: boolean } | null
+  kev: "yes" | "no" | null
+  exploited: boolean
+}) {
+  const fixed = todo && (todo.fixed.length > 0 || todo.fixedPerArticle)
+  const workaround = todo && (todo.workaround || todo.workaroundUrl)
+  if (!affected && !fixed && !kev && !exploited && !workaround) return null
   return (
-    <section aria-label="What to do" className="max-w-[720px]">
-      <h3 className="text-[13px] leading-4 font-normal text-muted">What to do</h3>
-      <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5 text-[13px] leading-5">
-        {todo.fixed.length > 0 && (
+    <section aria-label="Affected and fixed" className="max-w-[720px]">
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5 text-[13px] leading-5">
+        {affected && (
           <>
-            <dt className="text-muted">Update to</dt>
+            <dt className="text-muted">Affected</dt>
+            <dd className="min-w-0 text-fg-2">
+              {affected.text}
+              {affected.perArticle && <span className="ml-3 text-muted">per article</span>}
+            </dd>
+          </>
+        )}
+        {todo && todo.fixed.length > 0 && (
+          <>
+            <dt className="text-muted">Fixed</dt>
             <dd className="min-w-0">
               {todo.fixed.map((f, i) => (
                 <span key={i} className="block">
@@ -527,7 +547,7 @@ function WhatToDo({ todo }: { todo: Todo }) {
             </dd>
           </>
         )}
-        {todo.fixedPerArticle && (
+        {todo && !todo.fixed.length && todo.fixedPerArticle && (
           <>
             <dt className="text-muted">Fixed</dt>
             <dd className="min-w-0">
@@ -548,7 +568,33 @@ function WhatToDo({ todo }: { todo: Todo }) {
             </dd>
           </>
         )}
-        {(todo.workaround || todo.workaroundUrl) && (
+        {kev === "yes" ? (
+          <>
+            <dt className="text-muted">KEV</dt>
+            <dd className="min-w-0">
+              <span className="text-critical-text">yes</span>
+              {todo?.kevDue && (
+                <span className="ml-3 text-muted">
+                  due <time dateTime={todo.kevDue.toISOString().slice(0, 10)} className="font-mono text-fg">{kevDate(todo.kevDue)}</time>
+                  <span className="ml-2">CISA deadline for federal agencies</span>
+                </span>
+              )}
+            </dd>
+          </>
+        ) : exploited ? (
+          <>
+            <dt className="text-muted">Exploited</dt>
+            <dd className="min-w-0 text-critical-text">yes</dd>
+          </>
+        ) : (
+          kev === "no" && (
+            <>
+              <dt className="text-muted">KEV</dt>
+              <dd className="min-w-0 text-muted">no</dd>
+            </>
+          )
+        )}
+        {todo && workaround && (
           <>
             <dt className="text-muted">Workaround</dt>
             <dd className="min-w-0 text-summary">
@@ -559,15 +605,6 @@ function WhatToDo({ todo }: { todo: Todo }) {
                   <span aria-hidden className="text-[11px] text-critical-text">↗</span>
                 </a>
               )}
-            </dd>
-          </>
-        )}
-        {todo.kevDue && (
-          <>
-            <dt className="text-muted">KEV due</dt>
-            <dd className="font-mono text-[13px] text-fg">
-              <time dateTime={todo.kevDue.toISOString().slice(0, 10)}>{kevDate(todo.kevDue)}</time>
-              <span className="ml-3 font-sans text-[13px] text-muted">CISA deadline for federal agencies</span>
             </dd>
           </>
         )}
@@ -630,9 +667,6 @@ function metricPairs(d: ItemDetail): [string, ReactNode][] {
   if (cve?.exploitability_score != null) pairs.push(["Exploitability", cve.exploitability_score.toFixed(1)])
   const epss = cve?.epss ?? d.epss
   if (epss != null) pairs.push(["EPSS", epss.toFixed(2)])
-  // kev=false is only a fact once enrichment has run; before that it is a default.
-  if (cve?.kev || d.kev) pairs.push(["KEV", <span key="kev" className="text-critical-text">yes</span>])
-  else if (cve?.fetched_at) pairs.push(["KEV", <span key="kev" className="text-muted">no</span>])
   return pairs
 }
 

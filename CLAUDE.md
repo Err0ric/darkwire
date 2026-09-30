@@ -108,10 +108,10 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 Background `--surface`, extending past the row edges. Contents in order, each only when it has data:
 
 1. Summary (at most 3 lines). With no summary (declined, or the article fetch failed), the stored RSS excerpt under a `From the feed` label in `--muted`, attributed: `BleepingComputer: “…”`.
-2. What to do (CVE rows): `Update to` (first fixed version per affected range, from NVD CPE, then the CNA, then MSRC KBs; `advisory ↗`); only when none of those has one, `Fixed` with the articles' version, labeled `per article`; `Workaround` (one sentence from the model plus the NVD Mitigation reference), `KEV due` (CISA's due date, UTC).
+2. One list, values at one size (CVE rows): `Affected` (ranges from CPE, else MSRC's product, else the articles' words labeled `per article`), `Fixed` (first fixed version per affected range, from NVD CPE, then the CNA, then MSRC KBs, with `advisory ↗`; only when none of those has one, the articles' version, or one line per release branch, labeled `per article`), `KEV` (`yes` in red with CISA's due date, UTC; `no` once enrichment has checked) or else `Exploited` `yes` in red, then `Workaround` (one sentence from the model plus the NVD Mitigation reference).
 3. `CVSS 3.1 vector`: 8 chips (`AV:N / Network` etc.), impact chips at High tinted red, and under them one plain line built from the vector in code ("Remote, no auth, no user interaction"; `web/lib/cvss.ts`).
-4. Impact, Exploitability, EPSS, KEV as label-over-number pairs.
-5. Affected ranges from CPE (else MSRC's product, else the articles' words labeled `per article`), then patch status: `● patched ↗`, `○ no fix`, or `○ no fix · workaround ↗`.
+4. Impact, Exploitability, EPSS as label-over-number pairs.
+5. Patch status: `● patched ↗`, `○ no fix`, or `○ no fix · workaround ↗`.
 6. Links right-aligned: Source, Vendor advisory, NVD, then `Copy`. All new tab.
 
 Rules:

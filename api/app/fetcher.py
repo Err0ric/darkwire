@@ -14,6 +14,7 @@ the caller falls back to the RSS excerpt. Per-domain outcomes are counted and lo
 
 import asyncio
 import logging
+import re
 import time
 import urllib.robotparser
 from collections import defaultdict
@@ -37,6 +38,28 @@ _locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 _robots: dict[str, tuple[float, urllib.robotparser.RobotFileParser | None]] = {}
 # domain -> {"ok", "blocked", "failed", "empty"}; since the process started.
 stats: dict[str, dict[str, int]] = defaultdict(lambda: {"ok": 0, "blocked": 0, "failed": 0, "empty": 0})
+
+
+# Related-article blocks trafilatura sometimes keeps: a heading line ends the article, a
+# "Related: <other story>" line is dropped. Their CVE IDs belong to other stories.
+_SIDEBAR_HEAD = re.compile(
+    r"^\s*(related (articles?|posts?|stories|news|reading|content|coverage)|recommended( for you| reading| stories)?"
+    r"|you (may|might) also (like|be interested in)|read (next|more|also)|more (from|stories|news)( .{0,40})?"
+    r"|also read|see also|popular (posts|stories)|trending( now)?)\s*:?\s*$",
+    re.I,
+)
+_SIDEBAR_LINE = re.compile(r"^\s*(related|read more|read also|also read|see also|recommended)\s*:", re.I)
+
+
+def main_body(text: str) -> str:
+    """The article's own lines: up to a related-articles heading, without "Related: ..." lines."""
+    out = []
+    for line in text.splitlines():
+        if _SIDEBAR_HEAD.match(line):
+            break
+        if not _SIDEBAR_LINE.match(line):
+            out.append(line)
+    return "\n".join(out)
 
 
 def _domain(url: str) -> str:
@@ -128,7 +151,7 @@ async def article_text(client: httpx.AsyncClient, url: str) -> str | None:
         log.debug("fetch %s failed: %s", url, e)
         stats[domain]["failed"] += 1
         return None
-    text = " ".join((text or "").split())
+    text = " ".join(main_body(text or "").split())
     if len(text) < 200:
         stats[domain]["empty"] += 1
         return None

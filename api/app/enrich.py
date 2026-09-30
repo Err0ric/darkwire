@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import dedupe, epss, events, ics, kev, nvd, summaries, topics
+from app import article_cves, dedupe, epss, events, ics, kev, nvd, summaries, topics
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
@@ -174,3 +174,4 @@ def schedule(scheduler) -> None:
         coalesce=True,
     )
     log.info("scheduler: enrich every %d min", interval)
+    article_cves.schedule(scheduler)

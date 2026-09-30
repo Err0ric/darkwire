@@ -31,7 +31,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import events, fetcher, ics, jobstate
+from app import article_cves, events, fetcher, ics, jobstate
 from app.config import get_settings
 from app.models import Item, ItemCve, PatchStatus, Stream
 
@@ -475,6 +475,12 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         written += text is not None
     await session.commit()
     log.info("summaries: pass: %s", ", ".join(f"{k} {v}" for k, v in sorted(reasons.items())))
+    try:
+        # CVE IDs from the fetched articles (never from the model's output), then merges.
+        await article_cves.after_fetch(session, todo, fetched)
+    except Exception:
+        log.exception("summaries: article CVEs failed")
+        await session.rollback()
     await log_coverage(session)
     return written
 

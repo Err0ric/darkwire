@@ -261,7 +261,12 @@ def guess_category(title: str, excerpt: str, has_cve: bool, trends: bool = True)
 # Manual category overrides, by row id: the category rules are final (2026-09-30), so a misfire
 # is fixed here instead. app/maintenance.py applies them (once per change to this table).
 # {row id: category value}, each with the reason.
-CATEGORY_OVERRIDES: dict[int, str] = {}
+CATEGORY_OVERRIDES: dict[int, str] = {
+    943: "research",  # "Google: Vulnerability disclosures double ..." (a statistics piece, not one flaw)
+    829: "breach",  # Bitget: $388M stolen through a flaw in a third-party product (an organization compromised)
+    886: "news",  # DARPA selects Xint (a contract award, not a flaw)
+    927: "research",  # mobile malware campaign with an iPhone exploit kit (research on a campaign)
+}
 
 
 def _not_a_flaw(title: str) -> Category:

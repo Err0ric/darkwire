@@ -79,9 +79,10 @@ class RulesAndOverrides(unittest.TestCase):
     def test_misfires_are_manual_overrides(self):
         from app.tagging import CATEGORY_OVERRIDES
 
-        # The rules call this Vulnerability; a misfire is a manual override.
+        # The rules call these Vulnerability; the overrides say otherwise.
         self.assertEqual(guess_category("Google: Vulnerability disclosures double to 10,000 per month as AI fuels exploitation", "", False),
                          Category.vulnerability)
+        self.assertEqual(CATEGORY_OVERRIDES, {943: "research", 829: "breach", 886: "news", 927: "research"})
         for value in CATEGORY_OVERRIDES.values():
             Category(value)  # every override names a real category
 

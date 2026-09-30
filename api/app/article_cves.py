@@ -47,7 +47,7 @@ from sqlalchemy.orm import selectinload
 
 from app import cve_facts, dedupe, fetcher, ics, jobstate
 from app.models import Category, Cve, Item, ItemCve, ItemSource, KevEntry, Stream
-from app.tagging import guess_category, headline_cves, subject_cves
+from app.tagging import guess_category, headline_cves, subject_cves, subject_reasons
 
 log = logging.getLogger(__name__)
 
@@ -59,9 +59,12 @@ MAX_CVE_AGE = timedelta(days=90)
 ROUNDUP = re.compile(r"\b(weekly recap|recap|round-?up|metasploit|wrap[- ]?up|week in review|this week in)\b", re.I)
 BACKFILL_DAYS = 9
 BACKFILL_STATE = "article_cves_backfill"
-BACKFILL_VERSION = "4"
+BACKFILL_VERSION = "5"
 BACKFILL_MODE = "dry-run"  # "dry-run" logs the plan once; "apply" writes it, only with sign-off
-APPLY_MERGES: set[tuple[int, int]] = set()  # (merged, survivor) pairs an apply may make
+APPLY_MERGES: set[tuple[int, int]] = {(801, 747), (795, 794), (797, 796)}  # (merged, survivor) an apply may make
+# (merged, survivor) pairs this backfill never makes, whatever the rules say (signed off 2026-09-30:
+# 834 keeps CVE-2026-35273 but stays out of 819). The backfill only; the live path ignores it.
+SKIP_MERGES: set[tuple[int, int]] = {(834, 819)}
 
 
 def article_cves(title: str, lead: str, fetched: str) -> list[str]:
@@ -146,6 +149,10 @@ async def plan_row(session: AsyncSession, http: httpx.AsyncClient, item: Item, f
         plan.subject |= subject & set(candidates)
         context = [c for c in candidates if c not in subject]  # only these need a date
         kept, dropped = keep(candidates, subject, await cve_facts.published(session, http, context), now)
+        reasons = subject_reasons(src.title, src.excerpt or "", body)
+        for c in kept:
+            if c in subject:
+                log.info("article cves: item %d subject %s: %r", item.id, c, reasons.get(c, "")[:200])
         plan.new += [c for c in kept if c not in plan.new]
         plan.dropped += [c for c in dropped if c not in plan.dropped]
         vendors = set((await cve_vendors(session, kept)).values())
@@ -232,14 +239,14 @@ def merge_target(n: Row, rows: list[Row]) -> Row | None:
     return max(candidates, key=lambda o: o.last_event_at) if candidates else None
 
 
-def pair(n: Row, rows: list[Row]) -> tuple[Row, Row] | None:
+def pair(n: Row, rows: list[Row], skip: set[tuple[int, int]] = frozenset()) -> tuple[Row, Row] | None:
     """(survivor, merged) for a row that just gained CVEs: it joins an earlier row, or a later
-    row joins it."""
-    o = merge_target(n, rows)
+    row joins it. `skip`: (merged, survivor) pairs never made."""
+    o = merge_target(n, [r for r in rows if (n.id, r.id) not in skip])
     if o:
         return o, n
     for later in sorted((r for r in rows if (r.first_pub, r.id) > (n.first_pub, n.id)), key=lambda r: (r.first_pub, r.id)):
-        if merge_target(later, [n]) is n:
+        if (later.id, n.id) not in skip and merge_target(later, [n]) is n:
             return n, later
     return None
 
@@ -399,7 +406,7 @@ async def backfill(session: AsyncSession, apply: bool) -> dict:
     merges = []
     for item_id in sorted(gains, key=lambda i: (rows[i].first_pub, i)):
         n = rows.get(item_id)
-        found = pair(n, list(rows.values())) if n else None
+        found = pair(n, list(rows.values()), SKIP_MERGES) if n else None
         if not found:
             continue
         survivor, merged = found

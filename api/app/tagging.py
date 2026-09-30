@@ -95,6 +95,20 @@ def subject_cves(title: str, lead: str, text: str) -> set[str]:
     return found | {c for c in extract_cves(text or "") if upper.count(c) >= 2}
 
 
+def subject_reasons(title: str, lead: str, text: str) -> dict[str, str]:
+    """For each subject CVE (subject_cves), the sentence that qualifies it: the title, the lede
+    sentence naming it, or (named twice) its first sentence in the text. For the logs."""
+    subjects = subject_cves(title, lead, text)
+    out: dict[str, str] = {}
+    heading = _plain_line(title)
+    paragraphs = [p for p in (text or "").splitlines() if p.strip() and _plain_line(p) != heading][:LEDE_PARAGRAPHS]
+    places = [title or "", *_SENTENCE.split(lead or ""), *(s for p in paragraphs for s in _SENTENCE.split(p)),
+              *_SENTENCE.split(" ".join((text or "").split()))]
+    for cve in subjects:
+        out[cve] = next((s for s in places if cve in s.upper()), "")
+    return out
+
+
 def row_subject_cves(sources) -> set[str]:
     """subject_cves over a row's stored articles (anything with .title, .excerpt, .body)."""
     out: set[str] = set()

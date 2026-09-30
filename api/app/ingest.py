@@ -33,6 +33,7 @@ from app.tagging import (
     is_ad,
     row_subject_cves,
     subject_cves,
+    subject_reasons,
 )
 
 log = logging.getLogger(__name__)
@@ -304,6 +305,11 @@ async def ingest_source(
             stored.added += 1
         # Flush per article so the next one can cluster onto it.
         await session.flush()
+        row = cluster if cluster is not None else item
+        if subject and row is not None and row.id is not None:
+            reasons = subject_reasons(a.title, a.excerpt, "\n".join(t for t in (a.text, a.body) if t))
+            for c in sorted(subject & set(cves)):
+                log.info("ingest: item %d subject %s: %r", row.id, c, reasons.get(c, "")[:200])
     return stored
 
 

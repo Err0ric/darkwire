@@ -116,6 +116,20 @@ class Tweaks(unittest.TestCase):
         self.assertIn("CVE-2026-10001", subject_cves("Flaw CVE-2026-10001 exploited", "", ""))
         self.assertIn("CVE-2026-20002", subject_cves("Flaw", "The feed lede names CVE-2026-20002.", ""))
 
+    def test_subject_reasons_name_the_qualifying_sentence(self):
+        from app.tagging import subject_reasons
+
+        text = (
+            "Apple patches CoreGraphics zero-day\n"
+            "Apple shipped fixes on Monday.\n"
+            "The bug, CVE-2026-86950, was exploited. Details are scarce.\n"
+            "Earlier CVE-2026-20700 was patched."
+        )
+        self.assertEqual(
+            subject_reasons("Apple patches CoreGraphics zero-day", "", text),
+            {"CVE-2026-86950": "The bug, CVE-2026-86950, was exploited."},
+        )
+
     def test_subject_kept_at_any_age_context_only_with_a_recent_nvd_date(self):
         subject = {"CVE-2026-35273"}
         published = {
@@ -181,6 +195,13 @@ class Tweaks(unittest.TestCase):
         self.assertIsNone(pair(r834, [r819, r834]))
         r819.subject = {"CVE-2026-35273"}
         self.assertEqual(pair(r834, [r819, r834]), (r819, r834))
+
+    def test_a_skipped_pair_never_merges(self):
+        r819 = Row(819, CITRIX_747, CITRIX_747, alert=False, cves={"CVE-2026-35273"}, subject={"CVE-2026-35273"})
+        r834 = Row(834, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-35273"}, subject={"CVE-2026-35273"})
+        self.assertEqual(pair(r834, [r819, r834]), (r819, r834))
+        self.assertIsNone(pair(r834, [r819, r834], {(834, 819)}))
+        self.assertIsNone(pair(r819, [r819, r834], {(834, 819)}))
 
     def test_a_multi_story_article_joins_an_alert_row_it_covers(self):
         r794 = Row(794, CITRIX_747, CITRIX_747, alert=True, led=True, cves={"CVE-2026-5430", "CVE-2026-71362"})

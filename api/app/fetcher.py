@@ -151,13 +151,14 @@ async def article_text(client: httpx.AsyncClient, url: str) -> str | None:
         log.debug("fetch %s failed: %s", url, e)
         stats[domain]["failed"] += 1
         return None
-    text = " ".join(main_body(text or "").split())
+    # One line per paragraph, whitespace collapsed inside each (app/article_cves.py reads the lede).
+    text = "\n".join(" ".join(line.split()) for line in main_body(text or "").splitlines() if line.strip())
     if len(text) < 200:
         stats[domain]["empty"] += 1
         return None
     stats[domain]["ok"] += 1
     if len(text) > ARTICLE_CHARS:
-        cut = text.rfind(". ", 0, ARTICLE_CHARS)
+        cut = max(text.rfind(". ", 0, ARTICLE_CHARS), text.rfind(".\n", 0, ARTICLE_CHARS))
         text = text[: cut + 1] if cut > ARTICLE_CHARS * 0.7 else text[:ARTICLE_CHARS]
     return text
 

@@ -7,7 +7,8 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-from app.article_cves import PER_ARTICLE, Row, article_cves, eligible, gained, is_roundup, merge_target, pair, too_old
+from app.article_cves import PER_ARTICLE, Row, article_cves, eligible, is_roundup, keep, merge_target, pair, subject_cves
+from app.dedupe import alert_row_takes
 from app.fetcher import main_body
 from app.models import Stream
 
@@ -41,14 +42,6 @@ class Extraction(unittest.TestCase):
     def test_related_articles_do_not_count(self):
         text = "Citrix fixed CVE-2026-88771.\nRelated: Fortinet patches CVE-2026-11111\nRelated Articles\nOther CVE-2026-22222"
         self.assertEqual(article_cves("Citrix flaw", "", main_body(text)), ["CVE-2026-88771"])
-
-    def test_only_fetched_text_is_read(self):
-        # gained() reads the fetched article per source id and nothing else (never a summary).
-        src = SimpleNamespace(id=7, title="Citrix flaws", excerpt="")
-        item = SimpleNamespace(sources=[src], summary="The model mentioned CVE-2026-99999.")
-        self.assertEqual(gained(item, {}, set()), [])
-        self.assertEqual(gained(item, {7: "Fixes CVE-2026-88771."}, set()), ["CVE-2026-88771"])
-        self.assertEqual(gained(item, {7: "Fixes CVE-2026-88771."}, {"CVE-2026-88771"}), [])
 
     def test_alert_rows_and_ics_advisories_are_left_alone(self):
         alert = SimpleNamespace(
@@ -96,14 +89,43 @@ class Merges(unittest.TestCase):
 class Tweaks(unittest.TestCase):
     NOW = datetime(2026, 9, 30, tzinfo=UTC)
 
-    def test_context_cves_over_90_days_old_are_dropped(self):
-        self.assertTrue(too_old("CVE-2025-43300", datetime(2025, 8, 21, tzinfo=UTC), self.NOW))
-        self.assertFalse(too_old("CVE-2026-86950", datetime(2026, 9, 28, tzinfo=UTC), self.NOW))
-        # Published date wins over the ID's year: a 2025 ID published last week is current.
-        self.assertFalse(too_old("CVE-2025-20701", datetime(2026, 9, 25, tzinfo=UTC), self.NOW))
-        # No NVD date yet: the year decides.
-        self.assertTrue(too_old("CVE-2025-55177", None, self.NOW))
-        self.assertFalse(too_old("CVE-2026-20700", None, self.NOW))
+    def test_subject_cves_title_lede_or_repeated(self):
+        text = (
+            "Apple shipped fixes on Monday for a CoreGraphics flaw.\n"
+            "The bug, CVE-2026-86950, was exploited in targeted attacks.\n"
+            "Earlier this year Apple patched CVE-2026-20700 and last year CVE-2025-43300.\n"
+            "Mandiant tied the attacks to CVE-2026-35273 before. CVE-2026-35273 remains in use."
+        )
+        self.assertEqual(
+            subject_cves("Apple patches CoreGraphics zero-day", "", text),
+            {"CVE-2026-86950", "CVE-2026-35273"},
+        )
+        # 834 (The Record): the extracted text repeats the headline first; the CVE is in the
+        # second body paragraph, still the lede.
+        record = (
+            "ShinyHunters exploiting workarounds for Oracle PeopleSoft bug, Mandiant warns\n"
+            "A vulnerability in Oracle products is being used in a new campaign by ShinyHunters.\n"
+            "Mandiant published a blog on Friday about CVE-2026-35273, disclosed in June.\n"
+            "Mandiant reported in June that ShinyHunters exploited the bug as a zero-day."
+        )
+        self.assertEqual(
+            subject_cves("ShinyHunters exploiting workarounds for Oracle PeopleSoft bug, Mandiant warns", "", record),
+            {"CVE-2026-35273"},
+        )
+        self.assertIn("CVE-2026-10001", subject_cves("Flaw CVE-2026-10001 exploited", "", ""))
+        self.assertIn("CVE-2026-20002", subject_cves("Flaw", "The feed lede names CVE-2026-20002.", ""))
+
+    def test_subject_kept_at_any_age_context_only_with_a_recent_nvd_date(self):
+        subject = {"CVE-2026-35273"}
+        published = {
+            "CVE-2026-35273": datetime(2026, 4, 1, tzinfo=UTC),  # old, but the subject
+            "CVE-2026-20700": None,  # context, NVD has no date: dropped (no year fallback)
+            "CVE-2025-43300": datetime(2025, 8, 21, tzinfo=UTC),  # context, old: dropped
+            "CVE-2026-90000": datetime(2026, 9, 20, tzinfo=UTC),  # context, recent: kept
+        }
+        kept, dropped = keep(list(published), subject, published, self.NOW)
+        self.assertEqual(kept, ["CVE-2026-35273", "CVE-2026-90000"])
+        self.assertEqual(dropped, ["CVE-2026-20700", "CVE-2025-43300"])
 
     def test_recaps_and_roundups(self):
         for title in (
@@ -131,6 +153,24 @@ class Tweaks(unittest.TestCase):
         self.assertIsNone(pair(f5, [four, f5]))
         one = Row(799, CITRIX_747, CITRIX_747, alert=True, led=True, cves={"CVE-2026-94127"})
         self.assertEqual(pair(f5, [one, f5]), (one, f5))
+
+    def test_news_holding_all_of_a_multi_cve_alerts_cves_joins_it(self):
+        # 795 (WSO2 and Adobe Commerce) names both CVEs CISA's alert row 794 holds.
+        r794 = Row(794, CITRIX_747, CITRIX_747, alert=True, led=True, cves={"CVE-2026-5430", "CVE-2026-71362"})
+        r795 = Row(795, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-5430", "CVE-2026-71362"})
+        self.assertEqual(pair(r795, [r794, r795]), (r794, r795))
+        one = Row(796, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-5430"})
+        self.assertIsNone(pair(one, [r794, one]))
+        self.assertTrue(alert_row_takes({"A", "B"}, {"A", "B", "C"}))
+        self.assertFalse(alert_row_takes({"A", "B"}, {"A"}))
+        self.assertTrue(alert_row_takes({"A"}, {"A"}))
+
+    def test_a_multi_story_row_never_merges(self):
+        # 797 names SharePoint and MikroTik CVEs: they attach, it merges nowhere.
+        r793 = Row(793, CITRIX_747, CITRIX_747, alert=False, cves={"CVE-2026-67279", "CVE-2026-86060"})
+        r797 = Row(797, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-65660", "CVE-2026-67279"}, multi_story=True)
+        self.assertIsNone(pair(r797, [r793, r797]))
+        self.assertIsNone(pair(r793, [r793, r797]))
 
     def test_a_news_row_an_alert_joined_still_takes_news(self):
         # Row 747 is THN's story; CISA's alert joined it. It is not alert-led.

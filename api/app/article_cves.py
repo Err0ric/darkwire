@@ -2,23 +2,25 @@
 
 A feed's excerpt often names no CVE while the article does ("New CVSS 10.0 VeloCloud Flaw
 Actively Exploited"): without its ID the row shows no score and never meets the coverage that
-has one. When summarize_pending() fetches an article, the IDs it ties to its headline are added
-to the row:
+has one. When summarize_pending() fetches an article for a row with no CVE, the article's CVEs
+are added to it:
 
-- Well-formed IDs only (CVE-YYYY-NNNN+), read by the same attachment rules as ingest
-  (tagging.headline_cves: IDs in the title, all when three or fewer, the lead's, the counted
-  ones, the exploitation sentences', repeated ones, else the first), at most PER_ARTICLE each.
-- From the fetched text only, with related-article blocks already cut (fetcher.main_body).
-  Never from the model's output.
-- Only rows that have no CVE yet, and only CVEs published within MAX_CVE_AGE (else numbered in a
-  recent enough year): older IDs are context ("like last year's CVE-2025-43300").
-- Not on a row a CISA KEV alert started (it holds exactly the alert's CVEs), an ICS advisory (its
-  CVEs come from CISA), or a recap / roundup (ROUNDUP: it names many stories' CVEs).
+- Candidates: well-formed IDs (CVE-YYYY-NNNN+) the article ties to its headline under ingest's
+  attachment rules (tagging.headline_cves), at most PER_ARTICLE, read from the fetched text only
+  (related-article blocks cut by fetcher.main_body), never from the model's output.
+- Subject CVEs (in the title or the lede, the feed excerpt and the first LEDE_PARAGRAPHS
+  paragraphs, or named 2+ times in the article) are kept whatever their age. Any other candidate
+  is context: kept only when NVD dates it within MAX_CVE_AGE; with no NVD date it is dropped.
+- Only rows that have no CVE yet. Never a row a CISA KEV alert started (it holds exactly the
+  alert's CVEs), an ICS advisory (its CVEs come from CISA), or a recap / roundup (ROUNDUP).
+- A multi-story article (its kept CVEs belong to 2+ vendors, by the KEV catalog, CPE or CNA
+  data) gets its CVEs but never merges.
 
-Then the row is checked against the clustering rule for shared CVEs (app/dedupe.py), within
-MERGE_WINDOW: the later row folds into the earlier one, never an alert into anything, never a
-recap either way, and into a row a KEV alert started only when that row holds exactly one CVE.
-Each merge is logged.
+Then the row is checked against the shared-CVE clustering rule (app/dedupe.py) within
+MERGE_WINDOW: the later row folds into the earlier one; never an alert into anything; never a
+recap or a multi-story row, either way; into a row a KEV alert started only when that row holds
+one CVE or the article holds all of its CVEs (dedupe.alert_row_takes). A merge never moves the
+surviving row's displayed CVE (enrich.roll_up pins it). Each merge is logged.
 
     python -m app.article_cves             # dry run: rows of the last 9 days, CVEs gained, merges
     python -m app.article_cves --apply     # writes; never against production without sign-off
@@ -40,27 +42,81 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app import dedupe, fetcher, ics, jobstate
-from app.models import Category, Cve, Item, ItemCve, ItemSource, Stream
-from app.tagging import guess_category, headline_cves
+from app.models import Category, Cve, Item, ItemCve, ItemSource, KevEntry, Stream
+from app.tagging import extract_cves, guess_category, headline_cves
 
 log = logging.getLogger(__name__)
 
 PER_ARTICLE = 10
 MERGE_WINDOW = timedelta(hours=72)
-# A CVE published (or, before NVD has it, numbered in a year) more than this long ago is a
-# context mention ("like CVE-2025-43300 last year"), not the story's.
+LEDE_PARAGRAPHS = 2
+# A context CVE (not the article's subject) stays only when NVD published it this recently.
 MAX_CVE_AGE = timedelta(days=90)
 # Recaps and roundups name many stories' CVEs: they gain none and never merge.
 ROUNDUP = re.compile(r"\b(weekly recap|recap|round-?up|metasploit|wrap[- ]?up|week in review|this week in)\b", re.I)
 BACKFILL_DAYS = 9
 BACKFILL_STATE = "article_cves_backfill"
-BACKFILL_VERSION = "2"
+BACKFILL_VERSION = "3"
 BACKFILL_MODE = "dry-run"  # "dry-run" logs the plan once; "apply" writes it, only with sign-off
 
 
 def article_cves(title: str, lead: str, fetched: str) -> list[str]:
     """The CVE IDs the fetched article ties to its headline, at most PER_ARTICLE."""
     return headline_cves(title or "", lead or "", fetched or "")[:PER_ARTICLE]
+
+
+def _plain(line: str | None) -> str:
+    return re.sub(r"[^a-z0-9]", "", (line or "").lower())
+
+
+def subject_cves(title: str, lead: str, fetched: str) -> set[str]:
+    """IDs in the title or lede (the feed excerpt and the first LEDE_PARAGRAPHS paragraphs of the
+    fetched text), or named at least twice in the fetched text. The extracted text often starts
+    with the headline itself; that line is not a lede paragraph."""
+    heading = _plain(title)
+    paragraphs = [p for p in (fetched or "").splitlines() if p.strip() and _plain(p) != heading][:LEDE_PARAGRAPHS]
+    found = set(extract_cves(title or "", lead or "", *paragraphs))
+    upper = (fetched or "").upper()
+    return found | {c for c in extract_cves(fetched or "") if upper.count(c) >= 2}
+
+
+def keep(candidates: list[str], subject: set[str], published: dict[str, datetime | None], now: datetime) -> tuple[list[str], list[str]]:
+    """(kept, dropped): subject CVEs always; context CVEs only with an NVD date within MAX_CVE_AGE."""
+    kept, dropped = [], []
+    for c in candidates:
+        date = published.get(c)
+        (kept if c in subject or (date is not None and now - date <= MAX_CVE_AGE) else dropped).append(c)
+    return kept, dropped
+
+
+def vendor_key(name: str | None) -> str | None:
+    key = re.sub(r"[^a-z0-9]", "", (name or "").lower())
+    return key if key and key not in ("na", "unknown") else None
+
+
+async def cve_vendors(session: AsyncSession, cves: list[str]) -> dict[str, str]:
+    """Each CVE's vendor where the data names one: the KEV catalog, else the first CPE, else the
+    CNA's affected list. A CVE nobody has described yet has none."""
+    out: dict[str, str] = {}
+    for cve_id, vendor in (await session.execute(select(KevEntry.cve_id, KevEntry.vendor).where(KevEntry.cve_id.in_(cves)))).all():
+        if vendor_key(vendor):
+            out[cve_id] = vendor_key(vendor)
+    for cve in (await session.scalars(select(Cve).where(Cve.id.in_([c for c in cves if c not in out])))).all():
+        for match in cve.cpes or []:
+            parts = (match.get("criteria", "") if isinstance(match, dict) else str(match)).split(":")
+            if len(parts) > 3 and vendor_key(parts[3]) and parts[3] not in ("*", "-"):
+                out[cve.id] = vendor_key(parts[3])
+                break
+        if cve.id in out:
+            continue
+        for a in (cve.nvd_raw or {}).get("affected") or []:
+            for d in (a.get("affectedData") or []) if isinstance(a, dict) else []:
+                if vendor_key(d.get("vendor")):
+                    out[cve.id] = vendor_key(d.get("vendor"))
+                    break
+            if cve.id in out:
+                break
+    return out
 
 
 def is_roundup(headline: str | None) -> bool:
@@ -76,37 +132,40 @@ def eligible(item: Item) -> bool:
     )
 
 
-def too_old(cve_id: str, published: datetime | None, now: datetime) -> bool:
-    """Published over MAX_CVE_AGE ago; with no NVD date yet, numbered in a year that ended
-    before then."""
-    if published is not None:
-        return now - published > MAX_CVE_AGE
-    return int(cve_id.split("-")[1]) < (now - MAX_CVE_AGE).year
+@dataclass
+class Plan:
+    new: list[str] = field(default_factory=list)
+    dropped: list[str] = field(default_factory=list)
+    vendors: set[str] = field(default_factory=set)  # of one article's kept CVEs, when 2+
+    multi_story: bool = False
 
 
-async def recent_only(session: AsyncSession, cves: list[str], now: datetime) -> tuple[list[str], list[str]]:
-    """(kept, dropped as context mentions) by too_old()."""
-    if not cves:
-        return [], []
-    dates = dict((await session.execute(select(Cve.id, Cve.published_at).where(Cve.id.in_(cves)))).all())
-    old = [c for c in cves if too_old(c, dates.get(c), now)]
-    return [c for c in cves if c not in old], old
-
-
-def gained(item: Item, fetched: dict[int, str], have: set[str]) -> list[str]:
-    """New CVE IDs for the row from its fetched articles (source id -> text), in order."""
-    out: list[str] = []
+async def plan_row(session: AsyncSession, item: Item, fetched: dict[int, str], now: datetime) -> Plan:
+    """What the row's fetched articles (source id -> text) add: kept CVEs in order, dropped
+    context CVEs, and whether any one article spans 2+ vendors."""
+    plan = Plan()
     for src in item.sources:
         body = fetched.get(src.id)
-        if body:
-            out += [c for c in article_cves(src.title, src.excerpt or "", body) if c not in have and c not in out]
-    return out
+        if not body:
+            continue
+        candidates = article_cves(src.title, src.excerpt or "", body)
+        if not candidates:
+            continue
+        published = dict((await session.execute(select(Cve.id, Cve.published_at).where(Cve.id.in_(candidates)))).all())
+        kept, dropped = keep(candidates, subject_cves(src.title, src.excerpt or "", body), published, now)
+        plan.new += [c for c in kept if c not in plan.new]
+        plan.dropped += [c for c in dropped if c not in plan.dropped]
+        vendors = set((await cve_vendors(session, kept)).values())
+        if len(vendors) >= 2:
+            plan.multi_story = True
+            plan.vendors |= vendors
+    return plan
 
 
 async def add_cves(session: AsyncSession, item: Item, cves: list[str], reason: str) -> None:
     """Link cves to the row after its own. Placeholder CVE rows first (NVD fills them in on the
-    next enrich pass); a row with no CVE takes the first as its CVE and, if it was plain news,
-    becomes a vulnerability row. Scores, KEV and patch status come from the roll-up."""
+    next enrich pass); a row with no CVE takes the first as its (pinned) CVE and, if it was plain
+    news, becomes a vulnerability row. Scores, KEV and patch status come from the roll-up."""
     if not cves:
         return
     await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
@@ -123,6 +182,14 @@ async def add_cves(session: AsyncSession, item: Item, cves: list[str], reason: s
     log.info("article cves: item %d +%s (%s)", item.id, ",".join(cves), reason)
 
 
+def _log_plan(tag: str, item: Item, plan: Plan) -> None:
+    if plan.dropped:
+        log.info("article cves: %sitem %d dropped %s (context: not in title/lede, named once, no NVD date within 90 days)",
+                 tag, item.id, ",".join(plan.dropped))
+    if plan.multi_story:
+        log.info("article cves: %sitem %d multi-story (vendors %s): CVEs attach, no merge", tag, item.id, ",".join(sorted(plan.vendors)))
+
+
 # ---------------------------------------------------------------- merges
 
 
@@ -135,21 +202,23 @@ class Row:
     cves: set[str] = field(default_factory=set)
     led: bool = False  # started by a KEV alert (the alert is its primary source)
     roundup: bool = False  # a recap or roundup: never merges either way
+    multi_story: bool = False  # its article spans 2+ vendors: never merges either way
 
 
 def merge_target(n: Row, rows: list[Row]) -> Row | None:
     """The row n folds into under the shared-CVE rule, or None. As dedupe.merge_existing: the
     later-published row joins an earlier one it shares a CVE with, within MERGE_WINDOW, the most
     recent such row; a row holding a KEV alert never joins another. Stricter here: a row a KEV
-    alert started takes news only when it holds exactly one CVE (a multi-CVE alert would gather
-    unrelated stories), and recaps / roundups never merge."""
-    if n.alert or n.roundup:
+    alert started takes news only per dedupe.alert_row_takes, and recaps, roundups and
+    multi-story rows never merge."""
+    if n.alert or n.roundup or n.multi_story:
         return None
     candidates = [
         o for o in rows
         if o.id != n.id
         and not o.roundup
-        and not (o.led and len(o.cves) != 1)
+        and not o.multi_story
+        and not (o.led and not dedupe.alert_row_takes(o.cves, n.cves))
         and (o.first_pub, o.id) < (n.first_pub, n.id)
         and o.cves & n.cves
         and abs(n.first_pub - o.last_event_at) <= MERGE_WINDOW
@@ -205,18 +274,20 @@ async def _merge_dict(session: AsyncSession, item_id: int) -> dict:
 
 
 async def merge(session: AsyncSession, survivor: Row, merged: Row, reason: str) -> None:
+    """dedupe._merge: sources and CVEs move to the survivor, which keeps its displayed CVE."""
     o, n = await _merge_dict(session, survivor.id), await _merge_dict(session, merged.id)
     await dedupe._merge(session, o, n, merged.first_pub)
+    shared = sorted(survivor.cves & merged.cves)
     survivor.cves |= merged.cves
-    log.info(
-        "article cves: merged item %d into item %d (shared %s; %s)",
-        merged.id, survivor.id, ",".join(sorted(survivor.cves & merged.cves)), reason,
-    )
+    log.info("article cves: merged item %d into item %d (shared %s; %s)", merged.id, survivor.id, ",".join(shared), reason)
 
 
-async def recheck(session: AsyncSession, item_ids: list[int]) -> int:
+async def recheck(session: AsyncSession, item_ids: list[int], multi_story: set[int] = frozenset()) -> int:
     """After rows gained CVEs: apply the shared-CVE merge rule to each. Returns merges made."""
     rows = await _rows(session, datetime.now(UTC) - timedelta(days=14))
+    for i in multi_story:
+        if i in rows:
+            rows[i].multi_story = True
     done = 0
     for item_id in item_ids:
         n = rows.get(item_id)
@@ -230,21 +301,23 @@ async def recheck(session: AsyncSession, item_ids: list[int]) -> int:
 
 async def after_fetch(session: AsyncSession, items: list[Item], fetched: dict[int, dict[int, str]]) -> None:
     """From summarize_pending(): add each fetched article's CVEs to its row, then re-check merges."""
-    changed = []
+    changed, multi = [], set()
+    now = datetime.now(UTC)
     for item in items:
         if not eligible(item) or not fetched.get(item.id):
             continue
         if await session.scalar(select(ItemCve.cve_id).where(ItemCve.item_id == item.id).limit(1)):
             continue  # only rows with no CVE gain them
-        new, old = await recent_only(session, gained(item, fetched[item.id], set()), datetime.now(UTC))
-        if old:
-            log.info("article cves: item %d: dropped %s (published over 90 days ago)", item.id, ",".join(old))
-        if new:
-            await add_cves(session, item, new, "fetched article")
+        plan = await plan_row(session, item, fetched[item.id], now)
+        _log_plan("", item, plan)
+        if plan.new:
+            await add_cves(session, item, plan.new, "fetched article")
             changed.append(item.id)
+            if plan.multi_story:
+                multi.add(item.id)
     if changed:
         await session.commit()
-        if await recheck(session, changed):
+        if await recheck(session, changed, multi):
             await session.commit()
         session.expire_all()
 
@@ -253,9 +326,10 @@ async def after_fetch(session: AsyncSession, items: list[Item], fetched: dict[in
 
 
 async def backfill(session: AsyncSession, apply: bool) -> dict:
-    """Rows of the last BACKFILL_DAYS days: fetch their articles again (politely, fetcher.py),
-    and plan or apply the CVEs they gain and the merges that follow. Logs every line."""
+    """Rows of the last BACKFILL_DAYS days with no CVE: fetch their articles again (politely,
+    fetcher.py), and plan or apply the CVEs they gain and the merges that follow. Logs every line."""
     tag = "apply" if apply else "dry run"
+    prefix = f"backfill ({tag}): "
     candidates = (
         await session.scalars(
             select(Item)
@@ -270,15 +344,15 @@ async def backfill(session: AsyncSession, apply: bool) -> dict:
     ).all()
     for i in candidates:
         if is_roundup(i.headline):
-            log.info("article cves: backfill (%s): item %d skipped (recap/roundup) | %s", tag, i.id, i.headline[:90])
+            log.info("article cves: %sitem %d skipped (recap/roundup) | %s", prefix, i.id, i.headline[:90])
     items = [i for i in candidates if eligible(i) and i.sources]
-    log.info("article cves: backfill (%s): fetching articles for %d rows with no CVE", tag, len(items))
+    log.info("article cves: %sfetching articles for %d rows with no CVE", prefix, len(items))
     fetched: dict[int, dict[int, str]] = {}
     async with fetcher.client() as client:
 
         async def one(item: Item) -> None:
             got = {}
-            for src in sorted(item.sources, key=lambda x: x.url != item.primary_url)[: 2]:
+            for src in sorted(item.sources, key=lambda x: x.url != item.primary_url)[:2]:
                 body = await fetcher.article_text(client, src.url)
                 if body:
                     got[src.id] = body
@@ -291,24 +365,24 @@ async def backfill(session: AsyncSession, apply: bool) -> dict:
     gains: dict[int, list[str]] = {}
     now = datetime.now(UTC)
     for item in items:
-        if item.id not in rows or rows[item.id].cves:
-            continue  # only rows with no CVE gain them
-        new, old = await recent_only(session, gained(item, fetched.get(item.id, {}), set()), now)
-        if old:
-            log.info("article cves: backfill (%s): item %d dropped %s (published over 90 days ago)", tag, item.id, ",".join(old))
-        if new:
-            gains[item.id] = new
-            log.info("article cves: backfill (%s): item %d +%s | %s", tag, item.id, ",".join(new), item.headline[:90])
-            if item.id in rows:
-                rows[item.id].cves |= set(new)
-            if apply:
-                await add_cves(session, item, new, "backfill")
+        if item.id not in rows:
+            continue
+        plan = await plan_row(session, item, fetched.get(item.id, {}), now)
+        _log_plan(prefix, item, plan)
+        if not plan.new:
+            continue
+        gains[item.id] = plan.new
+        rows[item.id].cves |= set(plan.new)
+        rows[item.id].multi_story = plan.multi_story
+        log.info("article cves: %sitem %d +%s | %s", prefix, item.id, ",".join(plan.new), item.headline[:90])
+        if apply:
+            await add_cves(session, item, plan.new, "backfill")
     if apply:
         await session.commit()
 
     # Merges, simulated in order so a planned merge is seen by the next (no chaining past it).
     merges = []
-    for item_id in sorted(gains, key=lambda i: (rows[i].first_pub, i) if i in rows else (datetime.max.replace(tzinfo=UTC), i)):
+    for item_id in sorted(gains, key=lambda i: (rows[i].first_pub, i)):
         n = rows.get(item_id)
         found = pair(n, list(rows.values())) if n else None
         if not found:
@@ -319,8 +393,8 @@ async def backfill(session: AsyncSession, apply: bool) -> dict:
             await merge(session, survivor, merged, "backfill")
         else:
             log.info(
-                "article cves: backfill (dry run): item %d would merge into item %d (shared %s)",
-                merged.id, survivor.id, ",".join(sorted(survivor.cves & merged.cves)),
+                "article cves: %sitem %d would merge into item %d (shared %s)",
+                prefix, merged.id, survivor.id, ",".join(sorted(survivor.cves & merged.cves)),
             )
             survivor.cves |= merged.cves
         rows.pop(merged.id, None)
@@ -328,8 +402,8 @@ async def backfill(session: AsyncSession, apply: bool) -> dict:
         await session.commit()
     fetched_rows = sum(1 for v in fetched.values() if v)
     log.info(
-        "article cves: backfill (%s): %d rows, %d with article text, %d gain CVEs, %d merges",
-        tag, len(items), fetched_rows, len(gains), len(merges),
+        "article cves: %s%d rows, %d with article text, %d gain CVEs, %d merges",
+        prefix, len(items), fetched_rows, len(gains), len(merges),
     )
     return {"rows": len(items), "fetched": fetched_rows, "gains": gains, "merges": merges}
 

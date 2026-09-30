@@ -6,8 +6,8 @@ export default function WireLoading() {
   return (
     <main className="flex-1 page-frame pb-24">
       <Loading label="the wire" />
-      <div className="min-[1024px]:flex min-[1024px]:items-start min-[1024px]:gap-10 min-[1600px]:gap-(--col-gap)">
-        <aside className="mt-[103px] hidden w-(--left-rail-w) shrink-0 min-[1600px]:block">
+      <div className="wire2:flex wire2:items-start wire2:gap-10 wire3:gap-(--col-gap)">
+        <aside className="mt-[103px] hidden w-(--left-rail-w) shrink-0 wire3:block">
           <SkeletonRail />
         </aside>
         <div className="min-w-0 max-w-(--feed-max) flex-1">
@@ -26,7 +26,7 @@ export default function WireLoading() {
           </div>
           <SkeletonFeedRows count={14} />
         </div>
-        <aside className="mt-16 hidden shrink-0 min-[1024px]:mt-[103px] min-[1024px]:block min-[1024px]:w-[300px] min-[1600px]:w-(--rail-w)">
+        <aside className="mt-16 hidden shrink-0 wire2:mt-[103px] wire2:block wire2:w-[300px] wire3:w-(--rail-w)">
           <SkeletonRail />
         </aside>
       </div>

@@ -381,17 +381,18 @@ export function WireBoard({ initial }: { initial: WireData }) {
 
   return (
     <main className="flex-1 page-frame pb-24">
-      {/* Under 1024px: feed, then the rail stacked below it. 1024-1599px: feed plus one 300px
-          rail on the right, 40px apart. 1600px+: stats rail | gap | feed | gap | Elsewhere and
-          Services, fluid (--left-rail-w, --rail-w, --col-gap in globals.css), the feed capped at
-          --feed-max and the block centered by page-frame. Rails are sticky and start level with
-          the tabs row. The rail sections are placed with CSS order per range. */}
-      <div className="min-[1024px]:flex min-[1024px]:items-start min-[1024px]:gap-10 min-[1600px]:gap-(--col-gap)">
+      {/* Under 1024px, or any portrait screen: feed, then the rail stacked below it. Landscape
+          1024-1599px (wire2): feed plus one 300px rail on the right, 40px apart. Landscape 1600px+
+          (wire3): stats rail | gap | feed | gap | Elsewhere and Services, fluid (--left-rail-w,
+          --rail-w, --col-gap in globals.css), the feed capped at --feed-max and the block centered
+          by page-frame. Rails are sticky and start level with the tabs row. The rail sections
+          are placed with CSS order per range. */}
+      <div className="wire2:flex wire2:items-start wire2:gap-10 wire3:gap-(--col-gap)">
         <aside
           ref={leftRail}
           data-chrome
           aria-label="This week"
-          className="sticky mt-[103px] hidden w-(--left-rail-w) shrink-0 text-[13px] min-[1600px]:block"
+          className="sticky mt-[103px] hidden w-(--left-rail-w) shrink-0 text-[13px] wire3:block"
         >
           {/* A 1px rule midway between this rail and the feed, as tall as the rail's content. */}
           <div className="-mr-[calc(var(--col-gap)/2)] flex flex-col gap-10 border-r border-rule pr-[calc(var(--col-gap)/2)]">
@@ -482,9 +483,9 @@ export function WireBoard({ initial }: { initial: WireData }) {
             {stack.length > 0 && stackCritical === 0 && (
               <p className="mt-1 text-[13px] leading-5 text-muted">Nothing critical in your stack today.</p>
             )}
-            {/* Rail stacked under the feed (< 1024px): impacted services show up here so an outage
+            {/* Rail stacked under the feed (< 1024px or portrait): impacted services show up here so an outage
                 is seen without scrolling; the full block ends the stacked rail. */}
-            <div data-chrome className="mt-6 max-w-[640px] text-[13px] min-[1024px]:hidden">
+            <div data-chrome className="mt-6 max-w-[640px] text-[13px] wire2:hidden">
               <Services data={services} compact />
             </div>
           </header>
@@ -655,24 +656,24 @@ export function WireBoard({ initial }: { initial: WireData }) {
           data-chrome
           aria-label="Context"
           ref={rightRail}
-          className="mt-16 text-[13px] min-[1024px]:sticky min-[1024px]:mt-[103px] min-[1024px]:w-[300px] min-[1024px]:shrink-0 min-[1600px]:w-(--rail-w)"
+          className="mt-16 text-[13px] wire2:sticky wire2:mt-[103px] wire2:w-[300px] wire2:shrink-0 wire3:w-(--rail-w)"
         >
           {/* Orders: under 1024 Elsewhere, Most active, Added to KEV, Last 7 days, Services (its
               impacted lines also sit above the feed). 1024-1599 Elsewhere, Most active, Last 7
               days, Added to KEV, Services. 1600+ Elsewhere, Services; the rest is in the left
               rail. The sources line is in the page footer. */}
-          <div className="flex max-w-[640px] flex-col gap-10 min-[1024px]:-ml-5 min-[1024px]:max-w-none min-[1024px]:border-l min-[1024px]:border-rule min-[1024px]:pl-5 min-[1600px]:-ml-[calc(var(--col-gap)/2)] min-[1600px]:pl-[calc(var(--col-gap)/2)]">
-            <div className="order-2 min-[1600px]:hidden">
+          <div className="flex max-w-[640px] flex-col gap-10 wire2:-ml-5 wire2:max-w-none wire2:border-l wire2:border-rule wire2:pl-5 wire3:-ml-[calc(var(--col-gap)/2)] wire3:pl-[calc(var(--col-gap)/2)]">
+            <div className="order-2 wire3:hidden">
               <MostActive
                 active={active}
                 vendor={filters.vendor}
                 onVendor={(slug) => apply({ vendor: filters.vendor === slug ? "" : slug })}
               />
             </div>
-            <div className="order-4 min-[1024px]:order-3 min-[1600px]:hidden">
+            <div className="order-4 wire2:order-3 wire3:hidden">
               <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
             </div>
-            <div className="order-3 min-[1024px]:order-4 min-[1600px]:hidden">
+            <div className="order-3 wire2:order-4 wire3:hidden">
               <AddedToKev
                 kev={kev}
                 total={counts?.kev_added_7d}

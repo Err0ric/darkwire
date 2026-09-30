@@ -8,6 +8,10 @@
    tabs row is stuck under the condensed bar. */
 @custom-variant scrolled (html[data-scrolled] &);
 @custom-variant wire-stuck (html[data-wire-stuck] &);
+/* The wire's column layouts are for landscape screens only: portrait walls and tablets stack.
+   wire2: feed plus one rail (1024px+), wire3: stats rail, feed, context rail (1600px+). */
+@custom-variant wire2 (@media (min-width: 1024px) and (orientation: landscape));
+@custom-variant wire3 (@media (min-width: 1600px) and (orientation: landscape));
 
 /* Palette from CLAUDE.md. Components use these through the Tailwind tokens below
    (bg-bg, text-fg-2, border-hairline, ...). Never hardcode colors in components. */
@@ -305,7 +309,7 @@ html[data-theme="high-contrast"] {
   @media (min-width: 768px) {
     padding-inline: 3rem;
   }
-  @media (min-width: 1600px) {
+  @media (min-width: 1600px) and (orientation: landscape) {
     max-width: calc(var(--block-w) + 6rem);
   }
 }

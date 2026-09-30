@@ -208,6 +208,16 @@ class Row:
     roundup: bool = False  # a recap or roundup: never merges either way
     multi_story: bool = False  # its article spans 2+ vendors: merges only into an alert row it covers
     subject: set[str] = field(default_factory=set)  # its subject CVEs (tagging.subject_cves)
+    # Its only CVE is its vendor's (vendor data: KEV, CPE, CNA): what the row is about, even when
+    # the article names it once, outside the lede (the OpenSSL DTLS rows 907 and 910, 2026-09-30).
+    # A row whose one CVE belongs to someone else only mentions it (819, the arrest story).
+    solo: bool = False
+
+
+def row_subject(r: Row) -> set[str]:
+    """A row's subject CVEs for merging: those its articles make the subject (title, lede, named
+    twice), plus its only CVE when that is its own vendor's (Row.solo)."""
+    return r.subject | r.cves if r.solo and len(r.cves) == 1 else r.subject
 
 
 def takes(o: Row, n: Row) -> bool:
@@ -222,7 +232,7 @@ def takes(o: Row, n: Row) -> bool:
     if n.multi_story or o.multi_story:
         return False
     # News into news: a shared CVE must be what both rows are about.
-    return bool(shared & o.subject & n.subject)
+    return bool(shared & row_subject(o) & row_subject(n))
 
 
 def merge_target(n: Row, rows: list[Row]) -> Row | None:
@@ -256,9 +266,10 @@ def pair(n: Row, rows: list[Row], skip: set[tuple[int, int]] = frozenset()) -> t
 async def _rows(session: AsyncSession, since: datetime) -> dict[int, Row]:
     got = (
         await session.execute(text("""
-            SELECT i.id, i.last_event_at, i.headline, i.primary_url,
+            SELECT i.id, i.last_event_at, i.headline, i.primary_url, v.name AS vendor,
                    coalesce((SELECT min(published_at) FROM item_sources s WHERE s.item_id = i.id), i.last_event_at) AS first_pub
-            FROM items i WHERE i.stream = 'main' AND i.last_event_at >= :since
+            FROM items i LEFT JOIN vendors v ON v.id = i.vendor_id
+            WHERE i.stream = 'main' AND i.last_event_at >= :since
         """), {"since": since})
     ).all()
     rows = {
@@ -270,6 +281,12 @@ async def _rows(session: AsyncSession, since: datetime) -> dict[int, Row]:
     }
     for item_id, cve_id in (await session.execute(select(ItemCve.item_id, ItemCve.cve_id).where(ItemCve.item_id.in_(rows)))).all():
         rows[item_id].cves.add(cve_id)
+    own = {r.id: vendor_key(r.vendor) for r in got}
+    single = {next(iter(r.cves)): r for r in rows.values() if len(r.cves) == 1}
+    owners = await cve_vendors(session, list(single)) if single else {}
+    for r in rows.values():
+        if len(r.cves) == 1 and own.get(r.id):
+            r.solo = owners.get(next(iter(r.cves))) == own[r.id]
     sources = await session.execute(
         select(ItemSource.item_id, ItemSource.title, ItemSource.url, ItemSource.excerpt, ItemSource.body).where(ItemSource.item_id.in_(rows))
     )

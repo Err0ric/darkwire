@@ -274,6 +274,47 @@ async def category_rules_dry_run(session) -> dict[int, tuple[str, str]]:
     return out
 
 
+# Signed off 2026-09-30: under the single-CVE subject rule (article_cves.row_subject), apply the
+# 7-day re-merge only if it is exactly this pair, (merged, survivor): the OpenSSL DTLS rows.
+REMERGE_EXPECTED = {(910, 907)}
+
+
+async def remerge(session) -> list[tuple[int, int]]:
+    """Dry run of the merge rules over the rows of the last 7 days, in publish order, as the live
+    re-check makes them (article_cves.merge_target); a row with CVEs of 2+ vendors counts as
+    multi-story. Every pair logged with both headlines; applied only when the pairs are exactly
+    REMERGE_EXPECTED, else STOP and nothing written. [(merged, survivor)]."""
+    rows = await article_cves._rows(session, datetime.now(UTC) - timedelta(days=7))
+    for row in rows.values():
+        if len(row.cves) >= 2 and len(set((await article_cves.cve_vendors(session, sorted(row.cves))).values())) >= 2:
+            row.multi_story = True
+    headlines = dict((await session.execute(select(Item.id, Item.headline).where(Item.id.in_(list(rows))))).all())
+    live = dict(rows)
+    pairs: list[tuple[int, int]] = []
+    for n in sorted(rows.values(), key=lambda r: (r.first_pub, r.id)):
+        if n.id not in live:
+            continue
+        target = article_cves.merge_target(n, [r for r in live.values() if r.id != n.id])
+        if target is None:
+            continue
+        pairs.append((n.id, target.id))
+        log.info("maintenance: remerge (dry run): item %d into item %d (shared %s) | %s | %s", n.id, target.id,
+                 ",".join(sorted(n.cves & target.cves)), headlines.get(n.id, "")[:90], headlines.get(target.id, "")[:90])
+        target.cves |= n.cves
+        target.subject |= n.subject
+        live.pop(n.id)
+    if set(pairs) != REMERGE_EXPECTED:
+        log.info("maintenance: remerge (dry run): %d merges; STOP: not exactly %s; nothing written", len(pairs), sorted(REMERGE_EXPECTED))
+        return pairs
+    fresh = await article_cves._rows(session, datetime.now(UTC) - timedelta(days=7))
+    for merged_id, survivor_id in pairs:
+        await article_cves.merge(session, fresh[survivor_id], fresh[merged_id], "signed off: single-CVE subject rule")
+        fresh.pop(merged_id)
+    await session.commit()
+    log.info("maintenance: remerge applied: %s", ", ".join(f"item {m} into item {s}" for m, s in pairs))
+    return pairs
+
+
 async def apply_category_overrides(session) -> None:
     """tagging.CATEGORY_OVERRIDES written to their rows, each change logged. Runs once per version
     of the table (its step name carries a digest of it)."""
@@ -374,6 +415,7 @@ STEPS = [
     ("recategorize_trends_apply_v1", lambda session: recategorize_trends(session, apply=True)),
     # The summary call's category verdicts became log-only (2026-09-30): what differs from the rules.
     ("category_rules_dry_run_v1", category_rules_dry_run),
+    ("remerge_single_cve_v1", remerge),
 ]
 
 

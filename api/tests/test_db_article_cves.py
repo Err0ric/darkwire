@@ -578,6 +578,35 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await maintenance.category_rules_dry_run(s), {override.id: ("vulnerability", "research")})
             self.assertEqual((await s.get(Item, override.id)).category, Category.vulnerability)  # nothing written
 
+    async def test_remerge_applies_only_the_expected_pair(self):
+        from unittest import mock
+
+        from app import maintenance
+
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            src = Source(name="SecurityWeek", feed_url="https://test.invalid/sw5", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            from app.models import Vendor
+
+            openssl = Vendor(slug="openssl", name="OpenSSL", aliases=["OpenSSL"])
+            s.add(openssl)
+            await s.flush()
+            first = await self._row(s, src, "High-Severity Vulnerabilities Patched in OpenSSL, WolfSSL", now - timedelta(hours=2), ["CVE-2026-84782"])
+            second = await self._row(s, src, "OpenSSL Fixes High-Severity DTLS Flaw That Can Leak Heap Memory Unencrypted", now - timedelta(hours=1), ["CVE-2026-84782"])
+            first.vendor_id = second.vendor_id = openssl.id
+            (await s.get(Cve, "CVE-2026-84782")).cpes = [{"criteria": "cpe:2.3:a:openssl:openssl:*:*:*:*:*:*:*:*"}]
+            await s.commit()
+            with mock.patch.object(maintenance, "REMERGE_EXPECTED", {(999, 998)}):
+                self.assertEqual(await maintenance.remerge(s), [(second.id, first.id)])  # STOP: not the expected set
+            self.assertEqual(len(set(await s.scalars(select(Item.id).where(Item.id.in_([first.id, second.id]))))), 2)
+            with mock.patch.object(maintenance, "REMERGE_EXPECTED", {(second.id, first.id)}):
+                await maintenance.remerge(s)
+        async with self.Session() as s:
+            self.assertIsNone(await s.get(Item, second.id))
+            self.assertEqual(len((await s.scalars(select(ItemSource).where(ItemSource.item_id == first.id))).all()), 2)
+
     async def test_manual_category_override_step(self):
         from unittest import mock
 

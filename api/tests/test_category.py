@@ -28,6 +28,13 @@ class Breach(unittest.TestCase):
             Category.breach,
         )
 
+    def test_incident_words_in_the_title_count(self):
+        # Rows 25 and 896 (2026-09-30): "breach" only in the lead, the incident in the title.
+        self.assertEqual(guess_category("North Korea Suspected in $351 Million Bitget Crypto Heist",
+                                        "The breach at the exchange was traced to a supplier.", False), Category.breach)
+        self.assertEqual(guess_category("OpenAI apologizes for agents breaching Australian government websites without authorization",
+                                        "The breach involved AI agents.", False), Category.breach)
+
     def test_a_breach_in_passing_in_the_lead_is_not(self):
         self.assertEqual(
             guess_category("Zero Trust for AI Agents Starts With Fixing Zero Visibility", "A breach is inevitable, experts say.", False),

@@ -209,7 +209,8 @@ _ABOUT_THREATS = _keywords(r"attacks?", r"threats?", r"malware", r"phishing", r"
 # appears in the first paragraph (a trend piece mentions breaches in passing).
 BREACH_INCIDENT = _keywords(
     r"stole", r"stolen", r"exposed", r"leaked", r"exfiltrated", r"compromised", r"breached", r"hacked",
-    r"unauthorized access", r"intrusion", r"accessed", r"notified", r"impacted",
+    r"unauthorized access", r"intrusion", r"accessed", r"notified", r"impacted", r"heist", r"theft",
+    r"without authorization",
 )
 
 
@@ -222,7 +223,7 @@ def guess_category(title: str, excerpt: str, has_cve: bool) -> Category:
     for text, lead in ((title, False), (excerpt, True)):
         for category, pattern in CATEGORY_RULES:
             if pattern.search(text or ""):
-                if category == Category.breach and lead and not BREACH_INCIDENT.search(text):
+                if category == Category.breach and lead and not BREACH_INCIDENT.search(f"{title} {text}"):
                     continue
                 return category
     return Category.vulnerability if has_cve else Category.news

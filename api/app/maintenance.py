@@ -189,6 +189,27 @@ async def recategorize_breach(session) -> None:
     log.info("maintenance: recategorize: %d of %d breach rows changed", changed, len(rows))
 
 
+# v1 moved 25 and 896 (incidents named in their titles) off Breach as well as 922; the incident
+# check now reads the title too. These rows are re-derived once more, each change logged.
+RECATEGORIZE_ROWS = [25, 896, 922]
+
+
+async def recategorize_rows(session) -> None:
+    from app.tagging import guess_category
+
+    for item_id in RECATEGORIZE_ROWS:
+        item = await session.scalar(select(Item).where(Item.id == item_id).options(selectinload(Item.sources)))
+        if item is None or not item.sources:
+            log.info("maintenance: recategorize item %d: row gone", item_id)
+            continue
+        primary = next((s for s in item.sources if s.url == item.primary_url), item.sources[0])
+        has_cve = await session.scalar(select(ItemCve.cve_id).where(ItemCve.item_id == item.id).limit(1)) is not None
+        category = guess_category(primary.title, primary.excerpt or "", has_cve)
+        log.info("maintenance: recategorize item %d %s -> %s | %s", item.id, item.category.value, category.value, item.headline[:90])
+        item.category = category
+    await session.commit()
+
+
 STEPS = [
     ("merge_834_1", merges),
     ("repin_kev_first_v1", repin),
@@ -196,6 +217,7 @@ STEPS = [
     ("summary_versions_v1", summary_versions),
     ("resummarize_933_v1", resummarize_933),
     ("recategorize_breach_v1", recategorize_breach),
+    ("recategorize_rows_v2", recategorize_rows),
 ]
 
 

@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app import article_cves, cve_facts, facts_backfill, fetcher, ics, jobstate, summaries, versions
 from app.config import get_settings
-from app.models import Cve, Item, ItemCve, ItemSource, Stream
+from app.models import Cve, Item, ItemCve, ItemSource, PatchStatus, Stream
 from app.tagging import row_subject_cves
 
 log = logging.getLogger(__name__)
@@ -194,6 +194,21 @@ async def refresh_873(session) -> None:
     await advisories.refresh(session, item, {src.id: text}, "corrected CISA advisory, signed off")
 
 
+async def recheck_930(session) -> None:
+    """Row 930's stored summary kept a passive fix claim through the workaround exemption ("... as
+    no workaround exists"); it is checked again under the current rules, no model call."""
+    item = await session.get(Item, 930)
+    if item is None or not item.summary:
+        log.info("maintenance: recheck 930: nothing to check")
+        return
+    before = item.summary
+    text, why = summaries.review_summary(before, patched=item.patch_status == PatchStatus.patched)
+    if text:
+        item.summary = text
+    log.info("maintenance: recheck 930 (%s): %r -> %r", why, before, item.summary)
+    await session.commit()
+
+
 # Summarized again under the vendor-backed fix rule (summaries.fix_vendor), through the "sources
 # grew" path so the current summary stays if the new attempt fails. The result is logged by
 # summaries ("written again ..." / "kept its summary").
@@ -288,6 +303,7 @@ STEPS = [
     ("resummarize_930_v1", resummarize),
     ("refresh_873_v1", refresh_873),
     ("resummarize_930_v2", resummarize),
+    ("recheck_930_v1", recheck_930),
 ]
 
 

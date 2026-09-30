@@ -185,6 +185,12 @@ _ATTRIBUTED = re.compile(r"\b(says?|said|states?|stated|according to|reports?|re
 _CLAUSE = re.compile(r"(,\s+|;\s+|\s+(?:and|but|while|which|after)\s+)")
 MIN_WORDS_AFTER_STRIP = 12
 _WORKAROUND = re.compile(r"\b(workarounds?|mitigat\w*|disabl\w*|block\w*|restrict\w*|turn(ing)? off)\b", re.I)
+_NO_WORKAROUND = re.compile(r"\bno (known )?(workarounds?|mitigations?)\b", re.I)
+
+
+def _names_workaround(clause: str) -> bool:
+    """The clause names a workaround or mitigation ("no workaround exists" does not)."""
+    return bool(_WORKAROUND.search(_NO_WORKAROUND.sub("", clause)))
 _STOP = frozenset(
     "the a an and or of to in on for with by from that this these those is are was were be been has have "
     "had its their it they them as at into over via which who whose affected affects affecting impacted "
@@ -226,17 +232,21 @@ def _vendor_acts(sentence: str) -> bool:
 def _strip_fix_claims(sentence: str, material: str) -> str:
     """The sentence without its unattributed fix claims. An attributed one stays when the
     material (headline and articles) reports a fix too; otherwise the offending clause goes, or
-    the whole sentence when the claim is in its main (first) clause."""
-    if not _FIX_CLAIM.search(sentence) or _WORKAROUND.search(sentence):
+    the whole sentence when the claim is in its main (first) clause. A clause that names a
+    workaround stays (row 930, 2026-09-30: "Fixed software releases are available; ... as no
+    workaround exists" is a passive claim, not a workaround)."""
+    if not _FIX_CLAIM.search(sentence):
         return sentence
     if (_ATTRIBUTED.search(sentence) or _vendor_acts(sentence)) and _FIX_CLAIM.search(material):
         return sentence
     parts = _CLAUSE.split(sentence)  # clause, sep, clause, sep, clause ...
-    if _FIX_CLAIM.search(parts[0]):
+    if not any(_FIX_CLAIM.search(p) and not _names_workaround(p) for p in parts[::2]):
+        return sentence
+    if _FIX_CLAIM.search(parts[0]) and not _names_workaround(parts[0]):
         return ""
     kept = [parts[0]]
     for k in range(1, len(parts) - 1, 2):
-        if not _FIX_CLAIM.search(parts[k + 1]):
+        if not _FIX_CLAIM.search(parts[k + 1]) or _names_workaround(parts[k + 1]):
             kept += [parts[k], parts[k + 1]]
     text = "".join(kept).rstrip(" ,;.")
     return text + "."
@@ -253,14 +263,14 @@ def _attribute(sentence: str, vendor: str, material: str) -> str:
     """A passive fix claim the vendor backs, attributed to it: "Fixed releases are available." ->
     "Cisco says fixed releases are available." Clause by clause; already attributed claims, and
     claims the material does not report, are left for _strip_fix_claims."""
-    if not _FIX_CLAIM.search(sentence) or _WORKAROUND.search(sentence) or not _FIX_CLAIM.search(material):
+    if not _FIX_CLAIM.search(sentence) or not _FIX_CLAIM.search(material):
         return sentence
     if _ATTRIBUTED.search(sentence) or _vendor_acts(sentence):
         return sentence
     parts = _CLAUSE.split(sentence)
     out = []
     for k, part in enumerate(parts):
-        if k % 2 == 0 and _FIX_CLAIM.search(part):
+        if k % 2 == 0 and _FIX_CLAIM.search(part) and not _names_workaround(part):
             lead = re.match(r"(?:and|but|while|after)\s+", part)  # ", and ..." splits at the comma
             lead, part = (lead.group(0), part[lead.end():]) if lead else ("", part)
             first = part.split(" ", 1)[0]

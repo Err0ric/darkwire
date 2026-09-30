@@ -69,6 +69,16 @@ class FixClaims(unittest.TestCase):
         ):
             self.assertEqual(review_summary(text, material=CISCO_ARTICLE), (None, "fix claim"), text)
 
+    def test_no_workaround_is_not_a_workaround(self):
+        # Row 930's third output (2026-09-30).
+        first = ("Cisco Catalyst SD-WAN Manager contains a critical API authentication bypass flaw (CVE-2026-76504) "
+                 "that attackers are actively exploiting to gain admin access.")
+        said = first + " Fixed software releases are available; Cisco recommends immediate upgrade as no workaround exists."
+        self.assertEqual(review_summary(said, material=CISCO_ARTICLE), (first, "ok"))
+        # A clause that names a workaround still stays.
+        kept = "Attackers exploit the flaw in SD-WAN Manager, and a patch is available alongside a workaround that restricts API access."
+        self.assertEqual(review_summary(kept, material=CISCO_ARTICLE), (kept, "ok"))
+
     def test_an_attributed_claim_the_articles_do_not_back_goes(self):
         self.assertEqual(review_summary(CISCO, material="Attackers exploit a Cisco zero-day.")[1], "fix claim")
 

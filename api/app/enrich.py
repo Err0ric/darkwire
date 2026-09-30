@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import dedupe, epss, events, kev, nvd, summaries, topics
+from app import dedupe, epss, events, ics, kev, nvd, summaries, topics
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
@@ -141,6 +141,11 @@ async def run_enrich() -> None:
             counts["escalated"] = await roll_up(session)
         except Exception:
             log.exception("enrich: roll-up failed")
+            await session.rollback()
+        try:
+            counts["ics"] = await ics.summarize(session)
+        except Exception:
+            log.exception("enrich: ics summaries failed")
             await session.rollback()
         try:
             counts["summaries"] = await summaries.summarize_pending(session)

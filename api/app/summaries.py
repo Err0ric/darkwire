@@ -31,7 +31,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import events, fetcher, jobstate
+from app import events, fetcher, ics, jobstate
 from app.config import get_settings
 from app.models import Item, ItemCve, PatchStatus, Stream
 
@@ -404,7 +404,8 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         (
             await session.scalars(
                 select(Item)
-                .where(Item.stream == Stream.main, Item.summary.is_(None), Item.sources.any())
+                # CISA ICS advisories are summarized from stored fields instead (app/ics.py).
+                .where(Item.stream == Stream.main, Item.summary.is_(None), Item.sources.any(), ~ics.ics_sql())
                 .options(selectinload(Item.sources))
                 .order_by(Item.last_event_at.desc())
                 .limit(PER_RUN)

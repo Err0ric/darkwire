@@ -411,11 +411,14 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
   return (
     <div className="flex flex-col gap-4">
       {d?.summary && <p className="line-clamp-3 max-w-[720px] text-[15px] leading-[1.6] text-summary">{d.summary}</p>}
-      {/* No summary: the outlet's own words, attributed, instead. */}
+      {/* No summary (declined, or the article fetch failed): the stored RSS excerpt, labeled and attributed. */}
       {d && !d.summary && d.excerpt && (
-        <p className="line-clamp-3 max-w-[720px] text-[15px] leading-[1.6] text-fg-2">
-          {d.excerpt.source}: “{d.excerpt.text}”
-        </p>
+        <div>
+          <p className="text-[13px] font-medium leading-4 text-muted">From the feed</p>
+          <p className="mt-2 line-clamp-3 max-w-[720px] text-[15px] leading-[1.6] text-fg-2">
+            {d.excerpt.source}: “{d.excerpt.text}”
+          </p>
+        </div>
       )}
 
       {todo && <WhatToDo todo={todo} />}

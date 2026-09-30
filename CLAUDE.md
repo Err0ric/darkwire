@@ -107,7 +107,7 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 
 Background `--surface`, extending past the row edges. Contents in order, each only when it has data:
 
-1. Summary (at most 3 lines). With no summary, the outlet's own excerpt, attributed: `BleepingComputer: “…”`.
+1. Summary (at most 3 lines). With no summary (declined, or the article fetch failed), the stored RSS excerpt under a `From the feed` label in `--muted`, attributed: `BleepingComputer: “…”`.
 2. What to do (CVE rows): `Update to` (first fixed version per affected range, from NVD CPE, then the CNA, then MSRC KBs; never from the model; `advisory ↗`), `Workaround` (one sentence from the model plus the NVD Mitigation reference), `KEV due` (CISA's due date, UTC).
 3. `CVSS 3.1 vector`: 8 chips (`AV:N / Network` etc.), impact chips at High tinted red.
 4. Impact, Exploitability, EPSS, KEV as label-over-number pairs.

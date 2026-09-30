@@ -199,6 +199,42 @@ async def strip_headline_emoji(session) -> None:
     log.info("maintenance: emoji: %d of %d headlines and titles changed", changed, rows)
 
 
+async def recategorize_trends(session, apply: bool = False) -> dict[int, tuple[str, str]]:
+    """Rows of the last 7 days that the trend rule (tagging.guess_category, trend and industry
+    pieces are not Vulnerability) re-derives. A row changes only when the rule before it, on the
+    same primary article, gives the row's current category, and the new one differs: categories set
+    another way (a merge, another article in the cluster) are left alone. Dry run unless `apply`;
+    each change logged. {row: (now, new)}."""
+    from app.tagging import guess_category
+
+    rows = (
+        await session.scalars(
+            select(Item)
+            .where(Item.stream == Stream.main, Item.last_event_at >= datetime.now(UTC) - timedelta(days=7))
+            .options(selectinload(Item.sources))
+            .order_by(Item.id)
+        )
+    ).all()
+    changes: dict[int, tuple[str, str]] = {}
+    for item in rows:
+        primary = next((s for s in item.sources if s.url == item.primary_url), item.sources[0] if item.sources else None)
+        if primary is None:
+            continue
+        has_cve = await session.scalar(select(ItemCve.cve_id).where(ItemCve.item_id == item.id).limit(1)) is not None
+        old = guess_category(primary.title, primary.excerpt or "", has_cve, trends=False)
+        new = guess_category(primary.title, primary.excerpt or "", has_cve)
+        if old == item.category and new != old:
+            changes[item.id] = (old.value, new.value)
+            log.info("maintenance: trends (%s): item %d %s -> %s | %s", "apply" if apply else "dry run",
+                     item.id, old.value, new.value, item.headline[:100])
+            if apply:
+                item.category = new
+    if apply:
+        await session.commit()
+    log.info("maintenance: trends (%s): %d of %d rows change", "apply" if apply else "dry run", len(changes), len(rows))
+    return changes
+
+
 async def recategorize_breach(session) -> None:
     """Rows of the last 14 days tagged Breach, re-derived under the incident rule
     (tagging.guess_category); each change logged. Other categories are left alone."""
@@ -281,6 +317,7 @@ STEPS = [
     # Row 873 again: an ICS advisory now takes the model summary when it passes every check.
     ("refresh_873_v2", refresh_873),
     ("strip_headline_emoji_v1", strip_headline_emoji),
+    ("recategorize_trends_dry_run_v1", recategorize_trends),
 ]
 
 

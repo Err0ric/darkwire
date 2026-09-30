@@ -42,5 +42,25 @@ class Breach(unittest.TestCase):
         )
 
 
+class Vulnerability(unittest.TestCase):
+    def test_a_trend_piece_is_research_or_news(self):
+        # SecurityWeek, 2026-09-30: about vulnerability discovery in general, no flaw, product or CVE.
+        title = "Google: AI Is Changing the Pace and Profile of Vulnerability Discovery"
+        self.assertEqual(guess_category(title, "", False), Category.research)
+        self.assertEqual(guess_category(title, "", False, trends=False), Category.vulnerability)  # the old rule
+        self.assertEqual(guess_category("Microsoft expands bug bounty for Copilot", "", False), Category.news)
+        self.assertEqual(guess_category("The state of ransomware in 2026", "", False), Category.ransomware)
+
+    def test_a_specific_flaw_product_or_cve_stays_a_vulnerability(self):
+        for title in (
+            "Chrome, Firefox Updates Patch Over 100 Vulnerabilities",
+            "Attackers Exploit Zimbra Flaw to Deploy Web Shells and Harvest Authentication Secrets",
+            "WatchGuard Patches Critical Fireware OS Code Injection Vulnerability",
+        ):
+            self.assertEqual(guess_category(title, "", False), Category.vulnerability, title)
+        # A CVE makes it specific even in a trend-worded title.
+        self.assertEqual(guess_category("Exploitation of CVE-2026-76504 is changing the SD-WAN landscape", "", True), Category.vulnerability)
+
+
 if __name__ == "__main__":
     unittest.main()

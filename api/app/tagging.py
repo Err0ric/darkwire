@@ -219,6 +219,15 @@ EXPLAINER = _keywords(
     r"best practices", r"trends", r"lessons learned", r"checklist", r"tips", r"primer", r"playbook", r"deep dive",
     r"year in review", r"predictions",
 )
+# Trend and industry pieces ("Google: AI Is Changing the Pace and Profile of Vulnerability
+# Discovery", 2026-09-30): about vulnerabilities in general, no specific flaw, product or CVE.
+TREND = _words(
+    r"(?:is|are) changing", r"changing the", r"(?:the )?pace of", r"profile of", r"landscape", r"state of",
+    r"future of", r"rise of", r"era of", r"age of", r"industry", r"surveys?", r"report finds", r"study finds",
+    r"statistics", r"by the numbers", r"vulnerability (?:discovery|management|research|disclosure|programs?)",
+    r"bug bount(?:y|ies)",
+)
+_ABOUT_FLAWS = _keywords(r"vulnerability", r"vulnerabilities", r"flaw", r"zero-days?", r"exploits?", r"CVEs?")
 _ABOUT_THREATS = _keywords(r"attacks?", r"threats?", r"malware", r"phishing", r"ransomware", r"hackers?", r"exploits?", r"campaigns?")
 # A breach is an incident: something stolen, exposed or intruded upon. Needed when "breach" only
 # appears in the first paragraph (a trend piece mentions breaches in passing).
@@ -229,10 +238,12 @@ BREACH_INCIDENT = _keywords(
 )
 
 
-def guess_category(title: str, excerpt: str, has_cve: bool) -> Category:
+def guess_category(title: str, excerpt: str, has_cve: bool, trends: bool = True) -> Category:
     """Title first. The first paragraph is only consulted when the title matches nothing. An
     explainer title is Research (about threats) or News, never Breach; a breach found only in the
-    first paragraph needs an incident word there too."""
+    first paragraph needs an incident word there too. A trend or industry piece with no CVE is not
+    a Vulnerability (that needs a specific flaw, product or CVE): Research when it is about flaws
+    or threats, else News. `trends=False`: the rule before that (for the one-time re-derivation)."""
     if EXPLAINER.search(title or ""):
         return Category.research if _ABOUT_THREATS.search(title) else Category.news
     for text, lead in ((title, False), (excerpt, True)):
@@ -240,6 +251,8 @@ def guess_category(title: str, excerpt: str, has_cve: bool) -> Category:
             if pattern.search(text or ""):
                 if category == Category.breach and lead and not BREACH_INCIDENT.search(f"{title} {text}"):
                     continue
+                if category == Category.vulnerability and trends and not has_cve and TREND.search(title or ""):
+                    return Category.research if _ABOUT_THREATS.search(title) or _ABOUT_FLAWS.search(title) else Category.news
                 return category
     return Category.vulnerability if has_cve else Category.news
 

@@ -219,7 +219,8 @@ export function AddedToKev({
       <ul className="mt-2.5">
         {kev.map((k) => {
           const title = `Added ${k.date_added}${k.product ? ` · ${k.product}` : ""}`
-          const cls = "max-md:tap shrink-0 font-mono text-xs text-dim-text outline-none hover:text-fg-2 focus-visible:text-fg-2"
+          // A fixed, left-aligned column (monospace): short IDs (CVE-2026-5430) line up with long ones.
+          const cls = "max-md:tap w-[15ch] shrink-0 text-left font-mono text-xs text-dim-text outline-none hover:text-fg-2 focus-visible:text-fg-2"
           const itemId = k.item_id
           return (
             <li key={k.cve_id} className="-mx-2 flex h-6 items-center gap-3 px-2 hover:bg-surface">

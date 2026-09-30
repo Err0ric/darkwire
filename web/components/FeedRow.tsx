@@ -5,6 +5,7 @@ import { cn } from "cn"
 import { Bug, ChevronDown, FileText, FlaskConical, Newspaper, ShieldAlert, type LucideIcon } from "lucide-react"
 
 import { VendorGlyph } from "@/components/VendorGlyph"
+import { vendorLogo } from "@/lib/vendors"
 import { getItem, type Category, type FeedItem, type ItemDetail, type PatchStatus, type Severity } from "@/lib/api"
 import { useHoverPreview } from "@/components/HoverPreview"
 import { IMPACT_METRICS, parseVector, plainVector } from "@/lib/cvss"
@@ -227,7 +228,8 @@ export function FeedRow({
 function VendorMark({ item, inStack }: { item: FeedItem; inStack: boolean }) {
   // A fixed 20px column, marks aligned to its left: one hard edge for icons, one for text.
   const box = cn("mr-3 flex h-5 w-5 shrink-0 items-center justify-start md:mr-5", inStack ? "text-fg" : "text-muted")
-  if (item.vendor) {
+  // One system: the vendor's logo when we have one, else the category icon (never initials).
+  if (item.vendor && vendorLogo(item.vendor)) {
     return (
       <span className={box} title={item.vendor.name}>
         <VendorGlyph vendor={item.vendor} />
@@ -237,8 +239,9 @@ function VendorMark({ item, inStack }: { item: FeedItem; inStack: boolean }) {
   }
   const Icon = CATEGORY_ICON[item.category]
   return (
-    <span className={box} aria-hidden>
-      <Icon className="size-4" strokeWidth={1.5} />
+    <span className={box} title={item.vendor?.name} aria-hidden={!item.vendor}>
+      <Icon className="size-4" strokeWidth={1.5} aria-hidden />
+      {item.vendor && <span className="sr-only">{item.vendor.name}</span>}
     </span>
   )
 }

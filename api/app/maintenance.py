@@ -160,12 +160,42 @@ async def resummarize_933(session) -> None:
     await session.commit()
 
 
+async def recategorize_breach(session) -> None:
+    """Rows of the last 14 days tagged Breach, re-derived under the incident rule
+    (tagging.guess_category); each change logged. Other categories are left alone."""
+    from app.models import Category
+    from app.tagging import guess_category
+
+    rows = (
+        await session.scalars(
+            select(Item)
+            .where(Item.stream == Stream.main, Item.category == Category.breach,
+                   Item.last_event_at >= datetime.now(UTC) - timedelta(days=14))
+            .options(selectinload(Item.sources))
+        )
+    ).all()
+    changed = 0
+    for item in rows:
+        primary = next((s for s in item.sources if s.url == item.primary_url), item.sources[0] if item.sources else None)
+        if primary is None:
+            continue
+        has_cve = await session.scalar(select(ItemCve.cve_id).where(ItemCve.item_id == item.id).limit(1)) is not None
+        category = guess_category(primary.title, primary.excerpt or "", has_cve)
+        if category != item.category:
+            log.info("maintenance: recategorize item %d breach -> %s | %s", item.id, category.value, item.headline[:90])
+            item.category = category
+            changed += 1
+    await session.commit()
+    log.info("maintenance: recategorize: %d of %d breach rows changed", changed, len(rows))
+
+
 STEPS = [
     ("merge_834_1", merges),
     ("repin_kev_first_v1", repin),
     ("explain_873_v1", explain_873),
     ("summary_versions_v1", summary_versions),
     ("resummarize_933_v1", resummarize_933),
+    ("recategorize_breach_v1", recategorize_breach),
 ]
 
 

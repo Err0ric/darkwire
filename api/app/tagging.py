@@ -197,11 +197,33 @@ CATEGORY_RULES: list[tuple[Category, re.Pattern[str]]] = [
 ]
 
 
+# Explainers, trend pieces and webinars are not incidents: Research when they are about attacks or
+# threats, else News ("Know Your Enemy: Browser-Based Attack Techniques in 2026").
+EXPLAINER = _keywords(
+    r"know your enemy", r"techniques", r"how to", r"guide", r"explained", r"explainer", r"what is", r"webinar",
+    r"best practices", r"trends", r"lessons learned", r"checklist", r"tips", r"primer", r"playbook", r"deep dive",
+    r"year in review", r"predictions",
+)
+_ABOUT_THREATS = _keywords(r"attacks?", r"threats?", r"malware", r"phishing", r"ransomware", r"hackers?", r"exploits?", r"campaigns?")
+# A breach is an incident: something stolen, exposed or intruded upon. Needed when "breach" only
+# appears in the first paragraph (a trend piece mentions breaches in passing).
+BREACH_INCIDENT = _keywords(
+    r"stole", r"stolen", r"exposed", r"leaked", r"exfiltrated", r"compromised", r"breached", r"hacked",
+    r"unauthorized access", r"intrusion", r"accessed", r"notified", r"impacted",
+)
+
+
 def guess_category(title: str, excerpt: str, has_cve: bool) -> Category:
-    """Title first. The first paragraph is only consulted when the title matches nothing."""
-    for text in (title, excerpt):
+    """Title first. The first paragraph is only consulted when the title matches nothing. An
+    explainer title is Research (about threats) or News, never Breach; a breach found only in the
+    first paragraph needs an incident word there too."""
+    if EXPLAINER.search(title or ""):
+        return Category.research if _ABOUT_THREATS.search(title) else Category.news
+    for text, lead in ((title, False), (excerpt, True)):
         for category, pattern in CATEGORY_RULES:
-            if pattern.search(text):
+            if pattern.search(text or ""):
+                if category == Category.breach and lead and not BREACH_INCIDENT.search(text):
+                    continue
                 return category
     return Category.vulnerability if has_cve else Category.news
 

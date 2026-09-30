@@ -10,7 +10,7 @@ export const VENDOR_SLUGS: ReadonlySet<string> = new Set([
   "citrix", "cloudflare", "connectwise", "crowdstrike", "d-link", "docker", "f5", "fortinet", "github", "gitlab",
   "google", "ibm", "intel", "ivanti", "jenkins", "jetbrains", "juniper", "kaseya", "kubernetes", "linux",
   "microsoft", "mozilla", "npm", "nvidia", "okta", "openssl", "oracle", "palo-alto-networks", "progress", "pypi",
-  "qnap", "qualcomm", "red-hat", "samsung", "sap", "solarwinds", "sonicwall", "sophos", "synology", "tp-link",
+  "qnap", "qualcomm", "red-hat", "samsung", "sap", "signal", "solarwinds", "sonicwall", "sophos", "synology", "tp-link",
   "trend-micro", "ubiquiti", "veeam", "vmware", "wordpress", "zyxel",
 ])
 

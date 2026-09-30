@@ -302,10 +302,19 @@ class _VendorPattern:
 BODY_MIN_MENTIONS = 2
 
 
-class VendorMatcher:
-    """Aliases on word boundaries, case-insensitive.
+# Operating systems: a platform named in a title ("... to iOS, desktop apps") does not make its
+# maker the row's vendor when another vendor or product is in the title too (the Signal row,
+# 2026-09-30); alone, it still does ("iOS 26.1 fixes ...").
+PLATFORM_ALIASES = frozenset({"ios", "ipados", "macos", "watchos", "visionos", "android", "windows"})
+# Vendor names that are also ordinary words match only as written ("Signal", not "a signal").
+CASE_SENSITIVE_ALIASES = frozenset({"Signal"})
 
-    A title match wins: earliest match, longer alias on a tie (so "IOS XE" beats "iOS").
+
+class VendorMatcher:
+    """Aliases on word boundaries, case-insensitive (CASE_SENSITIVE_ALIASES as written).
+
+    A title match wins: a vendor or product before a platform (PLATFORM_ALIASES), then the
+    earliest match, then the longer alias on a tie (so "IOS XE" beats "iOS").
     With no title match, the first paragraph must mention a vendor at least twice;
     most mentions wins, then earliest.
     """
@@ -318,7 +327,8 @@ class VendorMatcher:
         for v in vendors:
             aliases = sorted({a for a in v.aliases if a}, key=len, reverse=True)
             if aliases:
-                self._patterns.append(_VendorPattern(v.id, _words(*map(re.escape, aliases))))
+                terms = [rf"(?-i:{re.escape(a)})" if a in CASE_SENSITIVE_ALIASES else re.escape(a) for a in aliases]
+                self._patterns.append(_VendorPattern(v.id, _words(*terms)))
             self._products[v.id] = [
                 (a.lower(), _keywords(re.escape(a)))
                 for a in aliases
@@ -332,12 +342,12 @@ class VendorMatcher:
     def match(self, title: str, excerpt: str) -> int | None:
         best: tuple[int, int] | None = None
         best_id = None
+        title_best: tuple[bool, int, int] | None = None
         for p in self._patterns:
-            m = p.pattern.search(title)
-            if m:
-                key = (m.start(), -len(m.group(0)))
-                if best is None or key < best:
-                    best, best_id = key, p.vendor_id
+            for m in p.pattern.finditer(title):
+                key = (m.group(0).lower() in PLATFORM_ALIASES, m.start(), -len(m.group(0)))
+                if title_best is None or key < title_best:
+                    title_best, best_id = key, p.vendor_id
         if best_id is not None:
             return best_id
 

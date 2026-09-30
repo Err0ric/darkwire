@@ -59,6 +59,8 @@ VENDORS: list[dict] = [
     {"slug": "okta", "name": "Okta", "domain": "okta.com", "aliases": ["Okta", "Auth0"]},
     {"slug": "apple", "name": "Apple", "domain": "apple.com", "aliases": ["Apple", "iOS", "iPadOS", "macOS", "Safari", "WebKit", "visionOS", "watchOS"]},
     {"slug": "google", "name": "Google", "domain": "google.com", "aliases": ["Google", "Chrome", "Chromium", "Android", "Pixel", "Google Cloud", "V8"]},
+    # "Signal" matches only as written (tagging.CASE_SENSITIVE_ALIASES): not "a strong signal".
+    {"slug": "signal", "name": "Signal", "domain": "signal.org", "aliases": ["Signal"]},
     {"slug": "mozilla", "name": "Mozilla", "domain": "mozilla.org", "aliases": ["Mozilla", "Firefox", "Thunderbird"]},
     {"slug": "oracle", "name": "Oracle", "domain": "oracle.com", "aliases": ["Oracle", "WebLogic", "E-Business Suite", "MySQL", "Java SE"]},
     {"slug": "sap", "name": "SAP", "domain": "sap.com", "aliases": ["SAP", "NetWeaver", "SAP S/4HANA"]},

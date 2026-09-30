@@ -478,7 +478,8 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         text, why = review_summary(said, patched=item.patch_status == PatchStatus.patched, material=material[item.id])
         if said is None and raw:
             why = "format"
-        item.facts = facts.verify(stated, material[item.id])
+        # A public-PoC quote that names CVEs must name the row's displayed one (facts.poc_problem).
+        item.facts = facts.verify(stated, material[item.id], item.cve_id)
         reasons[why] = reasons.get(why, 0) + 1
         if text is None:
             log.info("summaries: item %d rejected (%s, %d chars of input): %r", item.id, why, len(material[item.id]), raw[:160])

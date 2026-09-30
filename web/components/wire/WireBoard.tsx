@@ -614,6 +614,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
                           dot={dots.get(item.id)}
                           onSeen={() => clearDot(item.id)}
                           clockAge={!g.today}
+                          compact={initial.compact}
                           inStack={filters.tab !== "stack" && !!item.vendor && stack.includes(item.vendor.slug)}
                         />
                       ))}

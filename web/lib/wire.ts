@@ -36,6 +36,8 @@ export interface WireData {
   stack: string[]
   /** Critical/KEV rows for the stack in the last 24h, null without a stack. */
   stackCritical: number | null
+  /** ?preview=compact (readability experiment): plain news rows on one line. Off by default. */
+  compact?: boolean
 }
 
 export const DAY_MS = 24 * 3600 * 1000

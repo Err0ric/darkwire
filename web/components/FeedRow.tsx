@@ -43,6 +43,21 @@ function flagged(item: FeedItem): boolean {
   return !item.stale && (item.severity === "critical" || item.kev || item.exploited)
 }
 
+/** ?preview=compact: the rows that stay full. Vulnerability, Breach and Ransomware rows, any row
+ * with a CVE or on KEV, and any row with a red marker (Critical, EXPLOITED, POC), which a single
+ * line would drop. Everything else (news, research, advisories without a CVE) is compact. */
+function staysFull(item: FeedItem): boolean {
+  return (
+    item.category === "vulnerability" ||
+    item.category === "breach" ||
+    item.category === "ransomware" ||
+    item.cve_id !== null ||
+    item.kev ||
+    item.poc ||
+    flagged(item)
+  )
+}
+
 export function FeedRow({
   item,
   detail: initialDetail,
@@ -53,6 +68,7 @@ export function FeedRow({
   dot,
   onSeen,
   clockAge = false,
+  compact: compactView = false,
 }: {
   item: FeedItem
   detail?: ItemDetail
@@ -69,6 +85,8 @@ export function FeedRow({
   onSeen?: () => void
   /** Under a day separator older than today: the age column shows the local clock time. */
   clockAge?: boolean
+  /** ?preview=compact on the wire: a row that does not stay full (staysFull) is one line. */
+  compact?: boolean
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [detail, setDetail] = useState<Detail>(
@@ -81,6 +99,8 @@ export function FeedRow({
   // A plain row with no summary and no feed excerpt has nothing to show: headline link only,
   // no chevron (its column keeps its width). Older API responses lack the flag: expandable.
   const canExpand = item.expandable !== false
+  const compact = compactView && !staysFull(item)
+  const source = item.sources.find((s) => s.url === item.primary_url) ?? item.sources[0]
 
   function toggle() {
     const next = !expanded
@@ -138,8 +158,10 @@ export function FeedRow({
         tabIndex={canExpand ? 0 : undefined}
         aria-label={canExpand ? `${item.headline}. ${expanded ? "Collapse" : "Expand"} details` : undefined}
         className={cn(
-          // Rhythm: 15px above and below, 4px from headline to meta, so rows read as units.
-          "relative flex min-h-14 items-start py-[15px] outline-offset-[-1px] md:items-center",
+          // Rhythm: 15px above and below, 4px from headline to meta, so rows read as units. A
+          // compact row (?preview=compact) is one line with about half that padding.
+          "relative flex outline-offset-[-1px]",
+          compact ? "items-center py-2" : "min-h-14 items-start py-[15px] md:items-center",
           !expanded && "hover:bg-row-hover",
           canExpand && "cursor-pointer",
           // KEV, exploited or Critical: a 2px --rail-critical edge the row's full height, in the
@@ -150,6 +172,33 @@ export function FeedRow({
       >
         <VendorMark item={item} inStack={inStack} />
 
+        {compact ? (
+          // No right margin: the age ends where the full rows' age column ends.
+          <div className="relative flex min-w-0 flex-1 items-baseline gap-4">
+            {dot && <NewDot state={dot} className="top-[6px] -left-[9px] md:-left-[13px]" />}
+            <p className="min-w-0 flex-1 truncate text-[14px] leading-5 font-medium text-fg-2">
+              <a
+                href={item.primary_url}
+                {...EXTERNAL}
+                {...preview.handlers}
+                className="max-md:tap outline-none hover:text-fg hover:underline focus-visible:underline"
+              >
+                {item.headline}
+              </a>
+            </p>
+            {preview.card}
+            <p className="shrink-0 font-mono text-xs leading-4 whitespace-nowrap text-muted">
+              {source && (
+                <a href={source.url} {...EXTERNAL} className="max-md:tap-down underline-offset-[3px] outline-none hover:text-fg-2 hover:underline focus-visible:text-fg-2 focus-visible:underline">
+                  {source.name}
+                </a>
+              )}
+              {source && <Sep />}
+              {/* A fixed width: the age fills in after mount, and nothing beside it may move. */}
+              <Age iso={item.last_event_at} clock={clockAge} className="inline-block w-[5ch] text-right" />
+            </p>
+          </div>
+        ) : (
         <div className="relative min-w-0 flex-1 md:mr-[22px]">
           {dot && <NewDot state={dot} className="top-[7px] -left-[9px] md:-left-[13px]" />}
           {/* Only the headline text is the link (inline), so the space beside it toggles the row. */}
@@ -180,8 +229,9 @@ export function FeedRow({
             </div>
           )}
         </div>
+        )}
 
-        <div className="hidden shrink-0 items-center md:flex">
+        <div className={cn("hidden shrink-0 items-center", !compact && "md:flex")}>
           {/* Dropped when the feed column is narrow (rail beside it at ~1000-1300px), so the
               headline keeps room. Needs an @container ancestor; without one it always shows. */}
           {/* No CVE, score, bar or badge: the empty columns go, and the headline runs to the age. */}

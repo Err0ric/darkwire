@@ -18,7 +18,6 @@ import asyncio
 import inspect
 import json
 import logging
-import random
 from datetime import UTC, datetime, timedelta
 
 import anthropic
@@ -35,7 +34,7 @@ DAYS = 14
 VERSION = "1"
 MODE = "dry-run"  # "dry-run" or "apply" (only with sign-off)
 STATE = "facts_backfill"
-REPORT_VERSION = "1"  # once the dry run is done: log its results for review, once per version
+REPORT_VERSION = "2"  # once the dry run is done: re-check its results (facts.recheck) and log them, once per version
 POLL = 60
 
 
@@ -135,15 +134,13 @@ def _source(item: Item, quote: str) -> str:
 
 
 async def _report(session, state: dict) -> None:
-    """Logs the dry run's kept results for review (nothing is written to items): counts per fact
-    type, every row that would gain POC with its quote and source, and 10 other rows at random
-    (seeded) with their facts and quotes."""
-    results: dict[str, dict] = state.get("results") or {}
-    rows = {k: v for k, v in results.items() if v}
-    counts = {key: sum(1 for v in rows.values() if key in v) for key in ("public_poc", "affected", "fixed", "exploited_in_wild")}
-    log.info("facts report: %d rows gain facts: POC %d, affected %d, fixed %d, other (exploited in the wild) %d",
-             len(rows), counts["public_poc"], counts["affected"], counts["fixed"], counts["exploited_in_wild"])
-    ids = [int(k) for k in rows]
+    """Re-checks the dry run's kept results against the content rules (facts.recheck, with each
+    row's displayed CVE as it is now) and logs them for review; nothing is written to items. The
+    re-checked results replace state["results"] (what an apply would write); the batch's own stay
+    in state["results_original"]. Logs: counts per fact type, what the rules removed, every row
+    that would gain POC and every row whose affected or fixed survived, with quotes and sources."""
+    original: dict[str, dict] = state.setdefault("results_original", state.get("results") or {})
+    ids = [int(k) for k, v in original.items() if v]
     items = {
         i.id: i for i in (
             await session.scalars(
@@ -151,6 +148,22 @@ async def _report(session, state: dict) -> None:
             )
         ).all()
     }
+    results: dict[str, dict] = {}
+    removed_by: dict[str, int] = {}
+    for key, found in original.items():
+        item = items.get(int(key))
+        kept, removed = facts.recheck(found, item.cve_id if item else None)
+        results[key] = kept
+        for fact, _ in removed:
+            removed_by[fact] = removed_by.get(fact, 0) + 1
+    state["results"] = results
+    rows = {k: v for k, v in results.items() if v}
+    counts = {key: sum(1 for v in rows.values() if key in v) for key in ("public_poc", "affected", "fixed", "exploited_in_wild")}
+    log.info("facts report: %d rows gain facts: POC %d, affected %d, fixed %d, other (exploited in the wild, not shown) %d",
+             len(rows), counts["public_poc"], counts["affected"], counts["fixed"], counts["exploited_in_wild"])
+    log.info("facts report: removed by the content rules: %s",
+             ", ".join(f"{k} {v}" for k, v in sorted(removed_by.items())) or "none")
+    ids = [int(k) for k in rows]
 
     def describe(tag: str, item_id: int, found: dict) -> None:
         item = items.get(item_id)
@@ -161,12 +174,12 @@ async def _report(session, state: dict) -> None:
             log.info("facts report: %s item %d | %s%s | quote %r | source %s | %s",
                      tag, item_id, key, f" = {value!r}" if value else "", fact["quote"][:300], source, head)
 
-    poc = sorted(i for i in ids if "public_poc" in rows[str(i)])
-    for i in poc:
-        describe("POC", i, rows[str(i)])
-    others = sorted(set(ids) - set(poc))
-    for i in sorted(random.Random(20260930).sample(others, min(10, len(others)))):
-        describe("sample", i, rows[str(i)])
+    for i in sorted(ids):
+        shown = {k: v for k, v in rows[str(i)].items() if k in ("public_poc", "affected", "fixed")}
+        if "public_poc" in shown:
+            describe("POC", i, {"public_poc": shown.pop("public_poc")})
+        if shown:
+            describe("affected/fixed", i, shown)
 
 
 LIVE_SINCE = datetime(2026, 9, 30, 4, 21, tzinfo=UTC)  # the combined summary + facts call went live

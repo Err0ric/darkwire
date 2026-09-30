@@ -49,6 +49,7 @@ class FeedItem(BaseModel):
     # False for a plain row with no summary and no usable feed excerpt: headline link only.
     expandable: bool
     summary: str | None = None  # the row summary (hover card, expanded row); None when there is none
+    poc: bool = False  # the articles state a public proof of concept (quote-verified, app/facts.py)
 
 
 class Excerpt(BaseModel):
@@ -116,8 +117,14 @@ class Action(BaseModel):
     workaround: str | None = None
 
 
+class ArticleFacts(BaseModel):
+    """What the articles state (quote-verified); shown only after vendor data, as "per article"."""
+    affected: str | None = None
+    fixed: str | None = None
+
+
 class ItemDetail(FeedItem):
-    summary: str | None
+    article_facts: ArticleFacts | None = None
     excerpt: Excerpt | None
     action: Action | None  # model-read from the articles, CVE rows only
     patch_url: str | None

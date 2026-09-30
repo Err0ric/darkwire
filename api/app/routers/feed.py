@@ -12,6 +12,7 @@ from app.staleness import is_stale, not_stale
 from app.models import Category, Item, ItemCve, ItemSource, MsrcUpdate, Severity, Stream, Vendor
 from app.topics import OFF_TOPIC
 from app.schemas import (
+    ArticleFacts,
     CveDetail,
     ElsewhereItem,
     FeedItem,
@@ -92,7 +93,15 @@ def _feed_fields(item: Item, all_sources: bool = False) -> dict:
         "last_event_kind": item.last_event_kind,
         "expandable": expandable(item, excerpt),
         "summary": item.summary or None,
+        "poc": bool((item.facts or {}).get("public_poc")),
     }
+
+
+def _article_facts(found: dict | None) -> ArticleFacts | None:
+    found = found or {}
+    affected = (found.get("affected") or {}).get("text")
+    fixed = (found.get("fixed") or {}).get("version")
+    return ArticleFacts(affected=affected, fixed=fixed) if affected or fixed else None
 
 
 @router.get("/feed", response_model=FeedPage)
@@ -177,6 +186,7 @@ async def item_detail(request: Request, item_id: int, session: AsyncSession = De
     return ItemDetail(
         **_feed_fields(item),
         excerpt=None if item.summary else row_excerpt(item),
+        article_facts=_article_facts(item.facts),
         action=item.action,
         patch_url=item.patch_url,
         first_seen_at=item.first_seen_at,

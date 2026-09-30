@@ -51,6 +51,8 @@ export interface FeedItem {
   expandable: boolean
   /** The row summary, when there is one (hover card, expanded row). */
   summary: string | null
+  /** The articles state a public proof of concept (quote-verified). */
+  poc: boolean
 }
 
 export interface FeedPage {
@@ -100,6 +102,8 @@ export interface MsrcDetail {
 }
 
 export interface ItemDetail extends FeedItem {
+  /** What the articles state (quote-verified), shown only after vendor data, as "per article". */
+  article_facts: { affected: string | null; fixed: string | null } | null
   /** The feed's own excerpt (first sentences, at most 220 chars), sent when there is no summary. */
   excerpt: { source: string; text: string } | null
   /** Workaround read from the articles by the summary model, CVE rows only. Never versions. */

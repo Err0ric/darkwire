@@ -24,6 +24,7 @@ export function previewRows(): FeedItem[] {
     epss: null,
     expandable: false,
     summary: null,
+    poc: false,
     last_event_kind: "published",
   } as const
   const source = (at: number) => [{ name: "preview", url: "#preview", published_at: new Date(at).toISOString() }]

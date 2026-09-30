@@ -31,7 +31,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import article_cves, events, fetcher, ics, jobstate
+from app import article_cves, events, facts, fetcher, ics, jobstate
 from app.config import get_settings
 from app.models import Item, ItemCve, PatchStatus, Stream
 
@@ -424,6 +424,18 @@ async def log_coverage(session: AsyncSession) -> None:
     )
 
 
+def request(material: str) -> dict:
+    """The summary call's parameters (also the facts backfill's batch requests): no tools, the
+    articles only, JSON out (summary and article facts)."""
+    return {
+        "model": MODEL,
+        "max_tokens": 800,
+        "system": SYSTEM + facts.PROMPT,
+        "messages": [{"role": "user", "content": material}],
+        "output_config": facts.OUTPUT_CONFIG,
+    }
+
+
 async def summarize_pending(session: AsyncSession) -> int | None:
     """Summarize up to PER_RUN items that have none. None when skipped (no key).
     summary NULL = not asked yet; "" = asked, output rejected or SKIP (not re-asked, except by
@@ -453,9 +465,7 @@ async def summarize_pending(session: AsyncSession) -> int | None:
     results = await _run(
         session,
         todo,
-        lambda client, item: client.messages.create(
-            model=MODEL, max_tokens=300, system=SYSTEM, messages=[{"role": "user", "content": material[item.id]}]
-        ),
+        lambda client, item: client.messages.create(**request(material[item.id])),
         "summaries",
     )
     written = 0
@@ -463,7 +473,12 @@ async def summarize_pending(session: AsyncSession) -> int | None:
     for item, raw in zip(todo, results, strict=True):
         if raw is None:
             continue  # the call failed: ask again next pass
-        text, why = review_summary(raw, patched=item.patch_status == PatchStatus.patched, material=material[item.id])
+        # One call, JSON out: the summary (checked as ever) and the article facts (app/facts.py).
+        said, stated = facts.parse(raw)
+        text, why = review_summary(said, patched=item.patch_status == PatchStatus.patched, material=material[item.id])
+        if said is None and raw:
+            why = "format"
+        item.facts = facts.verify(stated, material[item.id])
         reasons[why] = reasons.get(why, 0) + 1
         if text is None:
             log.info("summaries: item %d rejected (%s, %d chars of input): %r", item.id, why, len(material[item.id]), raw[:160])

@@ -183,6 +183,10 @@ class Item(Base):
     # Model-read workaround from the articles, CVE rows only: {"workaround": str | None}.
     # Null until asked; {"workaround": null} when the articles name none.
     action: Mapped[dict | None] = mapped_column(JSONB)
+    # What the articles state, read with the summary and checked against their text (app/facts.py):
+    # NULL not read yet, {} nothing verified, else {"public_poc"|"exploited_in_wild": {"quote"},
+    # "affected": {"text", "quote"}, "fixed": {"version", "quote"}}. Shown only as "per article".
+    facts: Mapped[dict | None] = mapped_column(JSONB)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # Last time anything on the row changed (sources, scores, KEV, flags, summary). Lets
     # /feed?since= return in-place updates too; the client decides what counts as new.

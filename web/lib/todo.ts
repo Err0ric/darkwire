@@ -11,6 +11,8 @@ export interface FixLine {
 export interface Todo {
   fixed: FixLine[]
   fixedUrl: string | null
+  /** The articles' fixed version, only when vendor, NVD and MSRC data have none. */
+  fixedPerArticle: string | null
   workaround: string | null
   workaroundUrl: string | null
   kevDue: Date | null
@@ -35,11 +37,12 @@ export function whatToDo(d: ItemDetail): Todo | null {
   const todo: Todo = {
     fixed,
     fixedUrl: fixed.length ? (d.patch_url ?? d.msrc?.url ?? null) : null,
+    fixedPerArticle: fixed.length ? null : (d.article_facts?.fixed ?? null),
     workaround: d.action?.workaround ?? null,
     workaroundUrl: cve?.workaround_url ?? null,
     kevDue: cve?.kev && cve.kev_due_date ? new Date(cve.kev_due_date) : null,
   }
-  return todo.fixed.length || todo.workaround || todo.workaroundUrl || todo.kevDue ? todo : null
+  return todo.fixed.length || todo.fixedPerArticle || todo.workaround || todo.workaroundUrl || todo.kevDue ? todo : null
 }
 
 /** KEV dates are calendar dates stored at midnight UTC; show them in UTC so they never shift a day. */
@@ -58,10 +61,12 @@ export function ticketText(d: ItemDetail): string {
   }
   const affected = d.cve?.affected ?? d.msrc?.product
   if (affected) lines.push(`Affected: ${affected}`)
+  else if (d.article_facts?.affected) lines.push(`Affected: ${d.article_facts.affected} (per article)`)
   const todo = d.cve_id ? whatToDo(d) : null
   if (todo?.fixed.length) {
     lines.push(`Fixed in: ${todo.fixed.map((f) => [f.product, f.versions.join(", ")].filter(Boolean).join(" ")).join("; ")}`)
   }
+  if (todo?.fixedPerArticle) lines.push(`Fixed in: ${todo.fixedPerArticle} (per article)`)
   if (todo?.workaround) lines.push(`Workaround: ${todo.workaround}`)
   if (todo?.kevDue) lines.push(`KEV due date: ${todo.kevDue.toISOString().slice(0, 10)}`)
   lines.push("")

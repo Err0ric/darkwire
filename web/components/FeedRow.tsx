@@ -7,7 +7,7 @@ import { Bug, ChevronDown, FileText, FlaskConical, Newspaper, ShieldAlert, type 
 import { VendorGlyph } from "@/components/VendorGlyph"
 import { getItem, type Category, type FeedItem, type ItemDetail, type PatchStatus, type Severity } from "@/lib/api"
 import { useHoverPreview } from "@/components/HoverPreview"
-import { IMPACT_METRICS, parseVector } from "@/lib/cvss"
+import { IMPACT_METRICS, parseVector, plainVector } from "@/lib/cvss"
 import { kevDueIn, URGENT_DAYS } from "@/lib/kev"
 import { kevDate, ticketText, whatToDo, type Todo } from "@/lib/todo"
 import { NewDot, type DotState } from "@/lib/dots"
@@ -269,6 +269,7 @@ function MetaLine({
   }
   if (item.kev) parts.push(<KevMark key="kev" item={item} />)
   else if (item.exploited) parts.push(<span key="exploited" className="text-critical-text">EXPLOITED</span>)
+  else if (item.poc) parts.push(<span key="poc" className="text-critical-text">POC</span>)
   if (pinned) parts.push(<span key="pinned" className="text-dim-text">pinned</span>)
   if (inStack) parts.push(<span key="stack" className="text-dim-text">your stack</span>)
 
@@ -411,6 +412,9 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
   const chips = parseVector(cve?.cvss_vector ?? null).filter((c) => c.value)
   const metrics = d && item.cve_id ? metricPairs(d) : []
   const affectedText = d && item.cve_id ? (cve?.affected ?? d.msrc?.product ?? null) : null
+  // Vendor data first; the articles' own words only when it names nothing, labeled.
+  const affectedPerArticle = d && item.cve_id && !affectedText ? (d.article_facts?.affected ?? null) : null
+  const plain = plainVector(cve?.cvss_vector ?? null)
   // The list already carries the summary: it shows at once, before the detail arrives.
   const summary = item.summary ?? d?.summary ?? null
   const patch = d && item.cve_id && d.patch_status !== "unverified" ? d.patch_status : null
@@ -436,6 +440,7 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
             <div>
               <p className="text-[13px] leading-4 text-muted">{cve?.cvss_version ? `CVSS ${cve.cvss_version} vector` : "CVSS vector"}</p>
               <VectorChips chips={chips} />
+              {plain && <p className="mt-2 text-[13px] leading-5 text-fg-2">{plain}</p>}
             </div>
           )}
           {metrics.length > 0 && <Metrics pairs={metrics} />}
@@ -443,14 +448,19 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
       )}
 
       <div className="flex flex-col gap-3 text-[13px] leading-5 md:flex-row md:items-baseline md:justify-between">
-        {affectedText || patch ? (
+        {affectedText || affectedPerArticle || patch ? (
           <p className="min-w-0 text-muted">
             {affectedText && (
               <>
                 Affected <span className="text-fg-2">{affectedText}</span>
               </>
             )}
-            {affectedText && patch && <Sep wide />}
+            {affectedPerArticle && (
+              <>
+                Affected <span className="text-fg-2">{affectedPerArticle}</span> per article
+              </>
+            )}
+            {(affectedText || affectedPerArticle) && patch && <Sep wide />}
             {patch && <Patch status={patch} url={d?.patch_url ?? null} />}
           </p>
         ) : (
@@ -497,6 +507,15 @@ function WhatToDo({ todo }: { todo: Todo }) {
                   )}
                 </span>
               ))}
+            </dd>
+          </>
+        )}
+        {todo.fixedPerArticle && (
+          <>
+            <dt className="text-muted">Fixed</dt>
+            <dd className="min-w-0">
+              <span className="font-mono text-[13px] text-fg">{todo.fixedPerArticle}</span>
+              <span className="ml-3 text-muted">per article</span>
             </dd>
           </>
         )}

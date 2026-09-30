@@ -33,3 +33,18 @@ export function parseVector(vector: string | null): VectorChip[] {
     return { metric, value, label: value ? (NAMES[metric][value] ?? value) : null }
   })
 }
+
+/** One plain-English line from the NVD vector, built in code (no model): "Remote, no auth, no
+ * user interaction". Attack complexity only when high. Null without an attack vector. */
+export function plainVector(vector: string | null): string | null {
+  const v = new Map(parseVector(vector).map((c) => [c.metric, c.value]))
+  const where = { N: "Remote", A: "Adjacent network", L: "Local access", P: "Physical access" }[v.get("AV") ?? ""]
+  if (!where) return null
+  const parts = [where]
+  if (v.get("AC") === "H") parts.push("hard to exploit")
+  const auth = { N: "no auth", L: "low-privilege account", H: "admin account" }[v.get("PR") ?? ""]
+  if (auth) parts.push(auth)
+  const user = { N: "no user interaction", R: "needs user interaction" }[v.get("UI") ?? ""]
+  if (user) parts.push(user)
+  return parts.join(", ")
+}

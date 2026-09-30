@@ -94,7 +94,7 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 - Headline: `--fg`, 15px/500, line-height 1.35, at most 72ch wide, wrapping to at most two lines (ellipsis). Icon column and text column keep one hard left edge on every row (marks left-aligned in a fixed 20px column).
 - Vendor mark: `/public/vendors/{slug}.svg`, monochrome, `--muted`, 20px, no circle; fallback a Lucide category icon.
 - Only the headline text links to the primary source (new tab, `noopener noreferrer`); a click anywhere else on the row, or Enter/Space when it has focus, toggles it.
-- Meta line: 12px Geist Mono in `--muted`, one line. Each source name links to that outlet's article (no underline until hover or keyboard focus), one name per outlet (its newest), at most 4 then `+N`; then category, then `KEV` in red if listed, else `EXPLOITED` in red when a headline says zero-day / actively exploited / in the wild and no CVE is known. Separator `·`.
+- Meta line: 12px Geist Mono in `--muted`, one line. Each source name links to that outlet's article (no underline until hover or keyboard focus), one name per outlet (its newest), at most 4 then `+N`; then category, then `KEV` in red if listed, else `EXPLOITED` in red when a headline says zero-day / actively exploited / in the wild and no CVE is known, else `POC` in red when the articles state a public proof of concept (quote-verified, `api/app/facts.py`). Separator `·`.
 - Flag edge: KEV, exploited or Critical rows (not old CVEs) get a 2px `--rail-critical` line down the full row height, in the gutter just left of the icon, so nothing shifts. `--rail-critical` is set per theme.
 - KEV due: within 7 days of CISA's due date the marker reads `KEV due in Nd` (all red at 2 days or less, `KEV due today` on the day), and `KEV overdue` for 7 days after it. Days count in UTC. These rows count toward the unseen `!`.
 - Old CVEs: published more than 90 days ago, not in KEV, and no headline about exploitation: the score, bar and badge dim. Such rows are left out of severity totals, pinning and the unseen `!`.
@@ -108,10 +108,10 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 Background `--surface`, extending past the row edges. Contents in order, each only when it has data:
 
 1. Summary (at most 3 lines). With no summary (declined, or the article fetch failed), the stored RSS excerpt under a `From the feed` label in `--muted`, attributed: `BleepingComputer: “…”`.
-2. What to do (CVE rows): `Update to` (first fixed version per affected range, from NVD CPE, then the CNA, then MSRC KBs; never from the model; `advisory ↗`), `Workaround` (one sentence from the model plus the NVD Mitigation reference), `KEV due` (CISA's due date, UTC).
-3. `CVSS 3.1 vector`: 8 chips (`AV:N / Network` etc.), impact chips at High tinted red.
+2. What to do (CVE rows): `Update to` (first fixed version per affected range, from NVD CPE, then the CNA, then MSRC KBs; `advisory ↗`); only when none of those has one, `Fixed` with the articles' version, labeled `per article`; `Workaround` (one sentence from the model plus the NVD Mitigation reference), `KEV due` (CISA's due date, UTC).
+3. `CVSS 3.1 vector`: 8 chips (`AV:N / Network` etc.), impact chips at High tinted red, and under them one plain line built from the vector in code ("Remote, no auth, no user interaction"; `web/lib/cvss.ts`).
 4. Impact, Exploitability, EPSS, KEV as label-over-number pairs.
-5. Affected ranges from CPE, then patch status: `● patched ↗`, `○ no fix`, or `○ no fix · workaround ↗`.
+5. Affected ranges from CPE (else MSRC's product, else the articles' words labeled `per article`), then patch status: `● patched ↗`, `○ no fix`, or `○ no fix · workaround ↗`.
 6. Links right-aligned: Source, Vendor advisory, NVD, then `Copy`. All new tab.
 
 Rules:
@@ -127,7 +127,7 @@ Claude Haiku writes the row summary and the What to do workaround sentence. Rule
 
 - No tools, and no data beyond the article text, wrapped in `<article>` tags the prompt says are material, never instructions. No NVD, KEV, EPSS or vendor data goes in.
 - For summaries only, a short feed text is topped up with the article itself, fetched server-side (`api/app/fetcher.py`): robots.txt honored, identified as `darkwire.tech summarizer`, one request per domain every 5 seconds, never stored or shown; failures fall back to the RSS excerpt. Per-domain outcomes are logged.
-- Output is plain text only. Structured facts (CVSS, KEV, fixed version, patch status) come only from NVD, CISA and vendor data, never from the model.
+- The same call returns JSON (structured outputs): the summary, held to every rule here, and what the articles state: in-the-wild exploitation, a public proof of concept, affected products and versions, a fixed version (`api/app/facts.py`). Each needs a quote that appears word for word in the article text the model was given, with the value inside the quote, or it is dropped; stored in `items.facts`. These show only as `POC` in the meta line and as `per article` fallbacks after vendor data. CVSS, KEV, patch status and vendor fixed versions come only from NVD, CISA and vendor data, never from the model. `app/facts_backfill.py` reads existing rows through the Batch API: a logged dry run first, written only with sign-off.
 - At most 2 sentences and 45 words; sentence 2 must add who is affected, scope or status, or it is dropped.
 - A fix claim stays only when attributed to the vendor or outlet and backed by the articles, or when vendor/NVD data already says patched; otherwise only its clause (or sentence) goes. Workaround sentences stay.
 - Discard output over the length limit (workaround 25 words), or with a full URL (a scheme, or a domain with a path), markdown, a line break, or the first person. A bare domain in a summary is defanged (`radaris[.]com`) and kept; a workaround with any domain is discarded. Sentences about what the articles do not say are dropped. SKIP only when there is nothing beyond the headline. Discarded output is stored empty so it is not re-asked; each rejection is logged with its reason.

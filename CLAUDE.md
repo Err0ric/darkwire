@@ -156,7 +156,7 @@ Third-party status from each vendor's official source, polled every 3 minutes (`
 - Last 7 days: Critical, High, Medium, Low bars; a row with a count filters the wire to that severity (`?severity=`), old CVEs excluded so the list matches the count. The header's 24-hour counts filter with `&window=24h`.
 - Footer: "Sources: NVD, CISA KEV, vendor PSIRTs, N feeds. All healthy. Rows update every minute." (or "N failing.", plus "Summaries paused.").
 - Header: the counts line ("Last 24h: N critical / N high / N articles · N added to KEV this week") and the clock (HH:MM:SS, zone and UTC).
-- Day separators, one per local day of `last_event_at`: "Today", "Yesterday", then "Fri Sep 25", with the date and row count; 28px above, 10px around the label; sticky under the tabs. Not rows: no dot, not counted by "N new ↑", not `<article>`.
+- Day separators, one per local day of `last_event_at`: "Today", "Yesterday", then "Fri Sep 25", with the date and row count; 28px above, 10px around the label; sticky under the tabs, on a solid `--bg` across the feed and the gutters an open row reaches into, with a 1px `--rule` under it so rows scroll cleanly beneath. Not rows: no dot, not counted by "N new ↑", not `<article>`.
 
 ## Data rules
 

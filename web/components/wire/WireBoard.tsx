@@ -595,6 +595,9 @@ export function WireBoard({ initial }: { initial: WireData }) {
                           aria-label={`${g.name}, ${g.items.length} rows`}
                           className={cn(
                             "sticky top-(--nav-h) z-[5] flex items-center border-t bg-bg py-2.5 text-[13px] leading-5 min-[900px]:top-[calc(var(--bar-h)+var(--tabs-h))]",
+                            // Solid across the feed and the gutters an open row's band reaches into,
+                            // with a rule under it, so rows scroll cleanly beneath the label.
+                            "-mx-4 border-b border-b-rule px-4 md:-mx-6 md:px-6",
                             // The tabs row's rule is already right above the first label.
                             gi === 0 ? "border-transparent" : "border-rule",
                           )}

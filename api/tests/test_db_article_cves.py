@@ -319,6 +319,69 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await s.get(Item, good.id)).facts["fixed"]["version"], "2.6.0.7R6")
             self.assertEqual((await s.get(Item, plc.id)).facts, {})
 
+    async def test_summaries_are_written_again_when_sources_join(self):
+        import json
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from app import summaries
+
+        now = datetime.now(UTC)
+
+        def out(text):
+            return json.dumps({"summary": text, "facts": {
+                "exploited_in_wild": {"stated": False, "quote": None}, "public_poc": {"stated": False, "quote": None},
+                "affected": {"text": None, "quote": None}, "fixed": {"version": None, "quote": None}}})
+
+        async with self.Session() as s:
+            src = Source(name="BleepingComputer", feed_url="https://test.invalid/bc2", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            new = await self._row(s, src, "New row", now)
+            grew = await self._row(s, src, "Grew row", now)
+            s.add(ItemSource(item_id=grew.id, source_id=src.id, url="https://test.invalid/grew2", title="Grew row too", published_at=now))
+            grew.summary, grew.summary_sources, grew.summarized_at = "Old summary of the grew row.", 1, now - timedelta(hours=7)
+            recent = await self._row(s, src, "Recent row", now)
+            s.add(ItemSource(item_id=recent.id, source_id=src.id, url="https://test.invalid/recent2", title="Recent too", published_at=now))
+            recent.summary, recent.summary_sources, recent.summarized_at = "Recent summary.", 1, now - timedelta(hours=1)
+            fails = await self._row(s, src, "Fails row", now)
+            s.add(ItemSource(item_id=fails.id, source_id=src.id, url="https://test.invalid/fails2", title="Fails too", published_at=now))
+            fails.summary, fails.summary_sources, fails.summarized_at = "Kept summary of the fails row.", 1, now - timedelta(hours=7)
+            await s.commit()
+            ids = {"new": new.id, "grew": grew.id, "recent": recent.id, "fails": fails.id}
+
+            answers = {
+                ids["new"]: out("Researchers found a flaw in the new row's product that lets attackers read files remotely."),
+                ids["grew"]: out("The grew row's product has a flaw attackers exploit to run code; two outlets report active attacks."),
+                ids["fails"]: out("SKIP"),
+            }
+            asked = []
+
+            async def fake_run(session, items, call, label):
+                asked.extend(i.id for i in items)
+                return [answers.get(i.id) for i in items]
+
+            async def nothing(*a, **k):
+                return {} if a and isinstance(a[0], list) else None
+
+            with mock.patch.object(summaries, "get_settings", return_value=SimpleNamespace(anthropic_api_key="test")), \
+                 mock.patch.object(summaries, "_run", fake_run), \
+                 mock.patch.object(summaries, "_fetch_articles", nothing), \
+                 mock.patch.object(summaries, "reset_once", nothing), mock.patch.object(summaries, "_retry_once", nothing), \
+                 mock.patch.object(summaries, "_reask_once", nothing), mock.patch.object(summaries, "log_coverage", nothing), \
+                 mock.patch.object(summaries.article_cves, "after_fetch", nothing):
+                await summaries.summarize_pending(s)
+        self.assertEqual(set(asked), {ids["new"], ids["grew"], ids["fails"]})  # not the one summarized an hour ago
+        async with self.Session() as s:
+            self.assertTrue((await s.get(Item, ids["new"])).summary.startswith("Researchers found"))
+            grew = await s.get(Item, ids["grew"])
+            self.assertTrue(grew.summary.startswith("The grew row's product"))
+            self.assertEqual(grew.summary_sources, 2)
+            fails = await s.get(Item, ids["fails"])
+            self.assertEqual(fails.summary, "Kept summary of the fails row.")
+            self.assertEqual(fails.summary_sources, 2)  # not asked again until another source joins
+            self.assertEqual((await s.get(Item, ids["recent"])).summary, "Recent summary.")
+
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)
         async with self.Session() as s:

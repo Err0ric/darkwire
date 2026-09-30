@@ -187,6 +187,10 @@ class Item(Base):
     # NULL not read yet, {} nothing verified, else {"public_poc"|"exploited_in_wild": {"quote"},
     # "affected": {"text", "quote"}, "fixed": {"version", "quote"}}. Shown only as "per article".
     facts: Mapped[dict | None] = mapped_column(JSONB)
+    # How many sources the summary was written from, and when: a row whose sources grew is
+    # summarized again, at most every summaries.REGENERATE_AFTER.
+    summary_sources: Mapped[int | None] = mapped_column(Integer)
+    summarized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # Last time anything on the row changed (sources, scores, KEV, flags, summary). Lets
     # /feed?since= return in-place updates too; the client decides what counts as new.

@@ -49,7 +49,7 @@ async def _todo(session) -> list[Item]:
                     Item.sources.any(),
                     Item.last_event_at >= datetime.now(UTC) - timedelta(days=DAYS),
                 )
-                .options(selectinload(Item.sources))
+                .options(selectinload(Item.sources).selectinload(ItemSource.source))
                 .order_by(Item.id)
             )
         ).all()

@@ -44,5 +44,32 @@ class FullUrls(unittest.TestCase):
         self.assertIsNone(check_workaround("Block traffic to example.com at the proxy."))
 
 
+# Row 930's declined output (2026-09-30, "fix claim"): the vendor is the one who fixed it.
+CISCO = ("Cisco released updates for a critical zero-day in Catalyst SD-WAN Manager (CVE-2026-76504) that "
+         "attackers actively exploit to gain admin privileges.")
+CISCO_ARTICLE = "Cisco has released security updates to address the flaw, which is being exploited in attacks."
+
+
+class FixClaims(unittest.TestCase):
+    def test_the_vendor_as_the_one_who_fixed_it_is_attributed(self):
+        self.assertEqual(review_summary(CISCO, material=CISCO_ARTICLE), (CISCO, "ok"))
+        for text in (
+            "WatchGuard patched a critical code injection vulnerability in Fireware OS used by thousands of firewalls worldwide.",
+            "Kiteworks patched a critical vulnerability in an unnamed feature affecting a small share of its customers.",
+            "The vendor has patched the flaw that let attackers read files from exposed management interfaces remotely.",
+        ):
+            self.assertEqual(review_summary(text, material=CISCO_ARTICLE)[1], "ok", text)
+
+    def test_unattributed_or_speculative_claims_still_go(self):
+        for text in (
+            "The flaw was patched in version 20.12, and attackers exploited it to gain admin privileges on exposed SD-WAN Manager instances.",
+            "A fix is available for the flaw, which attackers exploit to gain admin privileges on exposed SD-WAN Manager instances.",
+        ):
+            self.assertEqual(review_summary(text, material=CISCO_ARTICLE), (None, "fix claim"), text)
+
+    def test_an_attributed_claim_the_articles_do_not_back_goes(self):
+        self.assertEqual(review_summary(CISCO, material="Attackers exploit a Cisco zero-day.")[1], "fix claim")
+
+
 if __name__ == "__main__":
     unittest.main()

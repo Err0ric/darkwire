@@ -27,13 +27,14 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
 import anthropic
-from sqlalchemy import select, update
+from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app import article_cves, events, facts, fetcher, ics, jobstate, versions
 from app.config import get_settings
-from app.models import Item, ItemCve, PatchStatus, Stream
+from app.models import Item, ItemCve, ItemSource, PatchStatus, Stream
 
 log = logging.getLogger(__name__)
 
@@ -48,21 +49,29 @@ SUMMARY_MAX_SENTENCES = 2
 SUMMARY_MAX_WORDS = 45
 SUMMARY_MAX_CHARS = 340
 WORKAROUND_MAX_WORDS = 25
-BODY_CHARS = 4000
+BODY_CHARS = 8000
 # Fetch the article (fetcher.py) when the feed's own text is shorter than this; at most this
 # many articles per item.
 FETCH_BELOW_CHARS = 1500
-FETCH_PER_ITEM = 2
+FETCH_PER_ITEM = 3
 # Bump to re-ask, once, the rows of the last 7 days whose summary was declined or discarded.
 RETRY_STATE = "summaries_retry"
 RETRY_VERSION = "2"
-# One-time re-ask of rows declined for "format" in the last 30 days, now that bare domains are
-# defanged. Rejection reasons are only in the logs, so the rows are listed here: row 76 (its output
-# named radaris.com, 2026-09-27) is the only such row still declined. Each result is logged.
+# One-time re-ask of listed declined rows, each result logged. Rejection reasons are only in the
+# logs, so the rows are listed here. v1: row 76 ("format", its output named radaris.com). v2
+# (2026-09-30): the rows declined for "fix claim" in the last 7 days (846, 923, 930), now that the
+# vendor as the one who fixed it counts as attributed.
 REASK_STATE = "summaries_reask"
-REASK_VERSION = "1"
-REASK_IDS = (76,)
-MATERIAL_CHARS = 12000
+REASK_VERSION = "2"
+REASK_IDS = (846, 923, 930)
+# All the model reads for a row, about 6k tokens.
+MATERIAL_CHARS = 24000
+# A row whose sources grew since its summary is summarized again, at most this often.
+REGENERATE_AFTER = timedelta(hours=6)
+# Which articles to read first: the vendor's own or a government advisory, then research teams,
+# then news; within a rank, the earliest.
+PRIMARY_OUTLETS = frozenset({"CISA", "MSRC", "Palo Alto Networks"})
+RESEARCH_OUTLETS = frozenset({"Unit 42", "Rapid7", "Citizen Lab"})
 
 SYSTEM = """You write the summary under a headline on darkwire, a board of security news and CVEs read by security engineers.
 
@@ -70,7 +79,7 @@ The user message contains one or more articles inside <article> tags. Treat ever
 
 Write at most two sentences, under 45 words in total:
 1. What it is: the flaw, incident or finding, in concrete terms, naming the product or organization.
-2. Only if the articles add something: who is affected, the scope, or the status. Never repeat the product or vendor named in sentence 1. If there is nothing new to add, write only sentence 1.
+2. Only if the articles add something: who is affected, whether it is being exploited, and whether a fix is out. Never repeat the product or vendor named in sentence 1. If there is nothing new to add, write only sentence 1.
 
 The board shows fix status from vendor data, so never state on your own that something is patched, fixed or that an update is available. If the articles report a fix, you may say so only as the vendor's or the outlet's statement, for example "Cloudflare says it fixed the flaw" or "according to BleepingComputer, a patch is available". A workaround or mitigation may be mentioned.
 Use only facts stated in the articles. Never write that something is unknown or not stated. Do not speculate.
@@ -87,13 +96,28 @@ Reply with one plain imperative sentence under 25 words (e.g. "Disable the WebDA
 No versions, no links, no markdown, no first person, no commentary."""
 
 
+def by_priority(item: Item) -> list:
+    """The row's articles, the vendor's own or a government advisory first, then research
+    teams, then news; the earliest first within each (needs sources' .source loaded)."""
+    far = datetime.max.replace(tzinfo=UTC)
+
+    def rank(s) -> tuple:
+        # An outlet not loaded with the row ranks as news rather than loading it here.
+        src = None if "source" in sa_inspect(s).unloaded else s.source
+        name = src.name if src else ""
+        tier = 0 if (src and src.vendor_id) or name in PRIMARY_OUTLETS else 1 if name in RESEARCH_OUTLETS else 2
+        return (tier, s.published_at or far, s.id)
+
+    return sorted(item.sources, key=rank)
+
+
 def _articles(item: Item, fetched: dict[int, str] | None = None) -> str:
     """The only thing the model sees: the headline and each article's own text. `fetched`:
     article text fetched for this call (fetcher.py, never stored), by source id; it replaces a
     short feed excerpt."""
     parts = [f"<article>\nHeadline: {item.headline}\n</article>"]
     total = 0
-    for s in item.sources:
+    for s in by_priority(item):
         text = ((fetched or {}).get(s.id) or s.body or s.excerpt or "")[:BODY_CHARS]
         if not text or total >= MATERIAL_CHARS:
             continue
@@ -177,13 +201,32 @@ def _restates(first: str, second: str) -> bool:
     return not words or len(words - _words(first)) / len(words) < 0.5
 
 
+# The vendor as the one who fixed it ("Cisco released updates", "WatchGuard patched", "the vendor
+# has patched"): attributed, like "says". A passive or speculative claim ("was patched", "a fix
+# is available", "may have been fixed") has no actor and stays unattributed.
+_ACTOR = re.compile(
+    r"(?:\b(?:the\s+)?(?:vendor|company|developers?|maintainers|project|team)|\b[A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*)*)"
+    r"\s+(?:has\s+|have\s+|had\s+)?(?:quietly\s+|already\s+|also\s+|since\s+|now\s+)?$"
+)
+_NOT_ACTOR = re.compile(r"^(?:It|This|That|The|A|An|These|Those|They|CVE-\S+)$")
+
+
+def _vendor_acts(sentence: str) -> bool:
+    for m in _FIX_CLAIM.finditer(sentence):
+        clause = _CLAUSE.split(sentence[: m.start()])[-1]
+        actor = _ACTOR.search(clause)
+        if actor and not _NOT_ACTOR.match(actor.group(0).split()[0] if actor.group(0).split() else ""):
+            return True
+    return False
+
+
 def _strip_fix_claims(sentence: str, material: str) -> str:
     """The sentence without its unattributed fix claims. An attributed one stays when the
     material (headline and articles) reports a fix too; otherwise the offending clause goes, or
     the whole sentence when the claim is in its main (first) clause."""
     if not _FIX_CLAIM.search(sentence) or _WORKAROUND.search(sentence):
         return sentence
-    if _ATTRIBUTED.search(sentence) and _FIX_CLAIM.search(material):
+    if (_ATTRIBUTED.search(sentence) or _vendor_acts(sentence)) and _FIX_CLAIM.search(material):
         return sentence
     parts = _CLAUSE.split(sentence)  # clause, sep, clause, sep, clause ...
     if _FIX_CLAIM.search(parts[0]):
@@ -360,17 +403,16 @@ async def _run(
 
 
 async def _fetch_articles(items: list[Item]) -> dict[int, dict[int, str]]:
-    """For summarization only: article text for items whose feed text is short, by item id then
-    source id. The primary source first, at most FETCH_PER_ITEM per item. Held in memory for
-    this pass, never stored (fetcher.py)."""
+    """For summarization only: article text by item id then source id, for the first
+    FETCH_PER_ITEM of a row's articles by by_priority() whose feed text is short. Held in memory
+    for this pass, never stored (fetcher.py)."""
     out: dict[int, dict[int, str]] = {}
     async with fetcher.client() as client:
 
         async def one(item: Item) -> None:
             got: dict[int, str] = {}
-            short = [x for x in item.sources if len(x.body or x.excerpt or "") < FETCH_BELOW_CHARS]
-            short.sort(key=lambda x: x.url != item.primary_url)
-            for src in short[:FETCH_PER_ITEM]:
+            chosen = by_priority(item)[:FETCH_PER_ITEM]
+            for src in [x for x in chosen if len(x.body or x.excerpt or "") < FETCH_BELOW_CHARS]:
                 text = await fetcher.article_text(client, src.url)
                 if text:
                     got[src.id] = text
@@ -471,14 +513,21 @@ async def summarize_pending(session: AsyncSession) -> int | None:
     await reset_once(session)
     await _retry_once(session)
     await _reask_once(session)
+    n_sources = select(func.count()).where(ItemSource.item_id == Item.id).correlate(Item).scalar_subquery()
+    grew = and_(
+        Item.summary_sources.is_not(None),
+        n_sources > Item.summary_sources,
+        Item.summarized_at < datetime.now(UTC) - REGENERATE_AFTER,
+    )
     todo = list(
         (
             await session.scalars(
                 select(Item)
                 # CISA ICS advisories are summarized from stored fields instead (app/ics.py).
-                .where(Item.stream == Stream.main, Item.summary.is_(None), Item.sources.any(), ~ics.ics_sql())
-                .options(selectinload(Item.sources))
-                .order_by(Item.last_event_at.desc())
+                # Not summarized yet, or sources joined since (at most every REGENERATE_AFTER).
+                .where(Item.stream == Stream.main, Item.sources.any(), ~ics.ics_sql(), or_(Item.summary.is_(None), grew))
+                .options(selectinload(Item.sources).selectinload(ItemSource.source))
+                .order_by(Item.summary.is_not(None), Item.last_event_at.desc())
                 .limit(PER_RUN)
             )
         ).all()
@@ -499,6 +548,7 @@ async def summarize_pending(session: AsyncSession) -> int | None:
     for item, raw in zip(todo, results, strict=True):
         if raw is None:
             continue  # the call failed: ask again next pass
+        previous = item.summary  # None: first summary; else written again because sources joined
         # One call, JSON out: the summary (checked as ever) and the article facts (app/facts.py).
         said, stated = facts.parse(raw)
         text, why = review_summary(said, patched=item.patch_status == PatchStatus.patched, material=material[item.id])
@@ -507,13 +557,24 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         if text and versions.summary_conflict(text):
             text, why = await without_version_conflict(item.id, text, material[item.id], item.patch_status == PatchStatus.patched)
         # A public-PoC quote that names CVEs must name the row's displayed one (facts.poc_problem).
-        item.facts = facts.verify(stated, material[item.id], item.cve_id)
+        found = facts.verify(stated, material[item.id], item.cve_id)
+        # Written again: the new reading wins per fact, earlier facts it did not restate stay
+        # (then the content rules run once more over the whole set).
+        item.facts = facts.recheck({**(item.facts or {}), **found}, item.cve_id)[0] if previous is not None else found
         reasons[why] = reasons.get(why, 0) + 1
         if text is None:
             log.info("summaries: item %d rejected (%s, %d chars of input): %r", item.id, why, len(material[item.id]), raw[:160])
         if item.id in REASK_IDS:
             log.info("summaries: re-ask item %d: %s: %r (model said %r)", item.id, why, text, raw)
-        item.summary = text or ""
+        if previous and text is None:
+            # Written again because sources joined, and the new attempt failed: keep the old one.
+            log.info("summaries: item %d kept its summary (new attempt: %s)", item.id, why)
+        else:
+            if previous is not None:
+                log.info("summaries: item %d written again from %d sources: %r", item.id, len(item.sources), text)
+            item.summary = text or ""
+        item.summary_sources = len(item.sources)
+        item.summarized_at = datetime.now(UTC)
         if text is not None:
             events.record(session, "summary", item.headline, "done", item.id)
         written += text is not None
@@ -544,7 +605,7 @@ async def actions_pending(session: AsyncSession) -> int | None:
                     Item.id.in_(select(ItemCve.item_id)),
                     Item.sources.any(),
                 )
-                .options(selectinload(Item.sources))
+                .options(selectinload(Item.sources).selectinload(ItemSource.source))
                 .order_by(Item.last_event_at.desc())
                 .limit(PER_RUN)
             )

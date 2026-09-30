@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app import article_cves, cve_facts, facts_backfill, fetcher, ics, jobstate, summaries, versions
 from app.config import get_settings
-from app.models import Cve, Item, ItemCve, Stream
+from app.models import Cve, Item, ItemCve, ItemSource, Stream
 from app.tagging import row_subject_cves
 
 log = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ async def summary_versions(session) -> None:
             select(Item)
             .where(Item.stream == Stream.main, Item.summary.is_not(None), Item.summary != "",
                    Item.last_event_at >= datetime.now(UTC) - timedelta(days=14))
-            .options(selectinload(Item.sources))
+            .options(selectinload(Item.sources).selectinload(ItemSource.source))
         )
     ).all()
     hits = [i for i in rows if versions.summary_conflict(i.summary)]

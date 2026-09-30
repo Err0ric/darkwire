@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import alerts, cleanup, dedupe, events, fetcher, jobstate, msrc, rowtime
+from app import alerts, cleanup, cve_facts, dedupe, events, fetcher, jobstate, msrc, rowtime
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Category, Cve, Health, Item, ItemCve, ItemSource, Source, Stream, SyncRun, Vendor
@@ -31,6 +31,8 @@ from app.tagging import (
     first_paragraph,
     guess_category,
     is_ad,
+    row_subject_cves,
+    subject_cves,
 )
 
 log = logging.getLogger(__name__)
@@ -143,9 +145,13 @@ def _is_better_primary(new: ItemSource, new_source: Source, cur: ItemSource | No
     return (new.published_at or far) < (cur.published_at or far)
 
 
-async def find_cve_cluster(session: AsyncSession, cves: list[str], published: datetime) -> Item | None:
+async def find_cve_cluster(
+    session: AsyncSession, cves: list[str], published: datetime, subject: set[str] | None = None
+) -> Item | None:
     """The most recent row within the window sharing a CVE. A row a KEV alert started is joined
-    only when it holds one CVE or the article holds all of its CVEs (dedupe.alert_row_takes)."""
+    only when it holds one CVE or the article holds all of its CVEs (dedupe.alert_row_takes). A
+    news row only when a shared CVE is a subject CVE of both the article and the row (`subject`:
+    the article's; None skips the check)."""
     if not cves:
         return None
     rows = await session.scalars(
@@ -164,6 +170,11 @@ async def find_cve_cluster(session: AsyncSession, cves: list[str], published: da
             held = set(await session.scalars(select(ItemCve.cve_id).where(ItemCve.item_id == row.id)))
             if not dedupe.alert_row_takes(held, set(cves)):
                 log.info("ingest: not joining alert row %d (holds %d CVEs, article %s)", row.id, len(held), ",".join(cves))
+                continue
+        elif subject is not None:
+            held = set(await session.scalars(select(ItemCve.cve_id).where(ItemCve.item_id == row.id)))
+            if not (held & set(cves) & subject & row_subject_cves(row.sources)):
+                log.info("ingest: not joining row %d (shared CVEs are not the subject of both)", row.id)
                 continue
         return row
     return None
@@ -232,6 +243,7 @@ async def ingest_source(
                 cves = await alerts.listed_cves(session, client, a.title, a.url, a.published_at, a.text, a.body)
         else:
             cves = headline_cves(a.title, a.excerpt, a.text, a.body)
+        subject = subject_cves(a.title, a.excerpt, "\n".join(t for t in (a.text, a.body) if t))
         if cves:
             # Placeholder rows so the FKs hold. Enrichment fills them in.
             await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
@@ -242,7 +254,7 @@ async def ingest_source(
             # Joins the one row that already holds every CVE it lists, else starts its own.
             cluster = await dedupe.find_alert_home(session, cves)
         else:
-            cluster = await find_cve_cluster(session, cves, a.published_at) or await dedupe.find_title_cluster(
+            cluster = await find_cve_cluster(session, cves, a.published_at, subject) or await dedupe.find_title_cluster(
                 session, a.title, vendor_id, a.published_at, matcher
             )
         if cluster is not None and alert:
@@ -281,10 +293,10 @@ async def ingest_source(
             events.record(session, "cluster", cluster.headline, f"{len(cluster.sources)} sources", cluster.id)
             stored.merged += 1
         else:
-            # cve_id is the first CVE mentioned and stays pinned (enrich.roll_up); a merge never moves it.
+            # cve_id: the highest-scored subject CVE, pinned (enrich.roll_up); a merge never moves it.
             item = Item(
                 stream=Stream.main, headline=a.title, primary_url=a.url,
-                vendor_id=vendor_id, category=category, cve_id=cves[0] if cves else None,
+                vendor_id=vendor_id, category=category, cve_id=await cve_facts.pick_pinned(session, cves, subject),
                 last_event_at=a.published_at, last_event_kind="published", sources=[link], kev=alert,
             )
             session.add(item)

@@ -76,6 +76,33 @@ def cluster_cves(articles: list[tuple[str, str, str]]) -> list[str]:
     return tied
 
 
+LEDE_PARAGRAPHS = 2
+
+
+def _plain_line(line: str | None) -> str:
+    return re.sub(r"[^a-z0-9]", "", (line or "").lower())
+
+
+def subject_cves(title: str, lead: str, text: str) -> set[str]:
+    """The CVEs an article is about, not ones it mentions for context: IDs in the title, in the
+    lede (the feed excerpt and the first LEDE_PARAGRAPHS paragraphs of the text), or named at
+    least twice in the text. Extracted article text often starts with the headline itself; that
+    line is not a lede paragraph."""
+    heading = _plain_line(title)
+    paragraphs = [p for p in (text or "").splitlines() if p.strip() and _plain_line(p) != heading][:LEDE_PARAGRAPHS]
+    found = set(extract_cves(title or "", lead or "", *paragraphs))
+    upper = (text or "").upper()
+    return found | {c for c in extract_cves(text or "") if upper.count(c) >= 2}
+
+
+def row_subject_cves(sources) -> set[str]:
+    """subject_cves over a row's stored articles (anything with .title, .excerpt, .body)."""
+    out: set[str] = set()
+    for s in sources:
+        out |= subject_cves(s.title or "", s.excerpt or "", s.body or "")
+    return out
+
+
 def headline_cves(title: str, lead: str, *rest: str) -> list[str]:
     """The CVE IDs an article ties to its headline's issue, not every ID it mentions.
 

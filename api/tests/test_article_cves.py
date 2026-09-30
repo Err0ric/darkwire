@@ -59,14 +59,15 @@ class Extraction(unittest.TestCase):
 
 class Merges(unittest.TestCase):
     def test_801_joins_747_once_it_shares_a_cve(self):
-        r747 = Row(747, CITRIX_747, CITRIX_747, alert=True, cves={"CVE-2026-88771", "CVE-2026-88772"})
-        r801 = Row(801, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-88771"})
+        r747 = Row(747, CITRIX_747, CITRIX_747, alert=True, cves={"CVE-2026-88771", "CVE-2026-88772"},
+                   subject={"CVE-2026-88771", "CVE-2026-88772"})
+        r801 = Row(801, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-88771"}, subject={"CVE-2026-88771"})
         self.assertIs(merge_target(r801, [r747, r801]), r747)
         self.assertEqual(pair(r801, [r747, r801]), (r747, r801))
 
     def test_an_earlier_row_that_gains_a_cve_takes_in_the_later_one(self):
-        early = Row(1, CITRIX_747, CITRIX_747, alert=False, cves={"CVE-2026-88771"})
-        late = Row(2, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-88771"})
+        early = Row(1, CITRIX_747, CITRIX_747, alert=False, cves={"CVE-2026-88771"}, subject={"CVE-2026-88771"})
+        late = Row(2, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-88771"}, subject={"CVE-2026-88771"})
         self.assertEqual(pair(early, [early, late]), (early, late))
 
     def test_outside_72_hours_no_merge(self):
@@ -119,12 +120,13 @@ class Tweaks(unittest.TestCase):
         subject = {"CVE-2026-35273"}
         published = {
             "CVE-2026-35273": datetime(2026, 4, 1, tzinfo=UTC),  # old, but the subject
-            "CVE-2026-20700": None,  # context, NVD has no date: dropped (no year fallback)
+            "CVE-2026-20700": datetime(2026, 2, 11, tzinfo=UTC),  # context, CVE.org date, old: dropped
+            "CVE-2026-99001": None,  # context, no date anywhere: treated as recent, kept
             "CVE-2025-43300": datetime(2025, 8, 21, tzinfo=UTC),  # context, old: dropped
             "CVE-2026-90000": datetime(2026, 9, 20, tzinfo=UTC),  # context, recent: kept
         }
         kept, dropped = keep(list(published), subject, published, self.NOW)
-        self.assertEqual(kept, ["CVE-2026-35273", "CVE-2026-90000"])
+        self.assertEqual(kept, ["CVE-2026-35273", "CVE-2026-99001", "CVE-2026-90000"])
         self.assertEqual(dropped, ["CVE-2026-20700", "CVE-2025-43300"])
 
     def test_recaps_and_roundups(self):
@@ -172,10 +174,26 @@ class Tweaks(unittest.TestCase):
         self.assertIsNone(pair(r797, [r793, r797]))
         self.assertIsNone(pair(r793, [r793, r797]))
 
+    def test_news_into_news_needs_a_shared_subject_cve(self):
+        # 834 is about CVE-2026-35273; 819 (the arrest story) only mentions it.
+        r819 = Row(819, CITRIX_747, CITRIX_747, alert=False, cves={"CVE-2026-35273"}, subject=set())
+        r834 = Row(834, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-35273"}, subject={"CVE-2026-35273"})
+        self.assertIsNone(pair(r834, [r819, r834]))
+        r819.subject = {"CVE-2026-35273"}
+        self.assertEqual(pair(r834, [r819, r834]), (r819, r834))
+
+    def test_a_multi_story_article_joins_an_alert_row_it_covers(self):
+        r794 = Row(794, CITRIX_747, CITRIX_747, alert=True, led=True, cves={"CVE-2026-5430", "CVE-2026-71362"})
+        r795 = Row(795, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-5430", "CVE-2026-71362"}, multi_story=True)
+        self.assertEqual(pair(r795, [r794, r795]), (r794, r795))
+        partial = Row(796, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-5430", "CVE-2026-1111"}, multi_story=True)
+        self.assertIsNone(pair(partial, [r794, partial]))
+
     def test_a_news_row_an_alert_joined_still_takes_news(self):
         # Row 747 is THN's story; CISA's alert joined it. It is not alert-led.
-        r747 = Row(747, CITRIX_747, CITRIX_747, alert=True, led=False, cves={"CVE-2026-88771", "CVE-2026-88772"})
-        r801 = Row(801, CITRIX_801, CITRIX_801, alert=False, cves={"CVE-2026-88771", "CVE-2026-88772"})
+        both = {"CVE-2026-88771", "CVE-2026-88772"}
+        r747 = Row(747, CITRIX_747, CITRIX_747, alert=True, led=False, cves=both, subject=both)
+        r801 = Row(801, CITRIX_801, CITRIX_801, alert=False, cves=both, subject=both)
         self.assertEqual(pair(r801, [r747, r801]), (r747, r801))
 
 

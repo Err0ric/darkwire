@@ -56,7 +56,7 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             await c.execute(text(f'DROP DATABASE IF EXISTS "{self.name}" WITH (FORCE)'))
         await self.admin.dispose()
 
-    async def _row(self, s, source, headline, at, cves=()):
+    async def _row(self, s, source, headline, at, cves=(), excerpt=None):
         for c in cves:
             await s.merge(Cve(id=c))
         await s.flush()
@@ -64,7 +64,7 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
                     category=Category.news, last_event_at=at, last_event_kind="published", cve_id=cves[0] if cves else None)
         s.add(item)
         await s.flush()
-        s.add(ItemSource(item_id=item.id, source_id=source.id, url=item.primary_url, title=headline, published_at=at))
+        s.add(ItemSource(item_id=item.id, source_id=source.id, url=item.primary_url, title=headline, excerpt=excerpt, published_at=at))
         for i, c in enumerate(cves):
             s.add(ItemCve(item_id=item.id, cve_id=c, position=i))
         await s.flush()
@@ -80,7 +80,10 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             src = Source(name="BleepingComputer", feed_url="https://test.invalid/feed", stream=Stream.main)
             s.add(src)
             await s.flush()
-            citrix = await self._row(s, src, "Two Citrix zero-days exploited", t0, ["CVE-2026-88771"])
+            citrix = await self._row(s, src, "Two Citrix zero-days exploited", t0, ["CVE-2026-88771"],
+                                     excerpt="Attackers exploit CVE-2026-88771 in NetScaler.")
+            # An old CVE the next article mentions for context (NVD date stored: no network lookup).
+            s.add(Cve(id="CVE-2024-3400", published_at=datetime(2024, 4, 12, tzinfo=UTC)))
             later = await self._row(s, src, "CISA orders feds to patch exploited Citrix flaws", t0 + timedelta(hours=22))
             recap = await self._row(s, src, "Weekly Recap: Citrix Exploits", t0 + timedelta(hours=23))
             # A multi-story article: SharePoint and MikroTik CVEs (vendors from the KEV catalog).
@@ -123,6 +126,19 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertIn(ids["multi"], left)
             self.assertEqual(held["multi"], {"CVE-2026-65660", "CVE-2026-67279"})
             self.assertEqual(held["mikrotik"], {"CVE-2026-67279"})
+
+    async def test_a_new_row_pins_its_highest_scored_subject_cve(self):
+        from app import cve_facts
+
+        async with self.Session() as s:
+            s.add_all([Cve(id="CVE-2026-10001", base_score=5.0), Cve(id="CVE-2026-10002", base_score=9.1),
+                       Cve(id="CVE-2026-10003", base_score=10.0)])
+            await s.commit()
+            cves = ["CVE-2026-10001", "CVE-2026-10002", "CVE-2026-10003"]
+            # 10003 scores highest but is context; of the subject CVEs 10002 wins over first-mentioned 10001.
+            self.assertEqual(await cve_facts.pick_pinned(s, cves, {"CVE-2026-10001", "CVE-2026-10002"}), "CVE-2026-10002")
+            # Unscored subject CVEs: the first mentioned.
+            self.assertEqual(await cve_facts.pick_pinned(s, ["CVE-2026-20001", "CVE-2026-20002"], {"CVE-2026-20002", "CVE-2026-20001"}), "CVE-2026-20001")
 
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)

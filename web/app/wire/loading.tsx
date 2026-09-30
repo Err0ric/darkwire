@@ -6,11 +6,11 @@ export default function WireLoading() {
   return (
     <main className="flex-1 page-frame pb-24">
       <Loading label="the wire" />
-      <div className="min-[1200px]:flex min-[1200px]:items-start min-[1200px]:gap-12 min-[2200px]:gap-(--col-gap)">
-        <aside className="mt-[103px] hidden w-(--left-rail-w) shrink-0 min-[2200px]:block">
+      <div className="min-[1024px]:flex min-[1024px]:items-start min-[1024px]:gap-10 min-[1600px]:gap-(--col-gap)">
+        <aside className="mt-[103px] hidden w-(--left-rail-w) shrink-0 min-[1600px]:block">
           <SkeletonRail />
         </aside>
-        <div className="min-w-0 flex-1 min-[2200px]:w-(--wire-feed-w) min-[2200px]:flex-none">
+        <div className="min-w-0 max-w-(--feed-max) flex-1">
           {/* The one-line header: counts left, clock right. */}
           <div className="flex h-7 items-center justify-between pt-6 md:mt-[33px] md:pt-0" aria-hidden>
             <Bar className="h-3 w-[460px] max-w-[70%]" />
@@ -26,7 +26,7 @@ export default function WireLoading() {
           </div>
           <SkeletonFeedRows count={14} />
         </div>
-        <aside className="mt-16 hidden shrink-0 min-[1200px]:mt-[103px] min-[1200px]:block min-[1200px]:w-[340px] min-[2200px]:w-(--rail-w)">
+        <aside className="mt-16 hidden shrink-0 min-[1024px]:mt-[103px] min-[1024px]:block min-[1024px]:w-[300px] min-[1600px]:w-(--rail-w)">
           <SkeletonRail />
         </aside>
       </div>

@@ -381,17 +381,17 @@ export function WireBoard({ initial }: { initial: WireData }) {
 
   return (
     <main className="flex-1 page-frame pb-24">
-      {/* Under 1200px: feed, then the rail stacked below it. 1200-2199px: feed plus one 340px
-          rail on the right, 48px apart. 2200px+: one centered block (page-frame): stats rail |
-          gap | feed | gap | Services and Elsewhere, all fluid (--rail-w, --feed-w, --col-gap in
-          globals.css). Rails are sticky and start level with the tabs row. The rail sections
-          are placed with CSS order per range. */}
-      <div className="min-[1200px]:flex min-[1200px]:items-start min-[1200px]:gap-12 min-[2200px]:gap-(--col-gap)">
+      {/* Under 1024px: feed, then the rail stacked below it. 1024-1599px: feed plus one 300px
+          rail on the right, 40px apart. 1600px+: stats rail | gap | feed | gap | Elsewhere and
+          Services, fluid (--left-rail-w, --rail-w, --col-gap in globals.css), the feed capped at
+          --feed-max and the block centered by page-frame. Rails are sticky and start level with
+          the tabs row. The rail sections are placed with CSS order per range. */}
+      <div className="min-[1024px]:flex min-[1024px]:items-start min-[1024px]:gap-10 min-[1600px]:gap-(--col-gap)">
         <aside
           ref={leftRail}
           data-chrome
           aria-label="This week"
-          className="sticky mt-[103px] hidden w-(--left-rail-w) shrink-0 text-[13px] min-[2200px]:block"
+          className="sticky mt-[103px] hidden w-(--left-rail-w) shrink-0 text-[13px] min-[1600px]:block"
         >
           {/* A 1px rule midway between this rail and the feed, as tall as the rail's content. */}
           <div className="-mr-[calc(var(--col-gap)/2)] flex flex-col gap-10 border-r border-rule pr-[calc(var(--col-gap)/2)]">
@@ -410,7 +410,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
           </div>
         </aside>
 
-        <div className="@container min-w-0 flex-1 min-[2200px]:w-(--wire-feed-w) min-[2200px]:flex-none">
+        <div className="@container min-w-0 max-w-(--feed-max) flex-1">
           {slot &&
             counts &&
             createPortal(
@@ -482,9 +482,9 @@ export function WireBoard({ initial }: { initial: WireData }) {
             {stack.length > 0 && stackCritical === 0 && (
               <p className="mt-1 text-[13px] leading-5 text-muted">Nothing critical in your stack today.</p>
             )}
-            {/* Rail stacked under the feed (< 1200px): impacted services show up here so an outage
+            {/* Rail stacked under the feed (< 1024px): impacted services show up here so an outage
                 is seen without scrolling; the full block ends the stacked rail. */}
-            <div data-chrome className="mt-6 max-w-[640px] text-[13px] min-[1200px]:hidden">
+            <div data-chrome className="mt-6 max-w-[640px] text-[13px] min-[1024px]:hidden">
               <Services data={services} compact />
             </div>
           </header>
@@ -498,8 +498,8 @@ export function WireBoard({ initial }: { initial: WireData }) {
             className={cn(
               "z-[6] flex flex-col-reverse border-b border-rule bg-bg min-[900px]:sticky min-[900px]:top-(--bar-h)",
               stack.length
-                ? "@min-[1060px]:flex-row @min-[1060px]:items-end @min-[1060px]:justify-between"
-                : "@min-[940px]:flex-row @min-[940px]:items-end @min-[940px]:justify-between",
+                ? "@min-[1140px]:flex-row @min-[1140px]:items-end @min-[1140px]:justify-between"
+                : "@min-[1040px]:flex-row @min-[1040px]:items-end @min-[1040px]:justify-between",
             )}
           >
             <nav aria-label="Categories" className="-mb-px flex gap-6 overflow-x-auto [scrollbar-width:none]">
@@ -524,8 +524,8 @@ export function WireBoard({ initial }: { initial: WireData }) {
               className={cn(
                 "mb-4 flex items-center gap-5",
                 stack.length
-                  ? "@min-[1060px]:mb-[10px] @min-[1060px]:shrink-0"
-                  : "@min-[940px]:mb-[10px] @min-[940px]:shrink-0",
+                  ? "@min-[1140px]:mb-[10px] @min-[1140px]:shrink-0"
+                  : "@min-[1040px]:mb-[10px] @min-[1040px]:shrink-0",
               )}
             >
               <Select
@@ -554,8 +554,8 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 className={cn(
                   "h-[30px] min-w-0 flex-1 max-md:h-11",
                   stack.length
-                    ? "@min-[1060px]:w-[200px] @min-[1060px]:flex-none"
-                    : "@min-[940px]:w-[200px] @min-[940px]:flex-none",
+                    ? "@min-[1140px]:w-[200px] @min-[1140px]:flex-none"
+                    : "@min-[1040px]:w-[200px] @min-[1040px]:flex-none",
                 )}
               />
             </div>
@@ -655,24 +655,24 @@ export function WireBoard({ initial }: { initial: WireData }) {
           data-chrome
           aria-label="Context"
           ref={rightRail}
-          className="mt-16 text-[13px] min-[1200px]:sticky min-[1200px]:mt-[103px] min-[1200px]:w-[340px] min-[1200px]:shrink-0 min-[2200px]:w-(--rail-w)"
+          className="mt-16 text-[13px] min-[1024px]:sticky min-[1024px]:mt-[103px] min-[1024px]:w-[300px] min-[1024px]:shrink-0 min-[1600px]:w-(--rail-w)"
         >
-          {/* Orders: under 1200 Elsewhere, Most active, Added to KEV, Last 7 days, Services (its
-              impacted lines also sit above the feed). 1200-2199 Elsewhere, Most active, Last 7
-              days, Added to KEV, Services. 2200+ Elsewhere, Services; the rest is in the left
+          {/* Orders: under 1024 Elsewhere, Most active, Added to KEV, Last 7 days, Services (its
+              impacted lines also sit above the feed). 1024-1599 Elsewhere, Most active, Last 7
+              days, Added to KEV, Services. 1600+ Elsewhere, Services; the rest is in the left
               rail. The sources line is in the page footer. */}
-          <div className="flex max-w-[640px] flex-col gap-10 min-[1200px]:-ml-6 min-[1200px]:max-w-none min-[1200px]:border-l min-[1200px]:border-rule min-[1200px]:pl-6 min-[2200px]:-ml-[calc(var(--col-gap)/2)] min-[2200px]:pl-[calc(var(--col-gap)/2)]">
-            <div className="order-2 min-[2200px]:hidden">
+          <div className="flex max-w-[640px] flex-col gap-10 min-[1024px]:-ml-5 min-[1024px]:max-w-none min-[1024px]:border-l min-[1024px]:border-rule min-[1024px]:pl-5 min-[1600px]:-ml-[calc(var(--col-gap)/2)] min-[1600px]:pl-[calc(var(--col-gap)/2)]">
+            <div className="order-2 min-[1600px]:hidden">
               <MostActive
                 active={active}
                 vendor={filters.vendor}
                 onVendor={(slug) => apply({ vendor: filters.vendor === slug ? "" : slug })}
               />
             </div>
-            <div className="order-4 min-[1200px]:order-3 min-[2200px]:hidden">
+            <div className="order-4 min-[1024px]:order-3 min-[1600px]:hidden">
               <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
             </div>
-            <div className="order-3 min-[1200px]:order-4 min-[2200px]:hidden">
+            <div className="order-3 min-[1024px]:order-4 min-[1600px]:hidden">
               <AddedToKev
                 kev={kev}
                 total={counts?.kev_added_7d}

@@ -607,6 +607,25 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(await s.get(Item, second.id))
             self.assertEqual(len((await s.scalars(select(ItemSource).where(ItemSource.item_id == first.id))).all()), 2)
 
+    async def test_merge_existing_respects_merge_exclusions(self):
+        from unittest import mock
+
+        from app import dedupe
+        from app.tagging import VendorMatcher
+
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            src = Source(name="SecurityWeek", feed_url="https://test.invalid/sw6", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            a = await self._row(s, src, "Attackers exploit Oracle PeopleSoft flaw", now - timedelta(hours=3), ["CVE-2026-35273"])
+            b = await self._row(s, src, "Police arrest hacker in extortion case", now - timedelta(hours=1), ["CVE-2026-35273"])
+            await s.commit()
+            with mock.patch.object(dedupe, "MERGE_EXCLUSIONS", frozenset({frozenset({a.id, b.id})})):
+                self.assertEqual(await dedupe.merge_existing(s, VendorMatcher([])), 0)
+            self.assertEqual(len(set(await s.scalars(select(Item.id).where(Item.id.in_([a.id, b.id]))))), 2)
+            self.assertEqual(await dedupe.merge_existing(s, VendorMatcher([])), 1)  # without it, they merge
+
     async def test_manual_category_override_step(self):
         from unittest import mock
 

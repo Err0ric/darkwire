@@ -42,5 +42,23 @@ class SingleCveRows(unittest.TestCase):
         self.assertFalse(takes(row(1, *SECURITYWEEK, [CVE]), row(2, *THN, ["CVE-2026-22222"])))
 
 
+class Exclusions(unittest.TestCase):
+    def test_an_excluded_pair_never_merges(self):
+        from app import dedupe
+        from app.article_cves import merge_target, pair
+
+        # 819 and 1 (2026-09-30): the rules would merge them; the exclusion says no, either way.
+        r1 = Row(1, T, T, False, cves={CVE}, subject={CVE})
+        r819 = Row(819, T.replace(hour=9), T.replace(hour=9), False, cves={CVE}, subject={CVE})
+        self.assertTrue(takes(r1, r819))
+        self.assertTrue(dedupe.excluded(819, 1) and dedupe.excluded(1, 819))
+        self.assertIsNone(merge_target(r819, [r1]))
+        self.assertIsNone(pair(r819, [r1, r819]))
+        self.assertIsNone(pair(r1, [r1, r819]))
+        # Any other pair with the same data still merges.
+        r2 = Row(2, T.replace(hour=9), T.replace(hour=9), False, cves={CVE}, subject={CVE})
+        self.assertIs(merge_target(r2, [r1]), r1)
+
+
 if __name__ == "__main__":
     unittest.main()

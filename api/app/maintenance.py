@@ -31,9 +31,10 @@ MERGES = [(834, 1)]
 REPIN_MANUAL = {793: "CVE-2026-67279"}
 
 
-async def merges(session) -> None:
+async def merges(session, pairs: list[tuple[int, int]] | None = None) -> None:
+    """Signed-off merges, (merged, survivor), each logged; MERGES unless `pairs` is given."""
     rows = await article_cves._rows(session, datetime.now(UTC) - timedelta(days=30))
-    for merged_id, survivor_id in MERGES:
+    for merged_id, survivor_id in pairs or MERGES:
         merged, survivor = rows.get(merged_id), rows.get(survivor_id)
         if merged is None or survivor is None:
             log.info("maintenance: merge %d -> %d skipped (row gone: %s)", merged_id, survivor_id,
@@ -279,7 +280,7 @@ async def category_rules_dry_run(session) -> dict[int, tuple[str, str]]:
 REMERGE_EXPECTED = {(910, 907)}
 
 
-async def remerge(session) -> list[tuple[int, int]]:
+async def remerge(session, expected: set[tuple[int, int]] | None = None, apply: bool = True) -> list[tuple[int, int]]:
     """Dry run of the merge rules over the rows of the last 7 days, in publish order, as the live
     re-check makes them (article_cves.merge_target); a row with CVEs of 2+ vendors counts as
     multi-story. Every pair logged with both headlines; applied only when the pairs are exactly
@@ -303,8 +304,12 @@ async def remerge(session) -> list[tuple[int, int]]:
         target.cves |= n.cves
         target.subject |= n.subject
         live.pop(n.id)
-    if set(pairs) != REMERGE_EXPECTED:
-        log.info("maintenance: remerge (dry run): %d merges; STOP: not exactly %s; nothing written", len(pairs), sorted(REMERGE_EXPECTED))
+    expected = REMERGE_EXPECTED if expected is None else expected
+    if set(pairs) != expected:
+        log.info("maintenance: remerge (dry run): %d merges; STOP: not exactly %s; nothing written", len(pairs), sorted(expected))
+        return pairs
+    if not apply:
+        log.info("maintenance: remerge (dry run): exactly the expected %s; logs only, nothing written", sorted(expected))
         return pairs
     fresh = await article_cves._rows(session, datetime.now(UTC) - timedelta(days=7))
     for merged_id, survivor_id in pairs:
@@ -416,6 +421,9 @@ STEPS = [
     # The summary call's category verdicts became log-only (2026-09-30): what differs from the rules.
     ("category_rules_dry_run_v1", category_rules_dry_run),
     ("remerge_single_cve_v1", remerge),
+    # Signed off 2026-09-30: only the OpenSSL pair; 906 -> 747 and 819 -> 1 are not merged.
+    ("merge_910_907", lambda session: merges(session, [(910, 907)])),
+    ("remerge_check_v2", lambda session: remerge(session, expected={(906, 747)}, apply=False)),
 ]
 
 

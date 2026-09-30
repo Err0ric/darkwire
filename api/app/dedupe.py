@@ -34,6 +34,17 @@ from app.tagging import ZERO_DAY, VendorMatcher, cluster_cves
 log = logging.getLogger(__name__)
 
 WINDOW = timedelta(hours=48)  # CVE merges of existing rows (merge_existing)
+
+# Row pairs that never merge, either way, whatever the rules say: a signed-off decision, like
+# tagging.CATEGORY_OVERRIDES. Every merge of existing rows checks it (merge_existing here, and
+# article_cves.merge_target for the re-check after fetching and the re-merge). Each with the reason.
+MERGE_EXCLUSIONS: frozenset[frozenset[int]] = frozenset({
+    frozenset({819, 1}),  # 819, an arrest story, only mentions row 1's PeopleSoft CVE (2026-09-30)
+})
+
+
+def excluded(a: int, b: int) -> bool:
+    return frozenset({a, b}) in MERGE_EXCLUSIONS
 TITLE_WINDOW = timedelta(hours=72)  # title merges: publish times at most this far apart
 SIMILARITY = 0.85
 _NON_WORD = re.compile(r"[^a-z0-9]+")
@@ -397,7 +408,7 @@ async def merge_existing(session: AsyncSession, matcher: VendorMatcher) -> int:
         pub = n["first_pub"] or n["last_event_at"]
 
         def joins(o: dict) -> bool:
-            if n["id"] in alerts:  # a KEV alert never joins another row
+            if n["id"] in alerts or excluded(n["id"], o["id"]):  # a KEV alert never joins another row
                 return False
             shared = cves.get(o["id"], set()) & cves.get(n["id"], set())
             if shared and abs(pub - o["last_event_at"]) <= WINDOW:

@@ -246,6 +246,7 @@ def merge_target(n: Row, rows: list[Row]) -> Row | None:
         if o.id != n.id
         and (o.first_pub, o.id) < (n.first_pub, n.id)
         and abs(n.first_pub - o.last_event_at) <= MERGE_WINDOW
+        and not dedupe.excluded(n.id, o.id)
         and takes(o, n)
     ]
     return max(candidates, key=lambda o: o.last_event_at) if candidates else None

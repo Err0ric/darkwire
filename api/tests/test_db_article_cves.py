@@ -552,7 +552,8 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
                  mock.patch.object(summaries, "reset_once", nothing), mock.patch.object(summaries, "_retry_once", nothing), \
                  mock.patch.object(summaries, "_reask_once", nothing), mock.patch.object(summaries, "log_coverage", nothing), \
                  mock.patch.object(summaries.article_cves, "after_fetch", nothing), \
-                 mock.patch.dict(summaries.CATEGORY_OVERRIDES, {overridden.id: "vulnerability"}):
+                 mock.patch.dict(summaries.CATEGORY_OVERRIDES, {overridden.id: "vulnerability"}), \
+                 mock.patch.object(summaries, "BREACH_FROM_CALL", True):  # off in production for now
                 await summaries.summarize_pending(s)
         async with self.Session() as s:
             self.assertEqual((await s.get(Item, bitget.id)).category, Category.breach)

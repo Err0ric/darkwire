@@ -586,6 +586,12 @@ async def without_version_conflict(item_id: int, text: str, material: str, patch
     return stripped, why if stripped else "version conflict"
 
 
+# Off (2026-09-30): the call's organization_compromised fired on exploitation stories whose articles
+# mention victims (Zimbra, Citrix NetScaler, row 943), which would move CVE and KEV rows to
+# Breach. The verdict is still stored; only the category change waits for a decision.
+BREACH_FROM_CALL = False
+
+
 def check_category(item: Item) -> None:
     """With no CVE on the row, Vulnerability needs the summary call to have found a specific flaw
     in a named product (facts specific_vulnerability, quote-checked); otherwise the category rules
@@ -596,7 +602,7 @@ def check_category(item: Item) -> None:
     found = item.facts or {}
     if item.category != Category.vulnerability or item.id in CATEGORY_OVERRIDES:
         return
-    if "organization_compromised" in found:
+    if BREACH_FROM_CALL and "organization_compromised" in found:
         new, why = Category.breach, "an organization compromised"
     elif item.cve_id is None and "specific_vulnerability" not in found:
         primary = next((s for s in item.sources if s.url == item.primary_url), item.sources[0] if item.sources else None)

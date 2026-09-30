@@ -147,11 +147,25 @@ async def summary_versions(session) -> None:
     await session.commit()
 
 
+async def resummarize_933(session) -> None:
+    """Row 933's summary lost its version phrases mid-sentence ("Affected versions are; ...") under
+    the first stripping rule; it is summarized again by the next pass (versions.strip now drops
+    whole sentences)."""
+    item = await session.get(Item, 933)
+    if item is None:
+        log.info("maintenance: resummarize 933: row gone")
+        return
+    log.info("maintenance: resummarize 933: %r -> queued", item.summary)
+    item.summary = None
+    await session.commit()
+
+
 STEPS = [
     ("merge_834_1", merges),
     ("repin_kev_first_v1", repin),
     ("explain_873_v1", explain_873),
     ("summary_versions_v1", summary_versions),
+    ("resummarize_933_v1", resummarize_933),
 ]
 
 

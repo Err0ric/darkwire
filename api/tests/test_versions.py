@@ -29,9 +29,12 @@ class Versions(unittest.TestCase):
 
     def test_summary_conflict_and_strip(self):
         self.assertTrue(versions.summary_conflict(MIKROTIK))
-        stripped = versions.strip(MIKROTIK)
-        self.assertNotIn("7.2", stripped)
-        self.assertFalse(versions.summary_conflict(stripped))
+        # Whole sentences go, so what is left still reads (row 933, 2026-09-30); none left: empty.
+        row_933 = ("CISA warns of a pre-authentication integer underflow in MikroTik RouterOS that allows unauthenticated "
+                   "attackers to achieve remote code execution as root or denial of service. Affected versions are below "
+                   "7.24; the vendor recommends updating to version 7.23 or later.")
+        self.assertEqual(versions.strip(row_933), row_933.split(". ")[0] + ".")
+        self.assertEqual(versions.strip(MIKROTIK), "")
         self.assertFalse(versions.summary_conflict("Roundcube fixed the flaw in 1.6.16; versions before 1.6.16 are affected."))
         self.assertFalse(versions.summary_conflict("Versions before 7.24 are affected. Update to 7.24."))
 

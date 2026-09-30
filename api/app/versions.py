@@ -89,16 +89,11 @@ def _near(version: str, quote: str):
     return BRANCH.search(quote[i + len(version): i + len(version) + 30]) or BRANCH.search(quote[max(0, i - 30): i])
 
 
-_STRIP = re.compile(
-    rf"\s*(?:,\s*)?\b(?:versions?\s+)?(?:(?:<=?|before|below|prior to|earlier than|up to|through)\s*)(?:v(?:ersion)?\s*)?{V}(?:\s+and\s+(?:prior|earlier))?"
-    rf"|\s*\b(?:in|to)\s+(?:v(?:ersion)?\s*)?{V}(?:\s+(?:or|and)\s+(?:later|newer|above))?"
-    rf"|\s*\bversions?\s+{V}(?:\s+(?:or|and)\s+(?:later|newer|above))?",
-    re.I,
-)
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
 
 def strip(text: str) -> str:
-    """The summary without its version numbers ("versions before 7.24", "to version 7.23 or later")."""
-    out = _STRIP.sub("", text or "")
-    out = re.sub(r"\s+([,.;])", r"\1", out)
-    return re.sub(r"\s{2,}", " ", out).strip()
+    """The summary without the sentences that state an affected range or a fix version (whole
+    sentences, so what is left still reads); empty when nothing else is left."""
+    kept = [s for s in _SENTENCE.split(text or "") if s.strip() and not bounds(s) and not summary_fixes(s)]
+    return " ".join(kept).strip()

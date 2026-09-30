@@ -207,7 +207,9 @@ def _restates(first: str, second: str) -> bool:
 # is available", "may have been fixed") has no actor and stays unattributed.
 _ACTOR = re.compile(
     r"(?:\b(?:the\s+)?(?:vendor|company|developers?|maintainers|project|team)|\b[A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*)*)"
-    r"\s+(?:has\s+|have\s+|had\s+)?(?:quietly\s+|already\s+|also\s+|since\s+|now\s+)?$"
+    r"\s+(?:has\s+|have\s+|had\s+)?(?:quietly\s+|already\s+|also\s+|since\s+|now\s+)?"
+    # "Cisco has released fixed software" (row 930): the claim word follows the vendor's verb.
+    r"(?:(?:released|issued|shipped|published|pushed|rolled\s+out)\s+(?:an?\s+|the\s+)?)?$"
 )
 _NOT_ACTOR = re.compile(r"^(?:It|This|That|The|A|An|These|Those|They|CVE-\S+)$")
 

@@ -57,6 +57,8 @@ class FixClaims(unittest.TestCase):
             "WatchGuard patched a critical code injection vulnerability in Fireware OS used by thousands of firewalls worldwide.",
             "Kiteworks patched a critical vulnerability in an unnamed feature affecting a small share of its customers.",
             "The vendor has patched the flaw that let attackers read files from exposed management interfaces remotely.",
+            # Row 930's second model output (2026-09-30): "fixed" right after the vendor's verb.
+            "Cisco Catalyst SD-WAN Manager has an API authentication bypass that attackers exploit. Cisco has released fixed software versions.",
         ):
             self.assertEqual(review_summary(text, material=CISCO_ARTICLE)[1], "ok", text)
 

@@ -287,6 +287,7 @@ STEPS = [
     ("restore_25_breach", restore_25),
     ("resummarize_930_v1", resummarize),
     ("refresh_873_v1", refresh_873),
+    ("resummarize_930_v2", resummarize),
 ]
 
 

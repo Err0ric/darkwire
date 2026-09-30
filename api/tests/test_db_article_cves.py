@@ -268,6 +268,27 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             await enrich.roll_up(s)
             self.assertEqual((await s.get(Item, plain.id)).cve_id, "CVE-2026-65660")
 
+    async def test_rows_pinned_before_the_rule_are_only_checked_for_context_pins(self):
+        # Rows 79, 100, 876 and 796 in the 2026-09-30 v3 dry run: pinned under an earlier rule.
+        from app import cve_facts, maintenance
+
+        before = cve_facts.PIN_RULE_SINCE - timedelta(days=1)
+        async with self.Session() as s:
+            src = Source(name="The Hacker News", feed_url="https://test.invalid/thn6", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            excerpt = "CVE-2026-50001 and CVE-2026-50002 are exploited."  # 50003: context, not in the lede
+            kept = await self._row(s, src, "Old row, subject pin", before, ["CVE-2026-50001", "CVE-2026-50002", "CVE-2026-50003"], excerpt=excerpt)
+            kept.cve_id = "CVE-2026-50002"  # a subject, though not the rule's pick
+            context = await self._row(s, src, "Old row, context pin", before, ["CVE-2026-50001", "CVE-2026-50002", "CVE-2026-50003"], excerpt=excerpt)
+            context.cve_id = "CVE-2026-50003"  # a context CVE
+            unknown = await self._row(s, src, "Old row, no subject", before, ["CVE-2026-50004", "CVE-2026-50005"])
+            unknown.cve_id = "CVE-2026-50005"
+            for row in (kept, context, unknown):
+                row.first_seen_at = before
+            await s.commit()
+            self.assertEqual(await maintenance.repin_plan(s), {context.id: ("CVE-2026-50003", "CVE-2026-50001")})
+
     async def test_pinning_rule_dry_run_and_manual_repin(self):
         from app import cve_facts, maintenance
         from app.models import KevEntry

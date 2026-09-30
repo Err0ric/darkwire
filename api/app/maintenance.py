@@ -44,10 +44,11 @@ async def merges(session) -> None:
 
 
 async def repin_plan(session) -> dict[int, tuple[str, str]]:
-    """{row: (displayed now, displayed under the pinning rule)} for rows whose choice differs. The
-    rule is the one a new row gets (cve_facts.pick_pinned): subject CVEs by the row's stored
-    articles, named in the headline first, then KEV-listed, then the highest CVSS, then first
-    mentioned."""
+    """{row: (displayed now, what the check would display)} for rows that fail it. A row pinned
+    since the current rule (cve_facts.PIN_RULE_SINCE) must show the rule's pick (subject CVEs, named
+    in the headline first, then KEV-listed, then the highest CVSS, then first mentioned). A row
+    pinned before it is never re-ranked: it fails only when its pin is a context CVE (the row has
+    subject CVEs and the pin is not one of them)."""
     items = (
         await session.scalars(
             select(Item)
@@ -68,8 +69,11 @@ async def repin_plan(session) -> dict[int, tuple[str, str]]:
         cves = by_item.get(item.id, [])
         if len(cves) < 2:
             continue
-        pool = cve_facts.eligible(cves, cve_facts.row_subjects(item, cves))
+        subject = cve_facts.row_subjects(item, cves)
+        pool = cve_facts.eligible(cves, subject)
         best = cve_facts.rank(pool, kev, scores, item.headline)
+        if item.first_seen_at < cve_facts.PIN_RULE_SINCE and (not subject or item.cve_id in subject):
+            continue  # pinned under an earlier rule, and not on a context CVE
         if best != item.cve_id:
             if REPIN_MANUAL.get(item.id) == item.cve_id:
                 # Pinned by hand, signed off: not the rule's pick, and not a change to make.
@@ -298,6 +302,7 @@ STEPS = [
     ("repin_dry_run_v2", repin_dry_run),
     ("repin_793", repin_manual),
     ("repin_dry_run_v3", repin_dry_run),
+    ("repin_dry_run_v4", repin_dry_run),
     ("explain_873_v1", explain_873),
     ("summary_versions_v1", summary_versions),
     ("resummarize_933_v1", resummarize_933),

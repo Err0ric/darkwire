@@ -16,7 +16,6 @@ from sqlalchemy.orm import selectinload
 from app import article_cves, cve_facts, facts_backfill, fetcher, ics, jobstate, summaries, versions
 from app.config import get_settings
 from app.models import Cve, Item, ItemCve, ItemSource, PatchStatus, Stream
-from app.tagging import row_subject_cves
 
 log = logging.getLogger(__name__)
 
@@ -69,9 +68,13 @@ async def repin_plan(session) -> dict[int, tuple[str, str]]:
         cves = by_item.get(item.id, [])
         if len(cves) < 2:
             continue
-        pool = cve_facts.eligible(cves, row_subject_cves(item.sources))
+        pool = cve_facts.eligible(cves, cve_facts.row_subjects(item, cves))
         best = cve_facts.rank(pool, kev, scores, item.headline)
         if best != item.cve_id:
+            if REPIN_MANUAL.get(item.id) == item.cve_id:
+                # Pinned by hand, signed off: not the rule's pick, and not a change to make.
+                log.info("maintenance: repin (dry run): item %d keeps %s (pinned by hand; the rule picks %s)", item.id, item.cve_id, best)
+                continue
             changes[item.id] = (item.cve_id, best)
     return changes
 
@@ -83,7 +86,7 @@ async def repin_dry_run(session) -> dict[int, tuple[str, str]]:
     for item_id, (now, new) in sorted(changes.items()):
         item = await session.scalar(select(Item).where(Item.id == item_id).options(selectinload(Item.sources)))
         log.info("maintenance: repin (dry run): item %d %s -> %s | subject %s | %s", item_id, now, new,
-                 ",".join(sorted(row_subject_cves(item.sources))) or "none", item.headline[:90])
+                 ",".join(sorted(cve_facts.row_subjects(item, [now, new]))) or "none", item.headline[:90])
     log.info("maintenance: repin (dry run): %d rows would change%s; nothing written", len(changes),
              " (STOP: expected 0)" if changes else "")
     return changes
@@ -294,6 +297,7 @@ STEPS = [
     ("merge_834_1", merges),
     ("repin_dry_run_v2", repin_dry_run),
     ("repin_793", repin_manual),
+    ("repin_dry_run_v3", repin_dry_run),
     ("explain_873_v1", explain_873),
     ("summary_versions_v1", summary_versions),
     ("resummarize_933_v1", resummarize_933),

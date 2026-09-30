@@ -230,6 +230,44 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"item {ids[1]} | removed affected = '2.76 million living individuals'", text)
         self.assertIn("2 live rows checked, 2 facts removed", text)
 
+    async def test_pinning_fallbacks_first_linked_and_alert_rows(self):
+        # Rows 792, 933 and 85 in the 2026-09-30 dry run.
+        from app import maintenance
+
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            src = Source(name="The Hacker News", feed_url="https://test.invalid/thn4", stream=Stream.main)
+            cisa = Source(name="CISA", feed_url="https://test.invalid/cisa4", stream=Stream.main)
+            s.add_all([src, cisa])
+            await s.flush()
+            # No subject in the stored text: the first linked CVE, not the KEV-listed or higher one.
+            plain = await self._row(s, src, "SharePoint Flaw Initially Listed as Spoofing Enables RCE", now,
+                                    ["CVE-2026-65660", "CVE-2026-55040"])
+            # A KEV alert row: all four are subjects, though its excerpt names one.
+            alert = await self._row(s, cisa, "CISA Adds Four Known Exploited Vulnerabilities to Catalog", now,
+                                    ["CVE-2026-93952", "CVE-2026-94127", "CVE-2026-94128", "CVE-2026-94129"],
+                                    excerpt="CVE-2026-94127 Example Vulnerability")
+            alert.primary_url = "https://www.cisa.gov/news-events/alerts/2026/09/29/cisa-adds-four"
+            (await s.scalar(select(ItemSource).where(ItemSource.item_id == alert.id))).url = alert.primary_url
+            (await s.get(Cve, "CVE-2026-55040")).base_score = 9.8
+            (await s.get(Cve, "CVE-2026-93952")).base_score = 9.1
+            (await s.get(Cve, "CVE-2026-94127")).base_score = 7.5
+            s.add(KevEntry(cve_id="CVE-2026-55040", vendor="Microsoft", product="SharePoint", date_added=now.date()))
+            # Pinned by hand (signed off): the dry run leaves it out.
+            manual = await self._row(s, src, "MikroTrick chain", now, ["CVE-2026-86060", "CVE-2026-67279"],
+                                     excerpt="CVE-2026-86060 lets attackers in.")
+            manual.cve_id = "CVE-2026-67279"
+            await s.commit()
+            self.addCleanup(setattr, maintenance, "REPIN_MANUAL", maintenance.REPIN_MANUAL)
+            maintenance.REPIN_MANUAL = {manual.id: "CVE-2026-67279"}
+            self.assertEqual(await maintenance.repin_plan(s), {})
+            # And the roll-up, picking for a row with none, uses the same fallback.
+            p = await s.get(Item, plain.id)
+            p.cve_id = None
+            await s.commit()
+            await enrich.roll_up(s)
+            self.assertEqual((await s.get(Item, plain.id)).cve_id, "CVE-2026-65660")
+
     async def test_pinning_rule_dry_run_and_manual_repin(self):
         from app import cve_facts, maintenance
         from app.models import KevEntry

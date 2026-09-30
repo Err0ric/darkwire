@@ -5,8 +5,8 @@ published(): when a CVE was published, for telling a context mention from a curr
 (cveawg.mitre.org, cveMetadata.datePublished); None when neither has one, which callers treat as
 recent. Answers are cached for the life of the process.
 
-pick_pinned(): the CVE a new row displays, among the article's subject CVEs only (all of them
-only when the stored text shows no subject at all): one named in the headline first, then a
+pick_pinned(): the CVE a new row displays, among the article's subject CVEs only (the first
+linked one when the stored text shows no subject; every CVE of a KEV alert row, row_subjects()): one named in the headline first, then a
 KEV-listed one, then the highest CVSS by the scores already stored, then the first mentioned
 (rank()). Pins are sticky: set once, when the row gets its first CVE; roll-ups, merges and
 re-enrichment never move it. Only an explicit, signed-off re-pin (app/maintenance.py) does.
@@ -19,9 +19,9 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import nvd
+from app import dedupe, nvd
 from app.models import Cve, KevEntry
-from app.tagging import extract_cves
+from app.tagging import extract_cves, row_subject_cves
 
 log = logging.getLogger(__name__)
 
@@ -71,9 +71,22 @@ async def published(session: AsyncSession, http: httpx.AsyncClient, cves: list[s
 
 
 def eligible(cves: list[str], subject: set[str]) -> list[str]:
-    """The subject CVEs of cves, in order; context CVEs never display. All of them only when the
-    stored text shows no subject at all (nothing to tell them apart by)."""
-    return [c for c in cves if c in subject] or list(cves)
+    """The subject CVEs of cves, in order; context CVEs never display. When the stored text shows
+    no subject at all, only the first linked CVE (the one that made it a CVE row)."""
+    return [c for c in cves if c in subject] or list(cves[:1])
+
+
+def row_subjects(item, cves: list[str]) -> set[str]:
+    """A row's subject CVEs: every CVE of a row a CISA KEV alert started (it holds exactly the
+    alert's CVEs); else the subject CVEs of its stored articles, plus the CVEs a KEV alert that
+    joined it lists."""
+    if dedupe.alert_led(item):
+        return set(cves)
+    subject = row_subject_cves(item.sources)
+    for s in item.sources:
+        if dedupe.is_kev_alert(s.title, s.url):
+            subject |= set(extract_cves(s.title or "", s.excerpt or "", s.body or "")) & set(cves)
+    return subject
 
 
 def rank(pool: list[str], kev: set[str], scores: dict[str, float | None], headline: str = "") -> str:

@@ -297,7 +297,7 @@ async def ingest_source(
             # cve_id: pinned once (cve_facts.pick_pinned); roll-ups and merges never move it.
             item = Item(
                 stream=Stream.main, headline=a.title, primary_url=a.url,
-                vendor_id=vendor_id, category=category, cve_id=await cve_facts.pick_pinned(session, cves, subject, a.title),
+                vendor_id=vendor_id, category=category, cve_id=await cve_facts.pick_pinned(session, cves, set(cves) if alert else subject, a.title),
                 last_event_at=a.published_at, last_event_kind="published", sources=[link], kev=alert,
             )
             session.add(item)

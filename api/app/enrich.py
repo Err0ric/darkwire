@@ -14,7 +14,7 @@ from app import advisories, article_cves, cve_facts, dedupe, epss, events, facts
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
-from app.tagging import row_subject_cves, says_unpatched
+from app.tagging import says_unpatched
 
 log = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ async def roll_up(session: AsyncSession) -> int:
         # CVE it no longer holds) gets one picked, by the same rule as a new row (cve_facts.rank).
         pinned = next((c for c in cves if c.id == item.cve_id), None)
         if pinned is None:
-            ids = cve_facts.eligible([c.id for c in cves], row_subject_cves(item.sources))
+            ids = cve_facts.eligible([c.id for c in cves], cve_facts.row_subjects(item, [c.id for c in cves]))
             best = cve_facts.rank(ids, {c.id for c in cves if c.kev}, {c.id: float(c.base_score) if c.base_score is not None else None for c in cves}, item.headline)
             pinned = next(c for c in cves if c.id == best)
         primary = pinned

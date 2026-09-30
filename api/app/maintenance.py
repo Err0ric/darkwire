@@ -320,6 +320,25 @@ async def remerge(session, expected: set[tuple[int, int]] | None = None, apply: 
     return pairs
 
 
+# Signed off 2026-09-30, single rows: {row: vendor slug}.
+VENDOR_FIXES = {902: "signal"}  # "Signal adds encypted local backup support to iOS, desktop apps" was Apple
+
+
+async def vendor_fixes(session) -> None:
+    from app.models import Vendor
+
+    for item_id, slug in VENDOR_FIXES.items():
+        item = await session.get(Item, item_id)
+        vendor = await session.scalar(select(Vendor).where(Vendor.slug == slug))
+        if item is None or vendor is None:
+            log.info("maintenance: vendor fix item %d -> %s skipped (%s)", item_id, slug, "row gone" if item is None else "no such vendor")
+            continue
+        old = await session.scalar(select(Vendor.slug).where(Vendor.id == item.vendor_id)) if item.vendor_id else None
+        log.info("maintenance: vendor fix item %d %s -> %s (signed off) | %s", item_id, old, slug, item.headline[:100])
+        item.vendor_id = vendor.id
+    await session.commit()
+
+
 async def apply_category_overrides(session) -> None:
     """tagging.CATEGORY_OVERRIDES written to their rows, each change logged. Runs once per version
     of the table (its step name carries a digest of it)."""
@@ -424,6 +443,7 @@ STEPS = [
     # Signed off 2026-09-30: only the OpenSSL pair; 906 -> 747 and 819 -> 1 are not merged.
     ("merge_910_907", lambda session: merges(session, [(910, 907)])),
     ("remerge_check_v2", lambda session: remerge(session, expected={(906, 747)}, apply=False)),
+    ("vendor_fix_902", vendor_fixes),
 ]
 
 

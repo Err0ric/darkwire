@@ -210,6 +210,20 @@ async def recategorize_rows(session) -> None:
     await session.commit()
 
 
+async def restore_25(session) -> None:
+    """Row 25 (a $351M crypto heist) was Breach from another article in its cluster; the v1
+    re-derivation read only its primary article and moved it to News. Back to Breach."""
+    from app.models import Category
+
+    item = await session.get(Item, 25)
+    if item is None:
+        log.info("maintenance: restore 25: row gone")
+        return
+    log.info("maintenance: restore 25: %s -> breach | %s", item.category.value, item.headline[:90])
+    item.category = Category.breach
+    await session.commit()
+
+
 STEPS = [
     ("merge_834_1", merges),
     ("repin_kev_first_v1", repin),
@@ -218,6 +232,7 @@ STEPS = [
     ("resummarize_933_v1", resummarize_933),
     ("recategorize_breach_v1", recategorize_breach),
     ("recategorize_rows_v2", recategorize_rows),
+    ("restore_25_breach", restore_25),
 ]
 
 

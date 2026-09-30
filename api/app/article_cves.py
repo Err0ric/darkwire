@@ -179,7 +179,7 @@ async def add_cves(session: AsyncSession, item: Item, cves: list[str], subject: 
         .on_conflict_do_nothing()
     )
     if item.cve_id is None:
-        item.cve_id = await cve_facts.pick_pinned(session, cves, subject)
+        item.cve_id = await cve_facts.pick_pinned(session, cves, subject, item.headline)
     if item.category == Category.news:
         item.category = guess_category(item.headline, "", True)
     log.info("article cves: item %d +%s, displays %s (%s)", item.id, ",".join(cves), item.cve_id, reason)
@@ -402,7 +402,7 @@ async def backfill(session: AsyncSession, apply: bool) -> dict:
             if apply:
                 await add_cves(session, item, plan.new, plan.subject, "backfill")
             else:
-                pinned = await cve_facts.pick_pinned(session, plan.new, plan.subject)
+                pinned = await cve_facts.pick_pinned(session, plan.new, plan.subject, item.headline)
                 log.info("article cves: %sitem %d +%s, displays %s | %s", prefix, item.id, ",".join(plan.new), pinned, item.headline[:90])
     if apply:
         await session.commit()

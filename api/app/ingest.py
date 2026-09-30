@@ -294,10 +294,10 @@ async def ingest_source(
             events.record(session, "cluster", cluster.headline, f"{len(cluster.sources)} sources", cluster.id)
             stored.merged += 1
         else:
-            # cve_id: the highest-scored subject CVE, pinned (enrich.roll_up); a merge never moves it.
+            # cve_id: pinned once (cve_facts.pick_pinned); roll-ups and merges never move it.
             item = Item(
                 stream=Stream.main, headline=a.title, primary_url=a.url,
-                vendor_id=vendor_id, category=category, cve_id=await cve_facts.pick_pinned(session, cves, subject),
+                vendor_id=vendor_id, category=category, cve_id=await cve_facts.pick_pinned(session, cves, subject, a.title),
                 last_event_at=a.published_at, last_event_kind="published", sources=[link], kev=alert,
             )
             session.add(item)

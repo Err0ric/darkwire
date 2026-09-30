@@ -14,7 +14,7 @@ from app import article_cves, cve_facts, dedupe, epss, events, facts_backfill, i
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
-from app.tagging import says_unpatched
+from app.tagging import row_subject_cves, says_unpatched
 
 log = logging.getLogger(__name__)
 
@@ -84,13 +84,13 @@ async def roll_up(session: AsyncSession) -> int:
     for item_id, cves in by_item.items():
         item = items[item_id]
         # The row's displayed CVE is pinned: set when the row got its first CVE, never moved by a
-        # merge or a later article. Only a row with none (or a stale pointer) gets one picked:
-        # KEV-listed first, then the highest score, then the CVE mentioned first (cve_facts.rank).
+        # merge, a later article or a score or KEV change. Only a row with none (or a pointer to a
+        # CVE it no longer holds) gets one picked, by the same rule as a new row (cve_facts.rank).
         pinned = next((c for c in cves if c.id == item.cve_id), None)
         if pinned is None:
-            ids = [c.id for c in cves]
-            best = cve_facts.rank(ids, {c.id for c in cves if c.kev}, {c.id: float(c.base_score) if c.base_score is not None else None for c in cves})
-            pinned = cves[ids.index(best)]
+            ids = cve_facts.eligible([c.id for c in cves], row_subject_cves(item.sources))
+            best = cve_facts.rank(ids, {c.id for c in cves if c.kev}, {c.id: float(c.base_score) if c.base_score is not None else None for c in cves}, item.headline)
+            pinned = next(c for c in cves if c.id == best)
         primary = pinned
         kev_dates = [c.kev_added_at for c in cves if c.kev and c.kev_added_at]
 

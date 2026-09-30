@@ -230,8 +230,8 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"item {ids[1]} | removed affected = '2.76 million living individuals'", text)
         self.assertIn("2 live rows checked, 2 facts removed", text)
 
-    async def test_repin_prefers_kev_and_applies_only_the_expected_change(self):
-        from app import maintenance
+    async def test_pinning_rule_dry_run_and_manual_repin(self):
+        from app import cve_facts, maintenance
         from app.models import KevEntry
 
         now = datetime.now(UTC)
@@ -239,18 +239,30 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             src = Source(name="The Hacker News", feed_url="https://test.invalid/thn3", stream=Stream.main)
             s.add(src)
             await s.flush()
-            row = await self._row(s, src, "MikroTrick chain", now, ["CVE-2026-86060", "CVE-2026-67279", "CVE-2026-67276"])
+            excerpt = "CVE-2026-86060 and CVE-2026-67279 chain into a takeover. It recalls CVE-2026-67276."
+            row = await self._row(s, src, "MikroTrick chain", now, ["CVE-2026-86060", "CVE-2026-67279", "CVE-2026-67276"], excerpt=excerpt)
             (await s.get(Cve, "CVE-2026-86060")).base_score = 9.8
             (await s.get(Cve, "CVE-2026-67279")).base_score = 6.5
+            (await s.get(Cve, "CVE-2026-67276")).base_score = 10.0
             s.add(KevEntry(cve_id="CVE-2026-67279", vendor="MikroTik", product="RouterOS", date_added=now.date()))
             await s.commit()
-            self.addCleanup(setattr, maintenance, "REPIN_EXPECTED", maintenance.REPIN_EXPECTED)
-            self.assertEqual(await maintenance.repin_plan(s), {row.id: ("CVE-2026-86060", "CVE-2026-67279")})
-            maintenance.REPIN_EXPECTED = {999: "CVE-2026-1111"}
-            self.assertFalse(await maintenance.repin(s))  # not the signed-off set: nothing written
+            cves = ["CVE-2026-86060", "CVE-2026-67279", "CVE-2026-67276"]
+            subject = {"CVE-2026-86060", "CVE-2026-67279"}
+            # KEV-listed subject over the higher score; the 10.0 context CVE is never eligible.
+            self.assertEqual(await cve_facts.pick_pinned(s, cves, subject), "CVE-2026-67279")
+            # Named in the headline beats KEV.
+            self.assertEqual(await cve_facts.pick_pinned(s, cves, subject, "Critical CVE-2026-86060 in RouterOS"), "CVE-2026-86060")
+            # The dry run reports the row (displays 86060, the rule picks 67279) and writes nothing.
+            with self.assertLogs("app.maintenance", "INFO") as logs:
+                self.assertEqual(await maintenance.repin_dry_run(s), {row.id: ("CVE-2026-86060", "CVE-2026-67279")})
+            self.assertIn("1 rows would change (STOP: expected 0); nothing written", " ".join(logs.output))
             self.assertEqual((await s.get(Item, row.id)).cve_id, "CVE-2026-86060")
-            maintenance.REPIN_EXPECTED = {row.id: "CVE-2026-67279"}
-            self.assertTrue(await maintenance.repin(s))
+            # Sticky: a roll-up leaves the pin alone.
+            await enrich.roll_up(s)
+            self.assertEqual((await s.get(Item, row.id)).cve_id, "CVE-2026-86060")
+            self.addCleanup(setattr, maintenance, "REPIN_MANUAL", maintenance.REPIN_MANUAL)
+            maintenance.REPIN_MANUAL = {row.id: "CVE-2026-67279", 999999: "CVE-2026-67279"}
+            await maintenance.repin_manual(s)
         async with self.Session() as s:
             self.assertEqual((await s.get(Item, row.id)).cve_id, "CVE-2026-67279")
 

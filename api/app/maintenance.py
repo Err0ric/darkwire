@@ -26,9 +26,9 @@ STATE = "maintenance"
 # about CVE-2026-35273). (merged, survivor).
 MERGES = [(834, 1)]
 
-# Re-pin under the KEV-first rule (cve_facts.rank): signed off to apply only if this is the whole
-# change set; anything else is logged and nothing is written.
-REPIN_EXPECTED = {793: "CVE-2026-67279"}
+# Signed off 2026-09-30: row 793 (the MikroTrick chain) displays CVE-2026-67279, the KEV-listed CVE
+# of the chain, set by hand. (row, CVE); the row must hold the CVE.
+REPIN_MANUAL = {793: "CVE-2026-67279"}
 
 
 async def merges(session) -> None:
@@ -45,8 +45,10 @@ async def merges(session) -> None:
 
 
 async def repin_plan(session) -> dict[int, tuple[str, str]]:
-    """{row: (displayed now, displayed under the KEV-first rule)} for rows whose choice changes.
-    The pool is the row's subject CVEs by its stored articles, else all of its CVEs."""
+    """{row: (displayed now, displayed under the pinning rule)} for rows whose choice differs. The
+    rule is the one a new row gets (cve_facts.pick_pinned): subject CVEs by the row's stored
+    articles, named in the headline first, then KEV-listed, then the highest CVSS, then first
+    mentioned."""
     items = (
         await session.scalars(
             select(Item)
@@ -67,29 +69,36 @@ async def repin_plan(session) -> dict[int, tuple[str, str]]:
         cves = by_item.get(item.id, [])
         if len(cves) < 2:
             continue
-        subject = row_subject_cves(item.sources)
-        pool = [c for c in cves if c in subject] or cves
-        best = cve_facts.rank(pool, kev, scores)
+        pool = cve_facts.eligible(cves, row_subject_cves(item.sources))
+        best = cve_facts.rank(pool, kev, scores, item.headline)
         if best != item.cve_id:
             changes[item.id] = (item.cve_id, best)
     return changes
 
 
-async def repin(session) -> bool:
-    """Dry run, then apply only when the change set is exactly REPIN_EXPECTED. True if applied."""
+async def repin_dry_run(session) -> dict[int, tuple[str, str]]:
+    """Dry run only: pins are sticky, so this writes nothing; it logs every row the rule would pick
+    differently (expected: none), with the row's subject CVEs and headline."""
     changes = await repin_plan(session)
     for item_id, (now, new) in sorted(changes.items()):
-        log.info("maintenance: repin (dry run): item %d %s -> %s", item_id, now, new)
-    log.info("maintenance: repin (dry run): %d rows would change", len(changes))
-    if {k: v[1] for k, v in changes.items()} != REPIN_EXPECTED:
-        log.info("maintenance: repin STOPPED: the change set is not exactly %s; nothing written", REPIN_EXPECTED)
-        return False
-    for item_id, (_, new) in changes.items():
+        item = await session.scalar(select(Item).where(Item.id == item_id).options(selectinload(Item.sources)))
+        log.info("maintenance: repin (dry run): item %d %s -> %s | subject %s | %s", item_id, now, new,
+                 ",".join(sorted(row_subject_cves(item.sources))) or "none", item.headline[:90])
+    log.info("maintenance: repin (dry run): %d rows would change%s; nothing written", len(changes),
+             " (STOP: expected 0)" if changes else "")
+    return changes
+
+
+async def repin_manual(session) -> None:
+    for item_id, cve in REPIN_MANUAL.items():
         item = await session.get(Item, item_id)
-        item.cve_id = new  # the next roll-up copies its score, severity and fix status
+        held = set(await session.scalars(select(ItemCve.cve_id).where(ItemCve.item_id == item_id)))
+        if item is None or cve not in held:
+            log.info("maintenance: repin item %d -> %s skipped (%s)", item_id, cve, "row gone" if item is None else "the row does not hold it")
+            continue
+        log.info("maintenance: repin item %d %s -> %s (signed off)", item_id, item.cve_id, cve)
+        item.cve_id = cve  # the next roll-up copies its score, severity and fix status
     await session.commit()
-    log.info("maintenance: repin applied: %s", ", ".join(f"item {k} -> {v}" for k, v in REPIN_EXPECTED.items()))
-    return True
 
 
 async def explain_873(session) -> None:
@@ -226,7 +235,8 @@ async def restore_25(session) -> None:
 
 STEPS = [
     ("merge_834_1", merges),
-    ("repin_kev_first_v1", repin),
+    ("repin_dry_run_v2", repin_dry_run),
+    ("repin_793", repin_manual),
     ("explain_873_v1", explain_873),
     ("summary_versions_v1", summary_versions),
     ("resummarize_933_v1", resummarize_933),

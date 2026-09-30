@@ -5,9 +5,11 @@ published(): when a CVE was published, for telling a context mention from a curr
 (cveawg.mitre.org, cveMetadata.datePublished); None when neither has one, which callers treat as
 recent. Answers are cached for the life of the process.
 
-pick_pinned(): the CVE a new row displays (enrich.roll_up never moves it afterwards), among the
-article's subject CVEs (all of them when none is a subject): a KEV-listed one first, then the
-highest CVSS by the scores already stored, then the first mentioned (rank()).
+pick_pinned(): the CVE a new row displays, among the article's subject CVEs only (all of them
+only when the stored text shows no subject at all): one named in the headline first, then a
+KEV-listed one, then the highest CVSS by the scores already stored, then the first mentioned
+(rank()). Pins are sticky: set once, when the row gets its first CVE; roll-ups, merges and
+re-enrichment never move it. Only an explicit, signed-off re-pin (app/maintenance.py) does.
 """
 
 import logging
@@ -19,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import nvd
 from app.models import Cve, KevEntry
+from app.tagging import extract_cves
 
 log = logging.getLogger(__name__)
 
@@ -67,9 +70,17 @@ async def published(session: AsyncSession, http: httpx.AsyncClient, cves: list[s
     return out
 
 
-def rank(pool: list[str], kev: set[str], scores: dict[str, float | None]) -> str:
-    """The displayed CVE of a pool: KEV-listed first, then the highest CVSS, then the first mentioned."""
-    return min(pool, key=lambda c: (c not in kev, -(scores.get(c) if scores.get(c) is not None else -1), pool.index(c)))
+def eligible(cves: list[str], subject: set[str]) -> list[str]:
+    """The subject CVEs of cves, in order; context CVEs never display. All of them only when the
+    stored text shows no subject at all (nothing to tell them apart by)."""
+    return [c for c in cves if c in subject] or list(cves)
+
+
+def rank(pool: list[str], kev: set[str], scores: dict[str, float | None], headline: str = "") -> str:
+    """The displayed CVE of a pool: named in the headline first, then KEV-listed, then the highest
+    CVSS, then the first mentioned."""
+    named = set(extract_cves(headline))
+    return min(pool, key=lambda c: (c not in named, c not in kev, -(scores.get(c) if scores.get(c) is not None else -1), pool.index(c)))
 
 
 async def kev_listed(session: AsyncSession, cves: list[str]) -> set[str]:
@@ -77,9 +88,9 @@ async def kev_listed(session: AsyncSession, cves: list[str]) -> set[str]:
     return listed | set(await session.scalars(select(Cve.id).where(Cve.id.in_(cves), Cve.kev.is_(True))))
 
 
-async def pick_pinned(session: AsyncSession, cves: list[str], subject: set[str]) -> str | None:
+async def pick_pinned(session: AsyncSession, cves: list[str], subject: set[str], headline: str = "") -> str | None:
     if not cves:
         return None
-    pool = [c for c in cves if c in subject] or list(cves)
+    pool = eligible(cves, subject)
     scores = dict((await session.execute(select(Cve.id, Cve.base_score).where(Cve.id.in_(pool)))).all())
-    return rank(pool, await kev_listed(session, pool), {c: float(s) if s is not None else None for c, s in scores.items()})
+    return rank(pool, await kev_listed(session, pool), {c: float(s) if s is not None else None for c, s in scores.items()}, headline)

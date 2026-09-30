@@ -12,6 +12,12 @@
    wire2: feed plus one rail (1024px+), wire3: stats rail, feed, context rail (1600px+). */
 @custom-variant wire2 (@media (min-width: 1024px) and (orientation: landscape));
 @custom-variant wire3 (@media (min-width: 1600px) and (orientation: landscape));
+/* The context rail's Elsewhere list on taller wire3 screens: 6 items, 9 from rail-tall, 12 from
+   rail-taller, set so Services still fits under it at 1080, 1440 and 2160px (Rail.tsx). Measured
+   2026-09-30 on production data: the whole rail ends at 1134px with 9 items and 1290px with 12;
+   1200 and 1400 leave room for two-line headlines and an impacted service. */
+@custom-variant rail-tall (@media (min-width: 1600px) and (orientation: landscape) and (min-height: 1200px));
+@custom-variant rail-taller (@media (min-width: 1600px) and (orientation: landscape) and (min-height: 1400px));
 
 /* Palette from CLAUDE.md. Components use these through the Tailwind tokens below
    (bg-bg, text-fg-2, border-hairline, ...). Never hardcode colors in components. */

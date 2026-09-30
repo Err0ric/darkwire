@@ -8,7 +8,11 @@ import { NewDot, type DotState } from "@/lib/dots"
 import { age, useNow } from "@/lib/time"
 
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const
-const ELSEWHERE_SHOWN = 6
+// Elsewhere items by screen height, in CSS only (the rail-tall / rail-taller variants in
+// globals.css): all are rendered, the extra ones hidden until the screen is tall enough.
+const ELSEWHERE_SHOWN = [6, 9, 12] as const
+const ELSEWHERE_ITEM = ["", "hidden rail-tall:block", "hidden rail-taller:block"] as const
+const ELSEWHERE_MORE = ["rail-tall:hidden", "hidden rail-tall:block rail-taller:hidden", "hidden rail-taller:block"] as const
 
 function Section({
   title,
@@ -35,8 +39,9 @@ function Section({
 // Model not usable (no key, bad key, out of quota, failing): new rows arrive without summaries.
 const SUMMARIES_PAUSED: ReadonlySet<string> = new Set(["no_key", "auth_failing", "quota", "error"])
 
-/** Six most recent Elsewhere items: headline (2 lines) over "source · age · topic"; new ones get
- * the new-row dot. "+ N more" opens the wire's Elsewhere tab (all of the last 7 days). */
+/** The most recent Elsewhere items (6, then 9 and 12 on taller wide screens): headline (2 lines)
+ * over "source · age · topic"; new ones get the new-row dot. "+ N more" counts what is hidden at
+ * the current height and opens the wire's Elsewhere tab (all of the last 7 days). */
 export function Elsewhere({
   elsewhere,
   dots,
@@ -49,19 +54,19 @@ export function Elsewhere({
   onMore?: () => void
 }) {
   const now = useNow()
-  const shown = elsewhere.slice(0, ELSEWHERE_SHOWN)
+  const shown = elsewhere.slice(0, ELSEWHERE_SHOWN[2])
   // The subtitle: this week's three most common topics.
   const counts = new Map<string, number>()
   for (const e of elsewhere) if (e.topic) counts.set(e.topic, (counts.get(e.topic) ?? 0) + 1)
   const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 3).map(([t]) => t)
-  const more = elsewhere.length - shown.length
   return (
     <Section title="Elsewhere" aside={top.length ? top.join(" · ") : undefined}>
       <ul className="mt-3">
-        {shown.map((e) => {
+        {shown.map((e, i) => {
           const dot = dots?.get(e.id)
+          const tier = ELSEWHERE_SHOWN.findIndex((n) => i < n)
           return (
-            <li key={e.id} className="relative -mx-2 mb-1.5 px-2 py-1 hover:bg-surface">
+            <li key={e.id} className={cn("relative -mx-2 mb-1.5 px-2 py-1 hover:bg-surface", ELSEWHERE_ITEM[tier])}>
               {dot && <NewDot state={dot} className="top-[12px] -left-[7px]" />}
               <a
                 href={e.url}
@@ -80,17 +85,21 @@ export function Elsewhere({
           )
         })}
         {elsewhere.length === 0 && <li className="text-dim-text">Nothing yet.</li>}
-        {more > 0 && onMore && (
-          <li className="-mx-2 px-2">
-            <button
-              type="button"
-              onClick={onMore}
-              className="max-md:tap text-dim-text outline-none hover:text-fg-2 focus-visible:text-fg-2"
-            >
-              + {more} more
-            </button>
-          </li>
-        )}
+        {onMore &&
+          ELSEWHERE_SHOWN.map((n, tier) => {
+            const more = elsewhere.length - Math.min(n, elsewhere.length)
+            return more > 0 ? (
+              <li key={n} className={cn("-mx-2 px-2", ELSEWHERE_MORE[tier])}>
+                <button
+                  type="button"
+                  onClick={onMore}
+                  className="max-md:tap text-dim-text outline-none hover:text-fg-2 focus-visible:text-fg-2"
+                >
+                  + {more} more
+                </button>
+              </li>
+            ) : null
+          })}
       </ul>
     </Section>
   )

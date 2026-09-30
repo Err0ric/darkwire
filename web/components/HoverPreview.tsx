@@ -66,11 +66,17 @@ export function useHoverPreview(summary: string | null, enabled: boolean) {
   useEffect(() => {
     if (!at) return
     const off = () => hide()
+    // Esc closes a card opened by hover too, where focus is not on the link.
+    const esc = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") hide()
+    }
     window.addEventListener("scroll", off, { passive: true })
     window.addEventListener("resize", off)
+    window.addEventListener("keydown", esc)
     return () => {
       window.removeEventListener("scroll", off)
       window.removeEventListener("resize", off)
+      window.removeEventListener("keydown", esc)
     }
   }, [at, hide])
 

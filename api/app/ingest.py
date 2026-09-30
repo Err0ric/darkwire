@@ -32,6 +32,7 @@ from app.tagging import (
     guess_category,
     is_ad,
     row_subject_cves,
+    strip_emoji,
     subject_cves,
     subject_reasons,
 )
@@ -118,7 +119,7 @@ async def fetch(client: httpx.AsyncClient, source: Source, conditional: bool = T
 
 def to_article(entry, now: datetime) -> Article | None:
     url = (entry.get("link") or "").strip()
-    title = clean_text(entry.get("title"))
+    title = strip_emoji(clean_text(entry.get("title")))  # headlines never carry emoji
     if not url or not title:
         return None
     t = entry.get("published_parsed") or entry.get("updated_parsed")

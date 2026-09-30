@@ -233,6 +233,25 @@ async def resummarize(session, ids: list[int] | None = None) -> None:
     await session.commit()
 
 
+async def strip_headline_emoji(session) -> None:
+    """Stored headlines and article titles (wire and Elsewhere) without emoji, as ingest now
+    writes them (tagging.strip_emoji). Each change logged."""
+    from app.tagging import strip_emoji
+
+    rows = changed = 0
+    for model, column in ((Item, Item.headline), (ItemSource, ItemSource.title)):
+        for obj in (await session.scalars(select(model))).all():
+            rows += 1
+            before = getattr(obj, column.key)
+            after = strip_emoji(before)
+            if after and after != before:
+                log.info("maintenance: emoji: %s %d %r -> %r", model.__tablename__, obj.id, before, after)
+                setattr(obj, column.key, after)
+                changed += 1
+    await session.commit()
+    log.info("maintenance: emoji: %d of %d headlines and titles changed", changed, rows)
+
+
 async def recategorize_breach(session) -> None:
     """Rows of the last 14 days tagged Breach, re-derived under the incident rule
     (tagging.guess_category); each change logged. Other categories are left alone."""
@@ -317,6 +336,7 @@ STEPS = [
     ("resummarize_747_v1", lambda session: resummarize(session, [747])),
     # Row 873 again: an ICS advisory now takes the model summary when it passes every check.
     ("refresh_873_v2", refresh_873),
+    ("strip_headline_emoji_v1", strip_headline_emoji),
 ]
 
 

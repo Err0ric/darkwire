@@ -19,6 +19,21 @@ def clean_text(raw: str | None) -> str:
     return _WS_RE.sub(" ", html.unescape(_TAG_RE.sub(" ", raw))).strip()
 
 
+# Emoji and their joiners: pictographs, flags, skin tones and tag sequences (U+1F000-1FAFF,
+# U+E0020-E007F), the symbol and dingbat blocks (U+2600-27BF), the few emoji in other blocks, and
+# the variation selector and zero-width joiner that bind them. Letters, punctuation, arrows, and
+# signs like the trade mark stay.
+_EMOJI = re.compile(
+    "[\U0001F000-\U0001FAFF\U000E0020-\U000E007F☀-➿⌚⌛⏩-⏳⏸-⏺"
+    "⭐⭕⬛⬜️‍⃣]"
+)
+
+
+def strip_emoji(text: str) -> str:
+    """The text without emoji, spaces collapsed ("🧮 Hey Siri, ..." -> "Hey Siri, ...")."""
+    return _WS_RE.sub(" ", _EMOJI.sub("", text or "")).strip()
+
+
 def first_paragraph(raw: str | None, limit: int = 1000) -> str:
     if not raw:
         return ""

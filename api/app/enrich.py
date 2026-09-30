@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import article_cves, cve_facts, dedupe, epss, events, facts_backfill, ics, kev, maintenance, nvd, summaries, topics
+from app import advisories, article_cves, cve_facts, dedupe, epss, events, facts_backfill, ics, kev, maintenance, nvd, summaries, topics
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
@@ -156,6 +156,12 @@ async def run_enrich() -> None:
             counts["escalated"] = await roll_up(session)
         except Exception:
             log.exception("enrich: roll-up failed")
+            await session.rollback()
+        try:
+            # CISA and vendor advisories read once more 24-48h after the first read.
+            counts["advisories"] = sum((await advisories.run(session)).values())
+        except Exception:
+            log.exception("enrich: advisories failed")
             await session.rollback()
         try:
             counts["ics"] = await ics.summarize(session)

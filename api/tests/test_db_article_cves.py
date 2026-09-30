@@ -415,6 +415,52 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(item.cve_id, "CVE-2026-67279")
             self.assertEqual(float(item.cvss), 6.5)
 
+    async def test_advisories_are_read_once_more_24_to_48h_later(self):
+        from unittest import mock
+
+        from app import advisories
+        from tests.test_advisories import CORRECTED, FIRST
+
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            cisa = Source(name="CISA", feed_url="https://test.invalid/cisa", stream=Stream.main)
+            news = Source(name="BleepingComputer", feed_url="https://test.invalid/bc", stream=Stream.main)
+            s.add_all([cisa, news])
+            await s.flush()
+            await self._row(s, cisa, "MikroTik RouterOS", now, ["CVE-2026-84411"])
+            other = await self._row(s, news, "MikroTik flaw exploited", now, ["CVE-2026-84411"])
+            await s.commit()
+
+        pages = {"text": FIRST}
+        refreshed = []
+
+        async def fake_text(client, url):
+            return pages["text"]
+
+        async def fake_refresh(session, item, fetched, reason):
+            refreshed.append((item.id, list(fetched.values()), reason))
+
+        with mock.patch.object(advisories.fetcher, "article_text", fake_text), \
+                mock.patch.object(advisories, "refresh", fake_refresh):
+            async with self.Session() as s:
+                self.assertEqual((await advisories.run(s, now))["read"], 1)  # the CISA source only
+                # Not due yet at 23h; nothing changed at 30h; nothing is read a third time.
+                self.assertEqual(await advisories.run(s, now + timedelta(hours=23)), {"read": 0, "rechecked": 0, "changed": 0, "unreadable": 0})
+                self.assertEqual((await advisories.run(s, now + timedelta(hours=30)))["rechecked"], 1)
+                self.assertEqual(refreshed, [])
+            # A second advisory row, corrected between its reads: refreshed once, logged.
+            async with self.Session() as s:
+                src2 = await s.scalar(select(ItemSource).where(ItemSource.item_id == other.id))
+                src2.source_id = (await s.scalar(select(Source.id).where(Source.name == "CISA")))
+                src2.advisory_read_at, src2.advisory_digest = now - timedelta(hours=25), advisories.digest(FIRST)
+                await s.commit()
+                pages["text"] = CORRECTED
+                with self.assertLogs("app.advisories", "INFO") as logs:
+                    self.assertEqual((await advisories.run(s, now))["changed"], 1)
+                self.assertIn("7.24 or later", "\n".join(logs.output))
+                self.assertEqual(refreshed, [(other.id, [CORRECTED], "advisory changed")])
+                self.assertEqual((await advisories.run(s, now + timedelta(hours=1)))["changed"], 0)
+
     async def test_vendor_fix_data_wins_over_an_unpatched_headline(self):
         # Row 747 (2026-09-30): "Two Unpatched Citrix NetScaler RCE Zero-Days", while NVD's CPE
         # ranges already carried Citrix's fixed builds. The other CVE has no fix data: no fix.

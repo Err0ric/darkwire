@@ -592,6 +592,9 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         return 0
 
     fetched = await _fetch_articles(todo)
+    from app import advisories  # it imports this module
+
+    advisories.note_reads(todo, fetched)  # the first read of any advisory fetched here
     material = {item.id: _articles(item, fetched.get(item.id)) for item in todo}
     results = await _run(
         session,

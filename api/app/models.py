@@ -236,6 +236,11 @@ class ItemSource(Base):
     body: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # A CISA or vendor advisory: when it was first read, a digest of its fix and affected
+    # sentences then (never the text), and when it was read once more (app/advisories.py).
+    advisory_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    advisory_digest: Mapped[str | None] = mapped_column(String(64))
+    advisory_rechecked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     item: Mapped[Item] = relationship(back_populates="sources")
     source: Mapped[Source] = relationship()

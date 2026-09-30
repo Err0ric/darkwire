@@ -125,5 +125,21 @@ class VendorBackedFixClaims(unittest.TestCase):
         self.assertEqual(fix_vendor(row("https://www.bleepingcomputer.com/x", "", PatchStatus.patched)), "Cisco")
 
 
+class PatchedRows(unittest.TestCase):
+    def test_unpatched_wording_goes_once_vendor_data_says_patched(self):
+        # Row 747 (2026-09-30), written before Citrix's fixed builds reached NVD.
+        said = "Two unpatched remote code execution zero-days in Citrix NetScaler ADC and Gateway appliances are under active exploitation."
+        self.assertEqual(
+            review_summary(said, patched=True),
+            ("Two remote code execution zero-days in Citrix NetScaler ADC and Gateway appliances are under active exploitation.", "ok"),
+        )
+        self.assertEqual(review_summary("Unpatched NetScaler appliances are under attack by several groups this week.", patched=True)[0],
+                         "NetScaler appliances are under attack by several groups this week.")
+        two = said + " No patch is available yet for either flaw."
+        self.assertEqual(review_summary(two, patched=True)[0], review_summary(said, patched=True)[0])
+        # Without vendor fix data the wording stays.
+        self.assertEqual(review_summary(said), (said, "ok"))
+
+
 if __name__ == "__main__":
     unittest.main()

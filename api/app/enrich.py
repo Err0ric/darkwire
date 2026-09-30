@@ -124,7 +124,13 @@ async def roll_up(session: AsyncSession) -> int:
         # A CISA KEV alert on the row counts before the hourly catalog poll catches up.
         item.kev = bool(kev_dates) or any(c.kev for c in cves) or dedupe.has_alert(item.sources)
         item.epss = primary.epss
-        item.patch_status = status or PatchStatus.unverified
+        new_status = status or PatchStatus.unverified
+        if item.patch_status == PatchStatus.no_fix and new_status == PatchStatus.patched and item.summary:
+            # A fix arrived: a summary written while there was none may say "unpatched". Summarized
+            # again once, through the "sources grew" path (the old one stays if that fails).
+            log.info("enrich: item %d no fix -> patched, summary queued again: %r", item.id, item.summary)
+            item.summary_sources, item.summarized_at = 0, datetime(2000, 1, 1, tzinfo=UTC)
+        item.patch_status = new_status
         item.patch_url = url
     await session.commit()
     return escalated

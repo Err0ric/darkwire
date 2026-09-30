@@ -36,6 +36,7 @@ from sqlalchemy.orm import selectinload
 from app import article_cves, events, facts, fetcher, ics, jobstate, versions
 from app.config import get_settings
 from app.models import Item, ItemCve, ItemSource, PatchStatus, Stream
+from app.tagging import says_unpatched
 
 log = logging.getLogger(__name__)
 
@@ -252,6 +253,15 @@ def _strip_fix_claims(sentence: str, material: str) -> str:
     return text + "."
 
 
+def _without_unpatched(sentence: str) -> str:
+    """The sentence without the adjective "unpatched"; "" when it still says there is no fix
+    ("no patch is available", "not yet fixed")."""
+    out = re.sub(r"\bunpatched\s+", "", sentence, flags=re.I)
+    if out != sentence and out[:1].islower() and sentence[:1].isupper():
+        out = out[0].upper() + out[1:]
+    return "" if says_unpatched(out) else out
+
+
 # A clause's first word that reads as ordinary prose once "<Vendor> says" goes before it.
 _LOWER_FIRST = frozenset(
     "a an the fixed patched patches fixes updates updated update security software firmware version versions "
@@ -323,6 +333,10 @@ def review_summary(raw: str | None, patched: bool = False, material: str = "", v
     sentences = [x for x in _SENTENCE.split(_plain(raw)) if x]
     sentences = [x for x in sentences if not _UNKNOWN.search(x)]
     stripped = False
+    if patched:
+        # Vendor data says patched: coverage written before the fix ("Two unpatched zero-days")
+        # does not carry into the summary (row 747, 2026-09-30).
+        sentences = [x for x in (_without_unpatched(x) for x in sentences) if x]
     if vendor:
         # The vendor backs a fix (its own advisory on the row, or vendor/NVD fix data): a passive
         # claim is kept as the vendor's statement.

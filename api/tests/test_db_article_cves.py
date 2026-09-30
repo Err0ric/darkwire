@@ -524,6 +524,21 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await s.get(Cve, "CVE-2026-88772")).patch_status, PatchStatus.no_fix)
             self.assertEqual((await s.get(Item, other.id)).patch_status, PatchStatus.no_fix)
 
+        # A fix arrives for the other row: no fix -> patched queues its summary again, once.
+        async with self.Session() as s:
+            item = await s.get(Item, other.id)
+            item.summary, item.summary_sources, item.summarized_at = "An unpatched flaw in Acme Router is exploited.", 1, now
+            c = await s.get(Cve, "CVE-2026-99999")
+            c.patch_status, c.fixed_versions = PatchStatus.patched, [{"product": "Acme Router", "version": "2.1"}]
+            await s.commit()
+            await enrich.roll_up(s)
+            item = await s.get(Item, other.id)
+            self.assertEqual((item.patch_status, item.summary_sources), (PatchStatus.patched, 0))
+            item.summary_sources = 1
+            await s.commit()
+            await enrich.roll_up(s)
+            self.assertEqual((await s.get(Item, other.id)).summary_sources, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -218,8 +218,8 @@ async def recheck_930(session) -> None:
 RESUMMARIZE = [930]
 
 
-async def resummarize(session) -> None:
-    for item_id in RESUMMARIZE:
+async def resummarize(session, ids: list[int] | None = None) -> None:
+    for item_id in ids or RESUMMARIZE:
         item = await session.get(Item, item_id)
         if item is None:
             log.info("maintenance: resummarize %d: row gone", item_id)
@@ -308,6 +308,8 @@ STEPS = [
     ("refresh_873_v1", refresh_873),
     ("resummarize_930_v2", resummarize),
     ("recheck_930_v1", recheck_930),
+    # Row 747: patched since its summary ("Two unpatched ... zero-days") was written.
+    ("resummarize_747_v1", lambda session: resummarize(session, [747])),
 ]
 
 

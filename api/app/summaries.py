@@ -56,6 +56,12 @@ FETCH_PER_ITEM = 2
 # Bump to re-ask, once, the rows of the last 7 days whose summary was declined or discarded.
 RETRY_STATE = "summaries_retry"
 RETRY_VERSION = "2"
+# One-time re-ask of rows declined for "format" in the last 30 days, now that bare domains are
+# defanged. Rejection reasons are only in the logs, so the rows are listed here: row 76 (its output
+# named radaris.com, 2026-09-27) is the only such row still declined. Each result is logged.
+REASK_STATE = "summaries_reask"
+REASK_VERSION = "1"
+REASK_IDS = (76,)
 MATERIAL_CHARS = 12000
 
 SYSTEM = """You write the summary under a headline on darkwire, a board of security news and CVEs read by security engineers.
@@ -99,7 +105,20 @@ def _articles(item: Item, fetched: dict[int, str] | None = None) -> str:
 # ---------------------------------------------------------------- output checks
 
 # Scheme, www, or a bare lowercase domain. Case-sensitive so "ASP.NET" is a product, not a link.
+# Workaround sentences reject all of it.
 _URL = re.compile(r"(?i:https?://|www\.)|\b[a-z0-9-]+\.(com|org|net|io|gov|edu)\b")
+# Summaries: a bare domain ("radaris.com", in a story about the site) is defanged to radaris[.]com
+# and kept; a full URL (a scheme, or a domain with a path) is still rejected. The TLD stays
+# lowercase so "ASP.NET" is a product.
+_DOMAIN = re.compile(r"\b(?:[A-Za-z0-9-]+\.)+(?:com|org|net|io|gov|edu)\b")
+_FULL_URL = re.compile(r"(?i:https?://)|" + _DOMAIN.pattern + "/")
+
+
+def defang(text: str) -> str:
+    """example.com -> example[.]com, www.example.com -> www[.]example[.]com."""
+    return _DOMAIN.sub(lambda m: m.group(0).replace(".", "[.]"), text)
+
+
 _MARKDOWN = re.compile(r"(^|\s)(#{1,6}\s|\*\*|__|`)|^\s*[-*•]\s|\[[^\]]+\]\(", re.M)
 _FIRST_PERSON = re.compile(r"\b(I|I'm|I've|I'd|I'll|me|my)\b")
 
@@ -179,9 +198,9 @@ def _strip_fix_claims(sentence: str, material: str) -> str:
 
 def review_summary(raw: str | None, patched: bool = False, material: str = "") -> tuple[str | None, str]:
     """(the summary to store or None, why): "ok", "skip" (the model found nothing beyond the
-    headline), "format" (markdown, line break, URL), "first person", "fix claim" (under
-    MIN_WORDS_AFTER_STRIP words left once unattributed fix claims are stripped), "length",
-    "empty".
+    headline), "format" (markdown, line break, a full URL; bare domains are defanged instead),
+    "first person", "fix claim" (under MIN_WORDS_AFTER_STRIP words left once unattributed fix
+    claims are stripped), "length", "empty".
 
     Drops sentences about what the articles do not say, unattributed fix claims (clause by
     clause, unless vendor data says patched; never the whole summary for that alone), anything
@@ -189,8 +208,9 @@ def review_summary(raw: str | None, patched: bool = False, material: str = "") -
     that: the first sentence alone, if it fits."""
     if not raw or raw.strip() == "SKIP":
         return None, "skip"
-    if "\n" in raw.strip() or _MARKDOWN.search(raw) or _URL.search(raw):
+    if "\n" in raw.strip() or _MARKDOWN.search(raw) or _FULL_URL.search(raw):
         return None, "format"
+    raw = defang(raw)
     if _FIRST_PERSON.search(raw):
         return None, "first person"
     sentences = [x for x in _SENTENCE.split(_plain(raw)) if x]
@@ -376,6 +396,18 @@ async def _retry_once(session: AsyncSession) -> None:
     log.info("summaries: retry: re-asking %d rows of the last 7 days that were declined or discarded", result.rowcount)
 
 
+async def _reask_once(session: AsyncSession) -> None:
+    """Once per REASK_VERSION: REASK_IDS that are still declined ("") are asked again."""
+    if await jobstate.get(session, REASK_STATE) == REASK_VERSION:
+        return
+    result = await session.execute(
+        update(Item).where(Item.id.in_(REASK_IDS), Item.summary == "").values(summary=None)
+    )
+    await jobstate.put(session, REASK_STATE, REASK_VERSION)
+    await session.commit()
+    log.info("summaries: re-ask v%s: re-asking %d of rows %s", REASK_VERSION, result.rowcount, list(REASK_IDS))
+
+
 async def log_coverage(session: AsyncSession) -> None:
     """One line: summary coverage of the main rows of the last 7 days."""
     rows = (
@@ -400,6 +432,7 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         return None
     await reset_once(session)
     await _retry_once(session)
+    await _reask_once(session)
     todo = list(
         (
             await session.scalars(
@@ -434,6 +467,8 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         reasons[why] = reasons.get(why, 0) + 1
         if text is None:
             log.info("summaries: item %d rejected (%s, %d chars of input): %r", item.id, why, len(material[item.id]), raw[:160])
+        if item.id in REASK_IDS:
+            log.info("summaries: re-ask item %d: %s: %r (model said %r)", item.id, why, text, raw)
         item.summary = text or ""
         if text is not None:
             events.record(session, "summary", item.headline, "done", item.id)

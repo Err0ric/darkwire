@@ -133,7 +133,7 @@ Claude Haiku writes the row summary and the What to do workaround sentence. Rule
 - Discard output over the length limit (workaround 25 words), or with a URL, markdown, a line break, or the first person. Sentences about what the articles do not say are dropped. SKIP only when there is nothing beyond the headline. Discarded output is stored empty so it is not re-asked; each rejection is logged with its reason.
 - Bumping `RULES_VERSION` regenerates every summary and workaround; bumping `RETRY_VERSION` re-asks the last 7 days' declined ones once.
 - `/status` reports the model's health; the wire footer says "Summaries paused." when it is not ok.
-- CISA ICS advisory rows never go to the model: their summary is built from stored fields (vendor and product from CISA's title, CVE count, highest CVSS, fix status), leaving out anything missing (`api/app/ics.py`). `python -m app.ics` dry-runs a rewrite of existing rows; `BACKFILL_VERSION` in that file applies it once, only with sign-off.
+- CISA ICS advisory rows never go to the model: their summary is built from stored fields (vendor and product from CISA's title, CVE count, highest CVSS, fix status), leaving out anything missing (`api/app/ics.py`). Model summaries written before stay. `python -m app.ics` dry-runs the rows with no summary; `BACKFILL_VERSION` in that file fills them once, only with sign-off.
 
 ## Services
 

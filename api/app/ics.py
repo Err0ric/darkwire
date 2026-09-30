@@ -5,12 +5,13 @@ the rest comes from the row's own data: how many CVEs it holds (item_cves), the 
 its severity (items.cvss / items.severity, rolled up from NVD), and the fix status
 (items.patch_status). Nothing missing is ever written out: no score, no count, no "unverified".
 
-    python -m app.ics            # dry run: every ICS advisory row, its stored summary and the new one
+    python -m app.ics            # dry run: ICS rows with no summary (or ours), stored and new summary
     python -m app.ics --apply    # writes; never against production without sign-off
 
 Each enrich pass fills ICS rows with no summary yet and refreshes the ones this module wrote (they
-start with PREFIX) when a score or fix status changes. Rows summarized before this module (by the
-model, or declined as "") are left alone until BACKFILL_VERSION is set, which rewrites them once.
+start with PREFIX) when a score or fix status changes. Rows the model summarized before this module
+keep their summary. Rows it declined ("") are rewritten once per BACKFILL_VERSION (set only with
+sign-off); the dry run lists exactly those.
 Uses DATABASE_URL like the app.
 """
 
@@ -29,7 +30,7 @@ log = logging.getLogger(__name__)
 
 PREFIX = "CISA industrial control systems advisory for "
 BACKFILL_STATE = "ics_backfill"
-BACKFILL_VERSION = ""  # empty: off. Set (e.g. "1") only after the dry run is signed off.
+BACKFILL_VERSION = "1"  # 2026-09-30, signed off: the 9 declined rows (81, 96-103). Empty: off.
 
 # icsa-26-272-01 (ICS) and icsma-26-...(medical); not CISA's other pages under /ics-advisories.
 _ICS_URL = re.compile(r"cisa\.gov/.*/ics-(?:medical-)?advisories/icsm?a-\d", re.I)
@@ -86,13 +87,14 @@ async def _rows(session: AsyncSession, backfill: bool) -> list[tuple[Item, int]]
         .where(Item.stream == Stream.main, ics_sql())
         .order_by(Item.id)
     )
-    if not backfill:
-        stmt = stmt.where(or_(Item.summary.is_(None), Item.summary.startswith(PREFIX, autoescape=True)))
+    # Never a model-written summary; declined ("") rows only in a backfill.
+    no_summary = or_(Item.summary.is_(None), Item.summary == "") if backfill else Item.summary.is_(None)
+    stmt = stmt.where(or_(no_summary, Item.summary.startswith(PREFIX, autoescape=True)))
     return list((await session.execute(stmt)).all())
 
 
 async def summarize(session: AsyncSession) -> int:
-    """Fill or refresh ICS advisory summaries; once per BACKFILL_VERSION, rewrite every ICS row.
+    """Fill or refresh ICS advisory summaries; once per BACKFILL_VERSION, also the declined ones.
     Returns how many summaries changed."""
     backfill = bool(BACKFILL_VERSION) and await jobstate.get(session, BACKFILL_STATE) != BACKFILL_VERSION
     changed = 0

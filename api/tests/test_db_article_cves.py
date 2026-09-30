@@ -1,0 +1,150 @@
+"""The live path of app/article_cves.py against a real Postgres, in a throwaway database.
+
+Each run creates its own database (darkwire_test_<random>) on the local server, builds the schema
+from the models, and drops the database in tearDown whatever the code under test committed. It
+never touches the app's database, and refuses any host but localhost. Skipped when no local
+Postgres answers (docker compose up -d).
+
+    cd api && python -m unittest discover -s tests
+    TEST_PG_ADMIN_URL=postgresql://user:pass@localhost:5432/postgres   # optional
+"""
+
+import os
+import unittest
+import uuid
+from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit
+
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import selectinload
+
+from app import article_cves, enrich
+from app.models import Base, Category, Cve, Item, ItemCve, ItemSource, KevEntry, Source, Stream
+
+ADMIN_URL = os.environ.get("TEST_PG_ADMIN_URL", "postgresql://darkwire:darkwire@localhost:5432/postgres")
+
+
+def _async(url: str) -> str:
+    return "postgresql+asyncpg://" + url.split("://", 1)[1]
+
+
+class LivePath(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        if urlsplit(ADMIN_URL).hostname not in ("localhost", "127.0.0.1"):
+            self.skipTest("TEST_PG_ADMIN_URL must point at localhost")
+        self.name = f"darkwire_test_{uuid.uuid4().hex[:12]}"
+        self.admin = create_async_engine(_async(ADMIN_URL), isolation_level="AUTOCOMMIT")
+        try:
+            async with self.admin.connect() as c:
+                await c.execute(text(f'CREATE DATABASE "{self.name}"'))
+        except Exception as e:  # no local Postgres
+            await self.admin.dispose()
+            self.skipTest(f"no local Postgres: {e}")
+        self.addAsyncCleanup(self._drop)
+        base = ADMIN_URL.rsplit("/", 1)[0]
+        self.engine = create_async_engine(_async(f"{base}/{self.name}"))
+        async with self.engine.begin() as c:
+            await c.run_sync(Base.metadata.create_all)
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def _drop(self):
+        # Runs even when the test failed or the code under test committed.
+        if getattr(self, "engine", None):
+            await self.engine.dispose()
+        async with self.admin.connect() as c:
+            await c.execute(text(f'DROP DATABASE IF EXISTS "{self.name}" WITH (FORCE)'))
+        await self.admin.dispose()
+
+    async def _row(self, s, source, headline, at, cves=()):
+        for c in cves:
+            await s.merge(Cve(id=c))
+        await s.flush()
+        item = Item(stream=Stream.main, headline=headline, primary_url=f"https://test.invalid/{uuid.uuid4().hex}",
+                    category=Category.news, last_event_at=at, last_event_kind="published", cve_id=cves[0] if cves else None)
+        s.add(item)
+        await s.flush()
+        s.add(ItemSource(item_id=item.id, source_id=source.id, url=item.primary_url, title=headline, published_at=at))
+        for i, c in enumerate(cves):
+            s.add(ItemCve(item_id=item.id, cve_id=c, position=i))
+        await s.flush()
+        return item
+
+    async def _load(self, s, ids):
+        return list((await s.scalars(select(Item).where(Item.id.in_(ids)).options(selectinload(Item.sources)))).all())
+
+    async def test_live_path_rules(self):
+        now = datetime.now(UTC)
+        t0 = now - timedelta(days=1)
+        async with self.Session() as s:
+            src = Source(name="BleepingComputer", feed_url="https://test.invalid/feed", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            citrix = await self._row(s, src, "Two Citrix zero-days exploited", t0, ["CVE-2026-88771"])
+            later = await self._row(s, src, "CISA orders feds to patch exploited Citrix flaws", t0 + timedelta(hours=22))
+            recap = await self._row(s, src, "Weekly Recap: Citrix Exploits", t0 + timedelta(hours=23))
+            # A multi-story article: SharePoint and MikroTik CVEs (vendors from the KEV catalog).
+            mikrotik = await self._row(s, src, "MikroTrick chain takes over MikroTik routers", t0, ["CVE-2026-67279"])
+            multi = await self._row(s, src, "SharePoint RCE and MikroTik RouterOS flaws exploited", t0 + timedelta(hours=5))
+            s.add_all([
+                KevEntry(cve_id="CVE-2026-65660", vendor="Microsoft", product="SharePoint", date_added=now.date()),
+                KevEntry(cve_id="CVE-2026-67279", vendor="MikroTik", product="RouterOS", date_added=now.date()),
+            ])
+            await s.commit()
+            ids = {k: v.id for k, v in dict(citrix=citrix, later=later, recap=recap, mikrotik=mikrotik, multi=multi).items()}
+
+        async with self.Session() as s:
+            items = await self._load(s, [ids["later"], ids["recap"], ids["multi"]])
+            fetched = {}
+            for i in items:
+                body = {
+                    ids["later"]: (
+                        "Agencies must patch CVE-2026-88771 by Wednesday.\nThe order covers NetScaler ADC.\n"
+                        "It recalls CVE-2024-3400, exploited last year."  # third paragraph, once: context
+                    ),
+                    ids["recap"]: "This week: CVE-2026-88771 in Citrix.",
+                    ids["multi"]: "Attackers exploit CVE-2026-65660 in SharePoint and CVE-2026-67279 in RouterOS.",
+                }[i.id]
+                fetched[i.id] = {i.sources[0].id: body}
+            await article_cves.after_fetch(s, items, fetched)  # commits
+
+        async with self.Session() as s:
+            left = set(await s.scalars(select(Item.id).where(Item.id.in_(ids.values()))))
+            held = {}
+            for k, v in ids.items():
+                held[k] = set(await s.scalars(select(ItemCve.cve_id).where(ItemCve.item_id == v)))
+            # The later Citrix story merged into the earlier row; its old context CVE was dropped.
+            self.assertNotIn(ids["later"], left)
+            self.assertEqual(held["citrix"], {"CVE-2026-88771"})
+            # The recap gained nothing and merged nowhere.
+            self.assertIn(ids["recap"], left)
+            self.assertEqual(held["recap"], set())
+            # The multi-story row got both CVEs and did not merge into the MikroTik row.
+            self.assertIn(ids["multi"], left)
+            self.assertEqual(held["multi"], {"CVE-2026-65660", "CVE-2026-67279"})
+            self.assertEqual(held["mikrotik"], {"CVE-2026-67279"})
+
+    async def test_merge_keeps_the_survivors_displayed_cve(self):
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            src = Source(name="The Hacker News", feed_url="https://test.invalid/thn", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            row = await self._row(s, src, "MikroTrick chain takes over MikroTik routers", now - timedelta(hours=10), ["CVE-2026-67279"])
+            other = await self._row(s, src, "MikroTik and SharePoint", now - timedelta(hours=5), ["CVE-2026-67279", "CVE-2026-65660"])
+            (await s.get(Cve, "CVE-2026-67279")).base_score = 6.5
+            (await s.get(Cve, "CVE-2026-65660")).base_score = 8.8
+            await s.commit()
+            survivor = article_cves.Row(row.id, now - timedelta(hours=10), now - timedelta(hours=10), False, {"CVE-2026-67279"})
+            merged = article_cves.Row(other.id, now - timedelta(hours=5), now - timedelta(hours=5), False, {"CVE-2026-67279", "CVE-2026-65660"})
+            await article_cves.merge(s, survivor, merged, "test")
+            await s.commit()
+            await enrich.roll_up(s)  # pinned: the higher-scored SharePoint CVE does not take over
+        async with self.Session() as s:
+            item = await s.get(Item, row.id)
+            self.assertEqual(item.cve_id, "CVE-2026-67279")
+            self.assertEqual(float(item.cvss), 6.5)
+
+
+if __name__ == "__main__":
+    unittest.main()

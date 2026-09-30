@@ -169,6 +169,31 @@ async def resummarize_933(session) -> None:
     await session.commit()
 
 
+async def refresh_873(session) -> None:
+    """Row 873 (CISA's MikroTik RouterOS advisory, corrected from "7.23 or later" to "7.24 or
+    later"): the advisory read again and the combined summary + facts call run once on it
+    (advisories.refresh; the row keeps its ICS template summary). Signed off 2026-09-30."""
+    from app import advisories
+
+    item = await session.scalar(
+        select(Item).where(Item.id == 873)
+        .options(selectinload(Item.sources).selectinload(ItemSource.source), selectinload(Item.vendor))
+    )
+    if item is None:
+        log.info("maintenance: refresh 873: row gone")
+        return
+    src = next((s for s in item.sources if s.url == item.primary_url), item.sources[0])
+    async with fetcher.client() as client:
+        text = await fetcher.article_text(client, src.url)
+    if not text:
+        log.info("maintenance: refresh 873: the advisory could not be read (%s)", src.url)
+        return
+    log.info("maintenance: refresh 873: advisory fix/affected sentences: %s", " | ".join(advisories.fix_sentences(text)))
+    if src.advisory_read_at is None:
+        src.advisory_read_at, src.advisory_digest = datetime.now(UTC), advisories.digest(text)
+    await advisories.refresh(session, item, {src.id: text}, "corrected CISA advisory, signed off")
+
+
 # Summarized again under the vendor-backed fix rule (summaries.fix_vendor), through the "sources
 # grew" path so the current summary stays if the new attempt fails. The result is logged by
 # summaries ("written again ..." / "kept its summary").
@@ -261,6 +286,7 @@ STEPS = [
     ("recategorize_rows_v2", recategorize_rows),
     ("restore_25_breach", restore_25),
     ("resummarize_930_v1", resummarize),
+    ("refresh_873_v1", refresh_873),
 ]
 
 

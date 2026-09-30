@@ -238,23 +238,38 @@ BREACH_INCIDENT = _keywords(
 )
 
 
-def guess_category(title: str, excerpt: str, has_cve: bool, trends: bool = True) -> Category:
+def guess_category(title: str, excerpt: str, has_cve: bool, trends: bool = True, specific: bool | None = None) -> Category:
     """Title first. The first paragraph is only consulted when the title matches nothing. An
     explainer title is Research (about threats) or News, never Breach; a breach found only in the
     first paragraph needs an incident word there too. A trend or industry piece with no CVE is not
     a Vulnerability (that needs a specific flaw, product or CVE): Research when it is about flaws
-    or threats, else News. `trends=False`: the rule before that (for the one-time re-derivation)."""
+    or threats, else News. `trends=False`: the rule before that (for the one-time re-derivation).
+    `specific`: the summary call's verdict (facts specific_vulnerability) when known. With no CVE
+    and specific False, a vulnerability keyword does not make it Vulnerability: the other rules
+    decide, else Research when it is about flaws or threats, else News."""
     if EXPLAINER.search(title or ""):
         return Category.research if _ABOUT_THREATS.search(title) else Category.news
+    general = False  # a vulnerability keyword, but the call says no specific flaw
     for text, lead in ((title, False), (excerpt, True)):
         for category, pattern in CATEGORY_RULES:
             if pattern.search(text or ""):
                 if category == Category.breach and lead and not BREACH_INCIDENT.search(f"{title} {text}"):
                     continue
-                if category == Category.vulnerability and trends and not has_cve and TREND.search(title or ""):
-                    return Category.research if _ABOUT_THREATS.search(title) or _ABOUT_FLAWS.search(title) else Category.news
+                if category == Category.vulnerability and not has_cve:
+                    if trends and TREND.search(title or ""):
+                        return _not_a_flaw(title)
+                    if specific is False:
+                        general = True
+                        continue
                 return category
+    if general:
+        return _not_a_flaw(title)
     return Category.vulnerability if has_cve else Category.news
+
+
+def _not_a_flaw(title: str) -> Category:
+    """About vulnerabilities in general, not one flaw: Research when about flaws or threats."""
+    return Category.research if _ABOUT_THREATS.search(title or "") or _ABOUT_FLAWS.search(title or "") else Category.news
 
 
 AD_TEXT = _keywords(r"sponsored", r"sponsored by", r"partner content", r"webinar", r"virtual event")

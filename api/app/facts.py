@@ -13,7 +13,9 @@ and verify() keeps a fact only when:
   public (published, released, public, available, GitHub, posted), is not negated, and if it
   names CVEs, names the row's displayed one; a fixed version is version-like, not a date or a product name alone; an
   affected value is a product or platform, not people, customer counts or organizations.
-  In-the-wild exploitation is stored but not displayed anywhere.
+  In-the-wild exploitation is stored but not displayed anywhere. specific_vulnerability (the
+  article is about a specific flaw in a named product, or a CVE) is stored too and only decides
+  the category (summaries.check_category): with no CVE on the row, Vulnerability needs it.
 
 Anything else is dropped. Verified facts are stored in items.facts ({} when none held up) and are
 only ever shown labeled "per article", after vendor, NVD and CISA data (CLAUDE.md, Summary model).
@@ -36,6 +38,7 @@ Output format: reply with a JSON object with two keys. Every rule above applies 
 - "public_poc": "stated" true only if the articles say a proof-of-concept or exploit code is public.
 - "affected": "text", the affected products and versions as the articles name them (short), or null.
 - "fixed": "version", the fixed version as the articles name it, or null.
+- "specific_vulnerability": "stated" true only if the articles are about a specific flaw in a named product, or a CVE. False for statistics, trends, reports, surveys and industry pieces about vulnerabilities in general.
 Use only what the articles say. When a fact is not stated, set stated to false or the value to null, and the quote to null."""
 
 _NULLABLE = {"anyOf": [{"type": "string"}, {"type": "null"}]}
@@ -70,8 +73,9 @@ SCHEMA = {
                 "public_poc": _flag(),
                 "affected": _value("text"),
                 "fixed": _value("version"),
+                "specific_vulnerability": _flag(),
             },
-            "required": ["exploited_in_wild", "public_poc", "affected", "fixed"],
+            "required": ["exploited_in_wild", "public_poc", "affected", "fixed", "specific_vulnerability"],
             "additionalProperties": False,
         },
     },
@@ -209,7 +213,7 @@ def verify(facts: dict, material: str, row_cve: str | None = None) -> dict:
     """The facts whose quotes are in the material (and whose values are in their quotes), and
     that pass the content rules (recheck)."""
     out: dict = {}
-    for key in ("exploited_in_wild", "public_poc"):
+    for key in ("exploited_in_wild", "public_poc", "specific_vulnerability"):
         f = facts.get(key) or {}
         if f.get("stated") is True and _quote_ok(f.get("quote"), material):
             out[key] = {"quote": f["quote"].strip()}

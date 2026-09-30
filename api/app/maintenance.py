@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app import article_cves, facts_backfill, fetcher, ics, jobstate, summaries, versions
 from app.config import get_settings
-from app.models import Item, ItemCve, ItemSource, PatchStatus, Stream
+from app.models import Category, Item, ItemCve, ItemSource, PatchStatus, Stream
 
 log = logging.getLogger(__name__)
 
@@ -235,10 +235,73 @@ async def recategorize_trends(session, apply: bool = False) -> dict[int, tuple[s
     return changes
 
 
+SPECIFIC_PLAN = "maintenance_specific_plan"
+
+
+async def recategorize_specific(session, apply: bool = False) -> dict[str, list[str]]:
+    """Vulnerability rows of the last 7 days with no CVE, asked once whether they are about a
+    specific flaw in a named product (the summary call's specific_vulnerability, quote-checked
+    against the articles), and re-derived with the answer (tagging.guess_category). The dry run
+    logs each row (verdict, quote, old -> new) and stores the plan in job_state; `apply` writes
+    exactly that plan, to rows whose category has not changed since. {row: [old, new]}."""
+    import anthropic
+
+    from app import facts
+    from app.tagging import guess_category
+
+    if apply:
+        plan = json.loads(await jobstate.get(session, SPECIFIC_PLAN) or "{}")
+        for item_id, (old, new) in plan.items():
+            item = await session.get(Item, int(item_id))
+            if item is None or item.category.value != old:
+                log.info("maintenance: specific (apply): item %s skipped (%s)", item_id, "row gone" if item is None else f"now {item.category.value}")
+                continue
+            log.info("maintenance: specific (apply): item %s %s -> %s | %s", item_id, old, new, item.headline[:100])
+            item.category = Category(new)
+        await session.commit()
+        return plan
+    if not get_settings().anthropic_api_key:
+        log.info("maintenance: specific (dry run): no model key, nothing asked")
+        return {}
+    rows = (
+        await session.scalars(
+            select(Item)
+            .where(Item.stream == Stream.main, Item.category == Category.vulnerability, Item.cve_id.is_(None),
+                   Item.last_event_at >= datetime.now(UTC) - timedelta(days=7))
+            .options(selectinload(Item.sources).selectinload(ItemSource.source), selectinload(Item.vendor))
+            .order_by(Item.id)
+        )
+    ).all()
+    fetched = await summaries._fetch_articles(list(rows)) if rows else {}
+    plan: dict[str, list[str]] = {}
+    async with anthropic.AsyncAnthropic(api_key=get_settings().anthropic_api_key, max_retries=3) as client:
+        for item in rows:
+            material = summaries._articles(item, fetched.get(item.id))
+            try:
+                msg = await client.messages.create(**summaries.request(material))
+            except anthropic.APIError as e:
+                log.info("maintenance: specific (dry run): item %d call failed: %s", item.id, e)
+                continue
+            _, stated = facts.parse(" ".join(b.text for b in msg.content if b.type == "text"))
+            found = facts.verify(stated, material, None).get("specific_vulnerability")
+            said = (stated.get("specific_vulnerability") or {}) if isinstance(stated, dict) else {}
+            primary = next((s for s in item.sources if s.url == item.primary_url), item.sources[0])
+            new = guess_category(primary.title, primary.excerpt or "", False, specific=found is not None)
+            log.info("maintenance: specific (dry run): item %d %s -> %s | specific %s%s | %s", item.id, item.category.value, new.value,
+                     "yes" if found else "no", f" (quote {found['quote']!r})" if found else
+                     (f" (model said yes, quote not in the articles: {said.get('quote')!r})" if said.get("stated") else ""),
+                     item.headline[:100])
+            if new != item.category:
+                plan[str(item.id)] = [item.category.value, new.value]
+    await jobstate.put(session, SPECIFIC_PLAN, json.dumps(plan))
+    await session.commit()
+    log.info("maintenance: specific (dry run): %d of %d rows change; plan stored, nothing written", len(plan), len(rows))
+    return plan
+
+
 async def recategorize_breach(session) -> None:
     """Rows of the last 14 days tagged Breach, re-derived under the incident rule
     (tagging.guess_category); each change logged. Other categories are left alone."""
-    from app.models import Category
     from app.tagging import guess_category
 
     rows = (
@@ -288,7 +351,6 @@ async def recategorize_rows(session) -> None:
 async def restore_25(session) -> None:
     """Row 25 (a $351M crypto heist) was Breach from another article in its cluster; the v1
     re-derivation read only its primary article and moved it to News. Back to Breach."""
-    from app.models import Category
 
     item = await session.get(Item, 25)
     if item is None:
@@ -320,6 +382,7 @@ STEPS = [
     ("recategorize_trends_dry_run_v1", recategorize_trends),
     # The dry run (2026-09-30 19:16 UTC) changed 1 of 164 rows: 926 vulnerability -> research.
     ("recategorize_trends_apply_v1", lambda session: recategorize_trends(session, apply=True)),
+    ("recategorize_specific_dry_run_v1", recategorize_specific),
 ]
 
 

@@ -96,6 +96,7 @@ async def refresh(session: AsyncSession, item: Item, fetched: dict[int, str], re
     found = facts.verify(stated, material, item.cve_id)
     before_facts, before_summary = item.facts, item.summary
     item.facts = found
+    summaries.check_category(item)
     patched = item.patch_status == PatchStatus.patched
     vendor = summaries.fix_vendor(item, fetched)
     text, why = summaries.review_summary(said, patched=patched, material=material, vendor=vendor)

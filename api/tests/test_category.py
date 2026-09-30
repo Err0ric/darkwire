@@ -62,5 +62,36 @@ class Vulnerability(unittest.TestCase):
         self.assertEqual(guess_category("Exploitation of CVE-2026-76504 is changing the SD-WAN landscape", "", True), Category.vulnerability)
 
 
+class SpecificVulnerability(unittest.TestCase):
+    """The summary call's verdict (facts specific_vulnerability) decides a row with no CVE."""
+
+    GENERAL = (
+        "Google: Vulnerability disclosures double to 10,000 per month as AI fuels exploitation",
+        "Google: AI Is Changing the Pace and Profile of Vulnerability Discovery",
+    )
+    SPECIFIC = (
+        "Attackers Exploit Zimbra Flaw to Deploy Web Shells and Harvest Authentication Secrets",
+        "WatchGuard Patches Critical Fireware OS Code Injection Vulnerability",
+        "TeamViewer urges users to patch severe flaws “as soon as possible”",
+    )
+
+    def test_general_pieces_are_not_vulnerability(self):
+        for title in self.GENERAL:
+            self.assertEqual(guess_category(title, "", False, specific=False), Category.research, title)
+        # Before the call (specific unknown), the keyword pre-filter still catches the trend wording.
+        self.assertEqual(guess_category(self.GENERAL[1], "", False), Category.research)
+
+    def test_specific_flaws_stay_vulnerability(self):
+        for title in self.SPECIFIC:
+            self.assertEqual(guess_category(title, "", False, specific=True), Category.vulnerability, title)
+            self.assertEqual(guess_category(title, "", False), Category.vulnerability, title)  # not asked yet
+            # A CVE on the row is enough whatever the call says.
+            self.assertEqual(guess_category(title, "", True, specific=False), Category.vulnerability, title)
+
+    def test_other_rules_still_apply_without_a_specific_flaw(self):
+        self.assertEqual(guess_category("Ransomware gangs exploit flaws faster than ever", "", False, specific=False), Category.ransomware)
+        self.assertEqual(guess_category("Patch Tuesday fatigue is real", "", False, specific=False), Category.news)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -35,8 +35,8 @@ from sqlalchemy.orm import selectinload
 
 from app import article_cves, events, facts, fetcher, ics, jobstate, versions
 from app.config import get_settings
-from app.models import Item, ItemCve, ItemSource, PatchStatus, Stream
-from app.tagging import says_unpatched
+from app.models import Category, Item, ItemCve, ItemSource, PatchStatus, Stream
+from app.tagging import guess_category, says_unpatched
 
 log = logging.getLogger(__name__)
 
@@ -586,6 +586,22 @@ async def without_version_conflict(item_id: int, text: str, material: str, patch
     return stripped, why if stripped else "version conflict"
 
 
+def check_category(item: Item) -> None:
+    """With no CVE on the row, Vulnerability needs the summary call to have found a specific flaw
+    in a named product (facts specific_vulnerability, quote-checked); otherwise the category rules
+    run again without it (tagging.guess_category, Research or News for a piece about
+    vulnerabilities in general). Call after item.facts holds this call's reading."""
+    if item.category != Category.vulnerability or item.cve_id is not None or "specific_vulnerability" in (item.facts or {}):
+        return
+    primary = next((s for s in item.sources if s.url == item.primary_url), item.sources[0] if item.sources else None)
+    if primary is None:
+        return
+    new = guess_category(primary.title, primary.excerpt or "", False, specific=False)
+    if new != item.category:
+        log.info("summaries: item %d vulnerability -> %s (no CVE, no specific flaw) | %s", item.id, new.value, item.headline[:100])
+        item.category = new
+
+
 async def ics_template(session: AsyncSession, item: Item) -> str:
     n = await session.scalar(select(func.count()).select_from(ItemCve).where(ItemCve.item_id == item.id)) or 0
     return ics.ics_summary(item.headline, n, float(item.cvss) if item.cvss is not None else None, item.severity, item.patch_status)
@@ -659,6 +675,7 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         # Written again: the new reading wins per fact, earlier facts it did not restate stay
         # (then the content rules run once more over the whole set).
         item.facts = facts.recheck({**(item.facts or {}), **found}, item.cve_id)[0] if previous is not None else found
+        check_category(item)
         reasons[why] = reasons.get(why, 0) + 1
         if text is None:
             log.info("summaries: item %d rejected (%s, %d chars of input): %r", item.id, why, len(material[item.id]), raw[:160])

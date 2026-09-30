@@ -500,6 +500,80 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["counts"]["kev_added_7d"], 25)
         self.assertEqual(len(kev), status["counts"]["kev_added_7d"])
 
+    async def test_vulnerability_needs_a_cve_or_a_specific_flaw_from_the_summary_call(self):
+        import json
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from app import summaries
+
+        now = datetime.now(UTC)
+
+        def out(text, specific, quote=None):
+            return json.dumps({"summary": text, "facts": {
+                "exploited_in_wild": {"stated": False, "quote": None}, "public_poc": {"stated": False, "quote": None},
+                "affected": {"text": None, "quote": None}, "fixed": {"version": None, "quote": None},
+                "specific_vulnerability": {"stated": specific, "quote": quote}}})
+
+        watchguard_lead = "WatchGuard patched a code injection vulnerability in Fireware OS that lets attackers run commands."
+        async with self.Session() as s:
+            src = Source(name="SecurityWeek", feed_url="https://test.invalid/sw", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            general = await self._row(s, src, "Google: Vulnerability disclosures double to 10,000 per month as AI fuels exploitation", now,
+                                      excerpt="Google says disclosures doubled this year.")
+            specific = await self._row(s, src, "WatchGuard Patches Critical Fireware OS Code Injection Vulnerability", now, excerpt=watchguard_lead)
+            with_cve = await self._row(s, src, "TeamViewer urges users to patch severe flaws", now, ["CVE-2026-92370"])
+            for row in (general, specific, with_cve):
+                row.category = Category.vulnerability
+            await s.commit()
+            answers = {
+                general.id: out("Google reports vulnerability disclosures doubled to about 10,000 a month as AI speeds up discovery.", False),
+                # The quote must be in the article: the verdict counts only then.
+                specific.id: out("WatchGuard patched a code injection flaw in Fireware OS that lets attackers run commands.", True, watchguard_lead),
+                with_cve.id: out("TeamViewer urges users to install updates for severe flaws in its remote access software.", False),
+            }
+
+            async def fake_run(session, items, call, label):
+                return [answers.get(i.id) for i in items]
+
+            async def nothing(*a, **k):
+                return {} if a and isinstance(a[0], list) else None
+
+            with mock.patch.object(summaries, "get_settings", return_value=SimpleNamespace(anthropic_api_key="test")), \
+                 mock.patch.object(summaries, "_run", fake_run), \
+                 mock.patch.object(summaries, "_fetch_articles", nothing), \
+                 mock.patch.object(summaries, "reset_once", nothing), mock.patch.object(summaries, "_retry_once", nothing), \
+                 mock.patch.object(summaries, "_reask_once", nothing), mock.patch.object(summaries, "log_coverage", nothing), \
+                 mock.patch.object(summaries.article_cves, "after_fetch", nothing):
+                await summaries.summarize_pending(s)
+        async with self.Session() as s:
+            self.assertEqual((await s.get(Item, general.id)).category, Category.research)
+            self.assertEqual((await s.get(Item, specific.id)).category, Category.vulnerability)
+            self.assertEqual((await s.get(Item, specific.id)).facts["specific_vulnerability"], {"quote": watchguard_lead})
+            self.assertEqual((await s.get(Item, with_cve.id)).category, Category.vulnerability)
+
+    async def test_specific_recategorization_applies_exactly_the_dry_run_plan(self):
+        import json
+
+        from app import jobstate, maintenance
+
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            src = Source(name="SecurityWeek", feed_url="https://test.invalid/sw2", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            moved = await self._row(s, src, "Google: Vulnerability disclosures double", now)
+            since = await self._row(s, src, "Changed since the dry run", now)
+            moved.category, since.category = Category.vulnerability, Category.news
+            await jobstate.put(s, maintenance.SPECIFIC_PLAN, json.dumps({
+                str(moved.id): ["vulnerability", "research"], str(since.id): ["vulnerability", "research"]}))
+            await s.commit()
+            await maintenance.recategorize_specific(s, apply=True)
+        async with self.Session() as s:
+            self.assertEqual((await s.get(Item, moved.id)).category, Category.research)
+            self.assertEqual((await s.get(Item, since.id)).category, Category.news)  # not the plan's "from": left alone
+
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)
         async with self.Session() as s:

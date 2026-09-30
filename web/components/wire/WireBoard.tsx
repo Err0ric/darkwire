@@ -91,7 +91,7 @@ export function WireBoard({ initial }: { initial: WireData }) {
   const rightRail = useRef<HTMLElement>(null)
   // Rails pin under the condensed bar (--bar-h, 0 in kiosk), 24px below it.
   useStickyTop(leftRail, 24, "--bar-h")
-  useStickyTop(rightRail, 24, "--bar-h")
+  useStickyTop(rightRail, 24, "--bar-h", "scroll")  // taller than the window: scrolls normally
 
   // The condensed bar (in the nav) shows once the tabs row reaches it: a marker right above the
   // tabs row leaving the area under the bar sets html[data-wire-stuck]. The tabs row's height

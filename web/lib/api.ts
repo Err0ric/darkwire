@@ -49,6 +49,8 @@ export interface FeedItem {
   last_event_kind: string | null
   /** False for a plain row with no summary and no usable feed excerpt: headline link only. */
   expandable: boolean
+  /** The row summary, when there is one (hover card, expanded row). */
+  summary: string | null
 }
 
 export interface FeedPage {
@@ -98,7 +100,6 @@ export interface MsrcDetail {
 }
 
 export interface ItemDetail extends FeedItem {
-  summary: string | null
   /** The feed's own excerpt (first sentences, at most 220 chars), sent when there is no summary. */
   excerpt: { source: string; text: string } | null
   /** Workaround read from the articles by the summary model, CVE rows only. Never versions. */

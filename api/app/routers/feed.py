@@ -91,6 +91,7 @@ def _feed_fields(item: Item, all_sources: bool = False) -> dict:
         "last_event_at": item.last_event_at,
         "last_event_kind": item.last_event_kind,
         "expandable": expandable(item, excerpt),
+        "summary": item.summary or None,
     }
 
 
@@ -175,7 +176,6 @@ async def item_detail(request: Request, item_id: int, session: AsyncSession = De
     msrc = await session.get(MsrcUpdate, item.cve_id) if item.cve_id else None
     return ItemDetail(
         **_feed_fields(item),
-        summary=item.summary,
         excerpt=None if item.summary else row_excerpt(item),
         action=item.action,
         patch_url=item.patch_url,

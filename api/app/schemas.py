@@ -48,6 +48,7 @@ class FeedItem(BaseModel):
     last_event_kind: str | None
     # False for a plain row with no summary and no usable feed excerpt: headline link only.
     expandable: bool
+    summary: str | None = None  # the row summary (hover card, expanded row); None when there is none
 
 
 class Excerpt(BaseModel):

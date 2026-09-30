@@ -17,6 +17,9 @@ const nextConfig: NextConfig = {
   // The deployed commit, for auto-reload on a new deploy (components/AutoUpdate.tsx).
   env: {
     NEXT_PUBLIC_BUILD_ID: process.env.VERCEL_GIT_COMMIT_SHA ?? "dev",
+    // Hover card (components/HoverPreview.tsx): off by default, on for production builds while it
+    // is tried out. The variable, when set, always wins.
+    NEXT_PUBLIC_HOVER_PREVIEW: process.env.NEXT_PUBLIC_HOVER_PREVIEW ?? (process.env.VERCEL_ENV === "production" ? "1" : "0"),
   },
   poweredByHeader: false,
   // /outages was renamed /services; keep old links working.

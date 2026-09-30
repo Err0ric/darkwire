@@ -6,6 +6,7 @@ import { Bug, ChevronDown, FileText, FlaskConical, Newspaper, ShieldAlert, type 
 
 import { VendorGlyph } from "@/components/VendorGlyph"
 import { getItem, type Category, type FeedItem, type ItemDetail, type PatchStatus, type Severity } from "@/lib/api"
+import { useHoverPreview } from "@/components/HoverPreview"
 import { IMPACT_METRICS, parseVector } from "@/lib/cvss"
 import { kevDueIn, URGENT_DAYS } from "@/lib/kev"
 import { kevDate, ticketText, whatToDo, type Todo } from "@/lib/todo"
@@ -72,6 +73,8 @@ export function FeedRow({
     initialDetail ? { state: "ready", item: initialDetail } : { state: "idle" },
   )
   const detailId = `row-${item.id}-detail`
+  // Hover card with the summary (NEXT_PUBLIC_HOVER_PREVIEW); never while the row is open.
+  const preview = useHoverPreview(item.summary, !expanded)
   const hasData = item.cve_id !== null || item.cvss !== null || hasBadge(item)
   // A plain row with no summary and no feed excerpt has nothing to show: headline link only,
   // no chevron (its column keeps its width). Older API responses lack the flag: expandable.
@@ -136,11 +139,13 @@ export function FeedRow({
             <a
               href={item.primary_url}
               {...EXTERNAL}
+              {...preview.handlers}
               className="max-md:tap outline-none hover:underline focus-visible:underline"
             >
               {item.headline}
             </a>
           </p>
+          {preview.card}
           {/* Phones: the age ends the meta line (right-aligned), and the score / bar / badge line
               shows only when the row has one. The chevron stays in its column. */}
           <MetaLine
@@ -406,13 +411,15 @@ export function Expanded({ item, detail }: { item: FeedItem; detail: Detail }) {
   const chips = parseVector(cve?.cvss_vector ?? null).filter((c) => c.value)
   const metrics = d && item.cve_id ? metricPairs(d) : []
   const affectedText = d && item.cve_id ? (cve?.affected ?? d.msrc?.product ?? null) : null
+  // The list already carries the summary: it shows at once, before the detail arrives.
+  const summary = item.summary ?? d?.summary ?? null
   const patch = d && item.cve_id && d.patch_status !== "unverified" ? d.patch_status : null
 
   return (
     <div className="flex flex-col gap-4">
-      {d?.summary && <p className="line-clamp-3 max-w-[720px] text-[15px] leading-[1.6] text-summary">{d.summary}</p>}
+      {summary && <p className="line-clamp-3 max-w-[720px] text-[15px] leading-[1.6] text-summary">{summary}</p>}
       {/* No summary (declined, or the article fetch failed): the stored RSS excerpt, labeled and attributed. */}
-      {d && !d.summary && d.excerpt && (
+      {d && !summary && d.excerpt && (
         <div>
           <p className="text-[13px] font-medium leading-4 text-muted">From the feed</p>
           <p className="mt-2 line-clamp-3 max-w-[720px] text-[15px] leading-[1.6] text-fg-2">

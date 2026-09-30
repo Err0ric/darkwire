@@ -34,7 +34,7 @@ DAYS = 14
 VERSION = "1"
 MODE = "dry-run"  # "dry-run" or "apply" (only with sign-off)
 STATE = "facts_backfill"
-REPORT_VERSION = "2"  # once the dry run is done: re-check its results (facts.recheck) and log them, once per version
+REPORT_VERSION = "3"  # once the dry run is done: re-check its results (facts.recheck), log them, apply if signed off
 POLL = 60
 
 
@@ -110,6 +110,44 @@ async def _dry_run(session, client: anthropic.AsyncAnthropic, state: dict) -> di
             log.info(_line(int(r.custom_id), state["headlines"].get(r.custom_id, ""), found))
     log.info("facts backfill (dry run): %s", ", ".join(f"{k} {v}" for k, v in counts.items()))
     return {"done": True, "batch": state["batch"], "results": results}
+
+
+# Signed off 2026-09-30: apply the batch once the section 2 rules drop exactly these facts from
+# the previous report, and nothing else changes. (row, fact, "removed" | "added" | "changed").
+APPLY_IF_ONLY = {("91", "fixed", "removed"), ("76", "affected", "removed"), ("873", "fixed", "removed"), ("873", "affected", "removed")}
+
+
+def changes(before: dict, after: dict) -> set[tuple[str, str, str]]:
+    out = set()
+    for row in set(before) | set(after):
+        b, a = before.get(row) or {}, after.get(row) or {}
+        for key in set(b) | set(a):
+            if key not in a:
+                out.add((row, key, "removed"))
+            elif key not in b:
+                out.add((row, key, "added"))
+            elif a[key] != b[key]:
+                out.add((row, key, "changed"))
+    return out
+
+
+async def report_and_maybe_apply(session, state: dict) -> bool:
+    """Re-check and log the batch results (_report); apply them only when the changes since the
+    last report are exactly APPLY_IF_ONLY. True if applied."""
+    before = dict(state.get("results") or {})
+    await _report(session, state)
+    state["reported"] = REPORT_VERSION
+    diff = changes(before, state["results"])
+    for row, key, what in sorted(diff):
+        log.info("facts report: vs the last report: item %s %s %s", row, key, what)
+    if state.get("applied"):
+        return False
+    if diff != APPLY_IF_ONLY:
+        log.info("facts report: STOPPED, not applied: the changes since the last report are not exactly %s", sorted(APPLY_IF_ONLY))
+        return False
+    await _apply(session, state)
+    state["applied"] = True
+    return True
 
 
 async def _apply(session, state: dict) -> None:
@@ -274,8 +312,7 @@ async def run_once() -> None:
             else:
                 if state.get("done"):
                     if state.get("reported") != REPORT_VERSION:
-                        await _report(session, state)
-                        state["reported"] = REPORT_VERSION
+                        await report_and_maybe_apply(session, state)
                         await jobstate.put(session, STATE, json.dumps(state))
                         await session.commit()
                     return

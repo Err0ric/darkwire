@@ -290,6 +290,35 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await s.get(Item, row.id)).summary,
                              "CISA industrial control systems advisory for MikroTik RouterOS, covering 1 CVE.")
 
+    async def test_batch_applies_only_when_the_changes_are_exactly_the_signed_off_ones(self):
+        from app import facts_backfill
+
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            src = Source(name="CISA", feed_url="https://test.invalid/cisa2", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            good = await self._row(s, src, "Lantronix G520", now)
+            plc = await self._row(s, src, "OpenPLC Runtime v3", now)
+            await s.commit()
+            original = {
+                str(good.id): {"fixed": {"version": "2.6.0.7R6", "quote": "fixed in release version 2.6.0.7R6"}},
+                str(plc.id): {"fixed": {"version": "OpenPLC v4", "quote": "upgrade to OpenPLC v4"}},
+            }
+            self.addCleanup(setattr, facts_backfill, "APPLY_IF_ONLY", facts_backfill.APPLY_IF_ONLY)
+            # Something else changes too: stop, nothing written.
+            facts_backfill.APPLY_IF_ONLY = set()
+            state = {"results_original": original, "results": original}
+            self.assertFalse(await facts_backfill.report_and_maybe_apply(s, state))
+            self.assertIsNone((await s.get(Item, good.id)).facts)
+            # Exactly the signed-off change: applied.
+            facts_backfill.APPLY_IF_ONLY = {(str(plc.id), "fixed", "removed")}
+            state = {"results_original": original, "results": original}
+            self.assertTrue(await facts_backfill.report_and_maybe_apply(s, state))
+        async with self.Session() as s:
+            self.assertEqual((await s.get(Item, good.id)).facts["fixed"]["version"], "2.6.0.7R6")
+            self.assertEqual((await s.get(Item, plc.id)).facts, {})
+
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)
         async with self.Session() as s:

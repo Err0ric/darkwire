@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
+import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { cn } from "cn"
 import { Bug, ChevronDown, FileText, FlaskConical, Newspaper, ShieldAlert, type LucideIcon } from "lucide-react"
 
@@ -12,6 +12,7 @@ import { kevDueIn, URGENT_DAYS } from "@/lib/kev"
 import { kevDate, ticketText, whatToDo, type Todo } from "@/lib/todo"
 import { NewDot, type DotState } from "@/lib/dots"
 import { age, clockTime, useNow } from "@/lib/time"
+import { shouldToggle } from "@/lib/toggle"
 
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const
 const MAX_SOURCES = 4
@@ -92,9 +93,20 @@ export function FeedRow({
     }
   }
 
+  const rowRef = useRef<HTMLElement>(null)
+  const headRef = useRef<HTMLDivElement>(null)
+
+  // Header and open panel are one toggle target: anywhere but a link or button, and never when
+  // the click ends a text selection in the row (lib/toggle.ts).
   function onRowClick(e: MouseEvent) {
-    if ((e.target as HTMLElement).closest("a, button")) return
+    if (shouldToggle(e.target, rowRef.current)) toggle()
+  }
+
+  // Esc anywhere in an open row closes it and puts focus back on the row.
+  function onArticleKey(e: KeyboardEvent) {
+    if (e.key !== "Escape" || !expanded) return
     toggle()
+    headRef.current?.focus()
   }
 
   function onRowKey(e: KeyboardEvent) {
@@ -105,16 +117,20 @@ export function FeedRow({
 
   return (
     <article
+      ref={rowRef}
       id={`row-${item.id}`}
+      onKeyDown={canExpand ? onArticleKey : undefined}
       className={cn(
         "scroll-mt-12 border-b border-rule",
         fresh && "animate-row-in",
-        expanded && "-mx-4 bg-surface px-4 md:-mx-6 md:px-6",
+        // Open: header and panel share one band and one hover, so they read as one unit.
+        expanded && "-mx-4 bg-surface px-4 hover:bg-row-hover md:-mx-6 md:px-6",
       )}
     >
       {/* The row is the expand toggle: a click anywhere but a link (the headline, the sources,
           the CVE ID) toggles it, and so do Enter / Space while the row has focus. */}
       <div
+        ref={headRef}
         onClick={canExpand ? onRowClick : undefined}
         onKeyDown={canExpand ? onRowKey : undefined}
         role={canExpand ? "group" : undefined}
@@ -122,7 +138,8 @@ export function FeedRow({
         aria-label={canExpand ? `${item.headline}. ${expanded ? "Collapse" : "Expand"} details` : undefined}
         className={cn(
           // Rhythm: 15px above and below, 4px from headline to meta, so rows read as units.
-          "relative flex min-h-14 items-start py-[15px] outline-offset-[-1px] hover:bg-row-hover md:items-center",
+          "relative flex min-h-14 items-start py-[15px] outline-offset-[-1px] md:items-center",
+          !expanded && "hover:bg-row-hover",
           canExpand && "cursor-pointer",
           // KEV, exploited or Critical: a 2px --rail-critical edge the row's full height, in the
           // gutter just left of it, so the icon and headline do not move.
@@ -199,7 +216,7 @@ export function FeedRow({
       </div>
 
       {expanded && (
-        <div id={detailId} className="pb-[22px] pl-8 md:-mt-0.5 md:pl-10">
+        <div id={detailId} onClick={onRowClick} className="cursor-pointer pb-[22px] pl-8 md:-mt-0.5 md:pl-10">
           <Expanded item={item} detail={detail} />
         </div>
       )}

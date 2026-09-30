@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { getItem, type CveRow } from "@/lib/api"
 import type { CveFilters, Fix, Sev } from "@/lib/cve-filters"
 import { useNow } from "@/lib/time"
+import { shouldToggle } from "@/lib/toggle"
 
 // /cves: every CVE on the board. Search plus combinable filter chips, both mirrored in the URL
 // (?kev=1&sev=critical,high&fix=none&q=citrix). Default order: KEV first, then CVSS, then newest;
@@ -222,7 +223,11 @@ export function CveTable({ rows, initial }: { rows: CveRow[]; initial: CveFilter
                 <Fragment key={r.id}>
                   <Row row={r} expanded={expanded} onToggle={() => toggle(r)} />
                   {expanded && (
-                    <tr className="border-b border-hairline bg-surface">
+                    // The open panel toggles too (lib/toggle.ts), except links, buttons and selections.
+                    <tr
+                      className="cursor-pointer border-b border-hairline bg-surface"
+                      onClick={(e) => shouldToggle(e.target, e.currentTarget) && toggle(r)}
+                    >
                       <td colSpan={COLUMNS.length} className="px-4 pt-1 pb-[22px] md:px-6" aria-busy={detail?.state === "loading"}>
                         {detail?.state === "ready" && <Expanded item={detail.item} detail={detail} />}
                         {detail?.state === "error" && <p className="text-[13px] text-muted">Could not load this row. Try again.</p>}
@@ -264,9 +269,8 @@ function Row({ row: r, expanded, onToggle }: { row: CveRow; expanded: boolean; o
   const now = useNow()
   const clickable = r.item_id !== null
 
-  function onClick(e: MouseEvent) {
-    if ((e.target as HTMLElement).closest("a, button")) return
-    onToggle()
+  function onClick(e: MouseEvent<HTMLElement>) {
+    if (shouldToggle(e.target, e.currentTarget)) onToggle()
   }
 
   return (

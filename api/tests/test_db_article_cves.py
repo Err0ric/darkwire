@@ -403,6 +403,31 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(item.cve_id, "CVE-2026-67279")
             self.assertEqual(float(item.cvss), 6.5)
 
+    async def test_vendor_fix_data_wins_over_an_unpatched_headline(self):
+        # Row 747 (2026-09-30): "Two Unpatched Citrix NetScaler RCE Zero-Days", while NVD's CPE
+        # ranges already carried Citrix's fixed builds. The other CVE has no fix data: no fix.
+        from app.models import PatchStatus
+
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            src = Source(name="The Hacker News", feed_url="https://test.invalid/thn", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            row = await self._row(s, src, "Warning: Two Unpatched Citrix NetScaler RCE Zero-Days Under Active Exploitation",
+                                  now - timedelta(hours=10), ["CVE-2026-88771", "CVE-2026-88772"])
+            fixed = await s.get(Cve, "CVE-2026-88771")
+            fixed.patch_status, fixed.fixed_versions = PatchStatus.patched, [{"product": "NetScaler ADC", "versions": ["14.1-73.37"]}]
+            (await s.get(Cve, "CVE-2026-88772")).patch_status = PatchStatus.unverified
+            other = await self._row(s, src, "Unpatched flaw in Acme Router exploited", now - timedelta(hours=5), ["CVE-2026-99999"])
+            (await s.get(Cve, "CVE-2026-99999")).patch_status = PatchStatus.unverified
+            await s.commit()
+            await enrich.roll_up(s)
+        async with self.Session() as s:
+            self.assertEqual((await s.get(Item, row.id)).patch_status, PatchStatus.patched)
+            self.assertEqual((await s.get(Cve, "CVE-2026-88771")).patch_status, PatchStatus.patched)
+            self.assertEqual((await s.get(Cve, "CVE-2026-88772")).patch_status, PatchStatus.no_fix)
+            self.assertEqual((await s.get(Item, other.id)).patch_status, PatchStatus.no_fix)
+
 
 if __name__ == "__main__":
     unittest.main()

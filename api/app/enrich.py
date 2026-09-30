@@ -44,6 +44,12 @@ async def apply_kev(session: AsyncSession) -> None:
     await session.commit()
 
 
+def has_fix_data(cve: Cve, msrc: MsrcUpdate | None) -> bool:
+    """Vendor or NVD data says where the CVE is fixed (nvd.patch_status "patched" needs a Patch
+    reference or an explicit fixed version; MSRC a KB)."""
+    return cve.patch_status == PatchStatus.patched or bool(cve.fixed_versions) or bool(msrc and msrc.kbs)
+
+
 async def roll_up(session: AsyncSession) -> int:
     """Copy CVE facts onto items. Returns how many escalated (KEV added, score changed); the
     row's time is never touched here."""
@@ -102,12 +108,15 @@ async def roll_up(session: AsyncSession) -> int:
             escalated += 1
 
         # Coverage override: when a headline or lead paragraph in the cluster says unpatched / no
-        # patch, nothing in it is "patched". With no explicit vendor fix it is "no fix"; with one
-        # (coverage and vendor disagree) it is "unverified" until they agree.
+        # patch, a CVE with no vendor or NVD fix data is "no fix". Fix data (a Patch reference, an
+        # explicit fixed version, an MSRC KB) wins over headline wording, which is often older
+        # than the vendor's fix (row 747, 2026-09-30).
         if says_unpatched(*(t for s in item.sources for t in (s.title, s.excerpt))):
-            status = PatchStatus.unverified if status == PatchStatus.patched else PatchStatus.no_fix
+            if not has_fix_data(primary, m):
+                status = PatchStatus.no_fix
             for c in cves:
-                c.patch_status = PatchStatus.unverified if c.patch_status == PatchStatus.patched else PatchStatus.no_fix
+                if not has_fix_data(c, msrc.get(c.id)):
+                    c.patch_status = PatchStatus.no_fix
 
         item.cve_id = primary.id
         item.cvss = primary.base_score

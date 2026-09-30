@@ -30,7 +30,7 @@ CHANGES_STATE = "nvd_changes_until"
 ANALYZED = {"Analyzed", "Modified"}
 # Bump when parse() output changes; the next enrichment pass re-derives every stored CVE
 # from its cached NVD record (no API calls).
-PARSER_VERSION = "4"
+PARSER_VERSION = "5"
 
 
 class Nvd:

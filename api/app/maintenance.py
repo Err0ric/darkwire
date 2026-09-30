@@ -169,6 +169,23 @@ async def resummarize_933(session) -> None:
     await session.commit()
 
 
+# Summarized again under the vendor-backed fix rule (summaries.fix_vendor), through the "sources
+# grew" path so the current summary stays if the new attempt fails. The result is logged by
+# summaries ("written again ..." / "kept its summary").
+RESUMMARIZE = [930]
+
+
+async def resummarize(session) -> None:
+    for item_id in RESUMMARIZE:
+        item = await session.get(Item, item_id)
+        if item is None:
+            log.info("maintenance: resummarize %d: row gone", item_id)
+            continue
+        log.info("maintenance: resummarize %d: %r -> queued", item_id, item.summary)
+        item.summary_sources, item.summarized_at = 0, datetime(2000, 1, 1, tzinfo=UTC)
+    await session.commit()
+
+
 async def recategorize_breach(session) -> None:
     """Rows of the last 14 days tagged Breach, re-derived under the incident rule
     (tagging.guess_category); each change logged. Other categories are left alone."""
@@ -243,6 +260,7 @@ STEPS = [
     ("recategorize_breach_v1", recategorize_breach),
     ("recategorize_rows_v2", recategorize_rows),
     ("restore_25_breach", restore_25),
+    ("resummarize_930_v1", resummarize),
 ]
 
 

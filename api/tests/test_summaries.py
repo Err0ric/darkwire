@@ -71,5 +71,47 @@ class FixClaims(unittest.TestCase):
         self.assertEqual(review_summary(CISCO, material="Attackers exploit a Cisco zero-day.")[1], "fix claim")
 
 
+# Row 930's model output (2026-09-30): the second sentence is a passive fix claim from the news.
+CISCO_PASSIVE = ("Cisco Catalyst SD-WAN Manager contains CVE-2026-76504, an API authentication bypass being actively "
+                 "exploited in the wild. Fixed releases are available.")
+CISCO_FIRST = CISCO_PASSIVE.split(" Fixed")[0]
+
+
+class VendorBackedFixClaims(unittest.TestCase):
+    def test_a_vendor_backed_passive_claim_is_attributed(self):
+        self.assertEqual(
+            review_summary(CISCO_PASSIVE, material=CISCO_ARTICLE + " Fixed releases are available.", vendor="Cisco"),
+            (CISCO_FIRST + " Cisco says fixed releases are available.", "ok"),
+        )
+        # Clause by clause; a proper noun keeps its case.
+        text, why = review_summary(
+            "Attackers exploit an authentication bypass in NetScaler ADC, and NetScaler 14.1-73.37 fixes the flaw.",
+            material="Citrix fixed the flaw in 14.1-73.37.", vendor="Citrix",
+        )
+        self.assertEqual((text, why), ("Attackers exploit an authentication bypass in NetScaler ADC, and Citrix says NetScaler 14.1-73.37 fixes the flaw.", "ok"))
+
+    def test_without_vendor_backing_a_passive_news_claim_goes(self):
+        self.assertEqual(review_summary(CISCO_PASSIVE, material=CISCO_ARTICLE + " Fixed releases are available."), (CISCO_FIRST, "ok"))
+
+    def test_fix_vendor(self):
+        from app.models import Item, ItemSource, PatchStatus, Source, Vendor
+        from app.summaries import fix_vendor
+
+        cisco = Vendor(id=1, slug="cisco", name="Cisco", domain="cisco.com")
+        news = Source(id=1, name="BleepingComputer", feed_url="x", vendor_id=None)
+
+        def row(url, text, status=PatchStatus.unverified):
+            src = ItemSource(id=1, url=url, excerpt=text)
+            src.source = news
+            item = Item(id=930, headline="h", vendor=cisco, patch_status=status)
+            item.sources = [src]
+            return item
+
+        self.assertIsNone(fix_vendor(row("https://www.bleepingcomputer.com/x", "Fixed releases are available.")))
+        self.assertEqual(fix_vendor(row("https://sec.cloudapps.cisco.com/a", "Fixed releases are available.")), "Cisco")
+        self.assertIsNone(fix_vendor(row("https://sec.cloudapps.cisco.com/a", "Cisco is investigating.")))
+        self.assertEqual(fix_vendor(row("https://www.bleepingcomputer.com/x", "", PatchStatus.patched)), "Cisco")
+
+
 if __name__ == "__main__":
     unittest.main()

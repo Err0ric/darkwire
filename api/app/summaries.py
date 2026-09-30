@@ -25,6 +25,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit
 
 import anthropic
 from sqlalchemy import and_, func, or_, select, update
@@ -239,14 +240,65 @@ def _strip_fix_claims(sentence: str, material: str) -> str:
     return text + "."
 
 
-def review_summary(raw: str | None, patched: bool = False, material: str = "") -> tuple[str | None, str]:
+# A clause's first word that reads as ordinary prose once "<Vendor> says" goes before it.
+_LOWER_FIRST = frozenset(
+    "a an the fixed patched patches fixes updates updated update security software firmware version versions "
+    "this these it they releases".split()
+)
+
+
+def _attribute(sentence: str, vendor: str, material: str) -> str:
+    """A passive fix claim the vendor backs, attributed to it: "Fixed releases are available." ->
+    "Cisco says fixed releases are available." Clause by clause; already attributed claims, and
+    claims the material does not report, are left for _strip_fix_claims."""
+    if not _FIX_CLAIM.search(sentence) or _WORKAROUND.search(sentence) or not _FIX_CLAIM.search(material):
+        return sentence
+    if _ATTRIBUTED.search(sentence) or _vendor_acts(sentence):
+        return sentence
+    parts = _CLAUSE.split(sentence)
+    out = []
+    for k, part in enumerate(parts):
+        if k % 2 == 0 and _FIX_CLAIM.search(part):
+            lead = re.match(r"(?:and|but|while|after)\s+", part)  # ", and ..." splits at the comma
+            lead, part = (lead.group(0), part[lead.end():]) if lead else ("", part)
+            first = part.split(" ", 1)[0]
+            if first.lower() in _LOWER_FIRST and first[:1].isupper() and first[1:].islower():
+                part = part[0].lower() + part[1:]
+            part = f"{lead}{vendor} says {part}"
+        out.append(part)
+    return "".join(out)
+
+
+def fix_vendor(item: Item, fetched: dict[int, str] | None = None) -> str | None:
+    """The vendor a summary's fix claim may be attributed to, when the vendor backs a fix: the
+    row's vendor/NVD data says patched (a Patch reference, an explicit fixed version, an MSRC KB),
+    or the row carries the vendor's own advisory (its domain, or its own feed) and that text
+    reports a fix. None otherwise: passive fix claims from news are stripped as ever."""
+    if "vendor" in sa_inspect(item).unloaded or item.vendor is None:
+        return None
+    vendor = item.vendor
+    if item.patch_status == PatchStatus.patched:
+        return vendor.name
+    for s in item.sources:
+        src = None if "source" in sa_inspect(s).unloaded else s.source
+        host = urlsplit(s.url or "").hostname or ""
+        own = (src is not None and src.vendor_id == vendor.id) or (
+            vendor.domain and (host == vendor.domain or host.endswith("." + vendor.domain))
+        )
+        if own and _FIX_CLAIM.search((fetched or {}).get(s.id) or s.body or s.excerpt or ""):
+            return vendor.name
+    return None
+
+
+def review_summary(raw: str | None, patched: bool = False, material: str = "", vendor: str | None = None) -> tuple[str | None, str]:
     """(the summary to store or None, why): "ok", "skip" (the model found nothing beyond the
     headline), "format" (markdown, line break, a full URL; bare domains are defanged instead),
     "first person", "fix claim" (under MIN_WORDS_AFTER_STRIP words left once unattributed fix
     claims are stripped), "length", "empty".
 
     Drops sentences about what the articles do not say, unattributed fix claims (clause by
-    clause, unless vendor data says patched; never the whole summary for that alone), anything
+    clause, unless vendor data says patched; never the whole summary for that alone; with
+    `vendor` (fix_vendor) they are kept as the vendor's statement instead), anything
     past two sentences, and a second sentence that only restates the first. Over 45 words after
     that: the first sentence alone, if it fits."""
     if not raw or raw.strip() == "SKIP":
@@ -259,6 +311,10 @@ def review_summary(raw: str | None, patched: bool = False, material: str = "") -
     sentences = [x for x in _SENTENCE.split(_plain(raw)) if x]
     sentences = [x for x in sentences if not _UNKNOWN.search(x)]
     stripped = False
+    if vendor:
+        # The vendor backs a fix (its own advisory on the row, or vendor/NVD fix data): a passive
+        # claim is kept as the vendor's statement.
+        sentences = [_attribute(x, vendor, material) for x in sentences]
     if not patched:
         cleaned = [_strip_fix_claims(x, material) for x in sentences]
         stripped = cleaned != sentences
@@ -482,7 +538,7 @@ def request(material: str, no_versions: bool = False) -> dict:
     }
 
 
-async def without_version_conflict(item_id: int, text: str, material: str, patched: bool) -> tuple[str | None, str]:
+async def without_version_conflict(item_id: int, text: str, material: str, patched: bool, vendor: str | None = None) -> tuple[str | None, str]:
     """A summary that states a fix version inside its own affected range (versions.summary_conflict)
     is asked for once more without version numbers; if that fails or still conflicts, its version
     numbers are stripped (versions.strip). Every step is logged. (summary, why)."""
@@ -493,13 +549,13 @@ async def without_version_conflict(item_id: int, text: str, material: str, patch
             msg = await client.messages.create(**request(material, no_versions=True))
         if msg.stop_reason == "end_turn":
             said, _ = facts.parse(" ".join(b.text for b in msg.content if b.type == "text"))
-            again, why = review_summary(said, patched=patched, material=material)
+            again, why = review_summary(said, patched=patched, material=material, vendor=vendor)
     except anthropic.APIError as e:
         log.info("summaries: item %d regeneration failed: %s", item_id, e)
     if again and not versions.summary_conflict(again):
         log.info("summaries: item %d regenerated: %r", item_id, again)
         return again, "ok"
-    stripped, why = review_summary(versions.strip(text), patched=patched, material=material)
+    stripped, why = review_summary(versions.strip(text), patched=patched, material=material, vendor=vendor)
     log.info("summaries: item %d versions stripped (%s): %r", item_id, why, stripped)
     return stripped, why if stripped else "version conflict"
 
@@ -526,7 +582,7 @@ async def summarize_pending(session: AsyncSession) -> int | None:
                 # CISA ICS advisories are summarized from stored fields instead (app/ics.py).
                 # Not summarized yet, or sources joined since (at most every REGENERATE_AFTER).
                 .where(Item.stream == Stream.main, Item.sources.any(), ~ics.ics_sql(), or_(Item.summary.is_(None), grew))
-                .options(selectinload(Item.sources).selectinload(ItemSource.source))
+                .options(selectinload(Item.sources).selectinload(ItemSource.source), selectinload(Item.vendor))
                 .order_by(Item.summary.is_not(None), Item.last_event_at.desc())
                 .limit(PER_RUN)
             )
@@ -551,11 +607,12 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         previous = item.summary  # None: first summary; else written again because sources joined
         # One call, JSON out: the summary (checked as ever) and the article facts (app/facts.py).
         said, stated = facts.parse(raw)
-        text, why = review_summary(said, patched=item.patch_status == PatchStatus.patched, material=material[item.id])
+        vendor = fix_vendor(item, fetched.get(item.id))
+        text, why = review_summary(said, patched=item.patch_status == PatchStatus.patched, material=material[item.id], vendor=vendor)
         if said is None and raw:
             why = "format"
         if text and versions.summary_conflict(text):
-            text, why = await without_version_conflict(item.id, text, material[item.id], item.patch_status == PatchStatus.patched)
+            text, why = await without_version_conflict(item.id, text, material[item.id], item.patch_status == PatchStatus.patched, vendor)
         # A public-PoC quote that names CVEs must name the row's displayed one (facts.poc_problem).
         found = facts.verify(stated, material[item.id], item.cve_id)
         # Written again: the new reading wins per fact, earlier facts it did not restate stay

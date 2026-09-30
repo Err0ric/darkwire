@@ -45,6 +45,44 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 - `web/`: Next.js (App Router, TypeScript, Tailwind) on Vercel.
 - `api/`: FastAPI, SQLAlchemy and Alembic on PostgreSQL, with APScheduler for ingest and enrichment, on Railway.
 
+## How this was built
+
+darkwire was built by one security practitioner with Claude Code as the coding partner. The human set the goals, rules and design and reviewed the work. The working rules in [CLAUDE.md](CLAUDE.md) require a dry run before any bulk change to production data, and approval before any production data change.
+
+### How the build worked
+
+- The human sets goals, rules and design. Claude Code writes the code, runs the tests and reports back.
+- [CLAUDE.md](CLAUDE.md) is the spec: design tokens, banned patterns, data rules and working rules. It is in the repo, so anyone can read the rules the AI works under.
+- The working rules require lint, unit tests, API tests, a production build and Playwright end-to-end tests before every commit. The end-to-end tests include injection tests: malicious values in the URL and in browser storage must run nothing.
+
+### Where AI runs on the live site
+
+- **Summaries.** Claude Haiku reads the stored feed text plus fetched articles, vendor and government advisories first, and writes a summary of at most two sentences.
+- **Facts.** The same call reports whether a public proof of concept exists, what is affected and what version fixes it. Each fact must carry a quote that appears word for word in the article text, or it is dropped.
+- **What the model does not do.** CVSS scores, KEV status and EPSS come straight from NVD, CISA and FIRST, never from the model. Categories are rule-based. The model's opinion on category is logged only, because testing showed it was not reliable enough.
+
+### Guardrails
+
+- No quote, no fact.
+- A "fixed" version inside the "affected" range drops both.
+- A fix claim must say who fixed it. A passive "a patch is available" from a news story is removed.
+- Vendor and NVD data win over headlines and article wording. An "Unpatched" headline cannot override a vendor's fixed version.
+- CISA and vendor advisories are read again 24 to 48 hours after the first read, since advisories get corrected. If the fix or affected text changed, the summary and facts are made again.
+- Bulk changes to production data run as a logged dry run first, with explicit stop conditions, and apply only after approval.
+- If no summary passes the checks, the row shows the RSS excerpt under "From the feed" instead of guessing. CISA ICS advisories fall back to a summary built from stored fields.
+
+### Known limits
+
+- Summaries can be imperfect. The source link is always one click away.
+- Some sites block article fetching. Those rows are summarized from the feed excerpt alone, which can be thin.
+- A few categories are set by hand where the rules misfire.
+
+### Privacy and security
+
+- No accounts, ads or tracking. No service workers, and no feed data in browser storage. See [Privacy](#privacy).
+- The site does not ingest ransomware leak sites.
+- Security headers and API limits are described under [Security](#security). Report issues through [SECURITY.md](SECURITY.md).
+
 ## Run locally
 
 Requires Docker, Python 3.12+ and Node 20+.

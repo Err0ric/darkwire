@@ -208,6 +208,7 @@ Seeded from `api/app/seed.py`. Keep this table and that file in sync. Main feeds
 - Elsewhere relevance (`api/app/topics.py`): an item stays only if it is about surveillance, privacy, disinformation, courts (only cases about technology itself), security policy, civil liberties online, cybercrime, security or AI security. Keyword phrases first, then Haiku answering with one topic word, cached in `items.topic`. Science, culture, listicles, reviews, organizations' reports and blog filler are hidden. Bumping `RULES_VERSION` re-classifies the last 7 days.
 - MSRC: stored per CVE revision in `msrc_updates`; product, KBs, fixed builds and the exploited flag come from the Security Update Guide API, fetched only for CVEs on the board.
 - CISA advisories may 403 from some networks locally; Railway fetches them fine.
+- No ransomware leak-site data is ingested. If a ransomware or leak-site source is ever added, the README line "The site does not ingest ransomware leak sites" is updated in the same commit, and victim names from it are never displayed.
 
 NVD, FIRST.org EPSS and the CISA KEV JSON are enrichment APIs, not feeds, and are not in this table.
 
@@ -297,3 +298,5 @@ Purple, indigo, gradients, glassmorphism, glow, blobs, particles, rounded-2xl, I
 - `npm run lint`, `npm test` and `npm run build` clean before every commit (in `/web`); API tests with `python -m unittest discover -s tests` (in `/api`). `npm run test:e2e` (Playwright, against a running site; `BASE_URL` to target production) checks that malicious URL and storage values run nothing.
 - Real RSS from the first commit. No mock data in the repo.
 - Small commits, one page or one component each.
+- Any bulk change to production data (more than one row) runs as a logged dry run first, with explicit stop conditions, and applies only after approval.
+- No production data change runs on Claude Code's own initiative. Follow-up fixes discovered during a task are proposed and wait for approval, even when small.

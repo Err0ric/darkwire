@@ -62,6 +62,13 @@ def alert_led(item) -> bool:
     return is_kev_alert(getattr(item, "headline", None), getattr(item, "primary_url", None))
 
 
+def alert_row_takes(row_cves: set[str], article_cves: set[str]) -> bool:
+    """Whether news sharing a CVE with a row a KEV alert started may join it: the row holds one
+    CVE, or the article holds every CVE the row does. One shared CVE of a multi-CVE alert would
+    gather unrelated stories under one "CISA Adds ..." row."""
+    return len(row_cves) <= 1 or row_cves <= article_cves
+
+
 def time_sources(sources, led_by_alert: bool = False) -> list:
     """The sources a row's time comes from (app/rowtime.py). On a row a KEV alert started, all of
     them, the alert included. On a news row an alert joined, the news articles only: the row

@@ -77,9 +77,12 @@ async def roll_up(session: AsyncSession) -> int:
     escalated = 0
     for item_id, cves in by_item.items():
         item = items[item_id]
+        # The row's displayed CVE is pinned: set when the row got its first CVE, never moved by a
+        # merge or a later article. Only a row with none (or a stale pointer) gets one picked:
+        # highest score, ties to the CVE mentioned first, unscored rows the first mention.
+        pinned = next((c for c in cves if c.id == item.cve_id), None)
         scored = [c for c in cves if c.base_score is not None]
-        # Highest score wins; ties go to the CVE mentioned first. Unscored rows keep the first mention.
-        primary = max(scored, key=lambda c: (c.base_score, -cves.index(c))) if scored else cves[0]
+        primary = pinned or (max(scored, key=lambda c: (c.base_score, -cves.index(c))) if scored else cves[0])
         kev_dates = [c.kev_added_at for c in cves if c.kev and c.kev_added_at]
 
         status, url = primary.patch_status, primary.patch_url

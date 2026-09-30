@@ -144,9 +144,11 @@ def _is_better_primary(new: ItemSource, new_source: Source, cur: ItemSource | No
 
 
 async def find_cve_cluster(session: AsyncSession, cves: list[str], published: datetime) -> Item | None:
+    """The most recent row within the window sharing a CVE. A row a KEV alert started is joined
+    only when it holds one CVE or the article holds all of its CVEs (dedupe.alert_row_takes)."""
     if not cves:
         return None
-    return await session.scalar(
+    rows = await session.scalars(
         select(Item)
         .where(
             Item.stream == Stream.main,
@@ -155,8 +157,16 @@ async def find_cve_cluster(session: AsyncSession, cves: list[str], published: da
         )
         .options(selectinload(Item.sources).selectinload(ItemSource.source))
         .order_by(Item.last_event_at.desc())
-        .limit(1)
+        .limit(10)
     )
+    for row in rows.all():
+        if dedupe.alert_led(row):
+            held = set(await session.scalars(select(ItemCve.cve_id).where(ItemCve.item_id == row.id)))
+            if not dedupe.alert_row_takes(held, set(cves)):
+                log.info("ingest: not joining alert row %d (holds %d CVEs, article %s)", row.id, len(held), ",".join(cves))
+                continue
+        return row
+    return None
 
 
 async def link_cves(session: AsyncSession, item: Item, cves: list[str]) -> None:
@@ -271,7 +281,7 @@ async def ingest_source(
             events.record(session, "cluster", cluster.headline, f"{len(cluster.sources)} sources", cluster.id)
             stored.merged += 1
         else:
-            # cve_id starts as the first CVE mentioned; enrichment re-points it at the highest-scored one.
+            # cve_id is the first CVE mentioned and stays pinned (enrich.roll_up); a merge never moves it.
             item = Item(
                 stream=Stream.main, headline=a.title, primary_url=a.url,
                 vendor_id=vendor_id, category=category, cve_id=cves[0] if cves else None,

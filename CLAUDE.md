@@ -135,7 +135,7 @@ Claude Haiku writes the row summary and the What to do workaround sentence. Rule
 - Bumping `RULES_VERSION` regenerates every summary and workaround; bumping `RETRY_VERSION` re-asks the last 7 days' declined ones once.
 - Stale sources: a CISA or vendor advisory on a row (CISA feed, a vendor's own feed, or the row's vendor's domain) is read once more 24-48h after its first read (`api/app/advisories.py`). Only a digest of its fix and affected sentences is kept, never the text. When they changed, the row's summary and facts are made again from the new text (facts replaced; an ICS advisory keeps its template summary) and the change is logged. Nothing else is fetched again.
 - `/status` reports the model's health; the wire footer says "Summaries paused." when it is not ok.
-- CISA ICS advisory rows never go to the model: their summary is built from stored fields (vendor and product from CISA's title, CVE count, highest CVSS, fix status), leaving out anything missing (`api/app/ics.py`). Model summaries written before stay. `python -m app.ics` dry-runs the rows with no summary; `BACKFILL_VERSION` in that file fills them once, only with sign-off.
+- CISA ICS advisory rows go to the model like any row; when its summary fails a check (version consistency included: no regeneration for these), or with no model key, the summary is the template built from stored fields (vendor and product from CISA's title, CVE count, highest CVSS, fix status), leaving out anything missing (`api/app/ics.py`). `python -m app.ics` dry-runs the rows with no summary; `BACKFILL_VERSION` in that file fills them once, only with sign-off.
 
 ## Services
 

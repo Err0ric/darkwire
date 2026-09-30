@@ -432,6 +432,63 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(fails.summary_sources, 2)  # not asked again until another source joins
             self.assertEqual((await s.get(Item, ids["recent"])).summary, "Recent summary.")
 
+    async def test_ics_advisories_take_the_model_summary_and_fall_back_to_the_template(self):
+        import json
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from app import ics, summaries
+
+        now = datetime.now(UTC)
+
+        def out(text):
+            return json.dumps({"summary": text, "facts": {
+                "exploited_in_wild": {"stated": False, "quote": None}, "public_poc": {"stated": False, "quote": None},
+                "affected": {"text": None, "quote": None}, "fixed": {"version": None, "quote": None}}})
+
+        async with self.Session() as s:
+            src = Source(name="CISA", feed_url="https://test.invalid/cisa5", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            ids = {}
+            for n, key in enumerate(("passes", "conflicts")):
+                row = await self._row(s, src, "MikroTik RouterOS", now, [f"CVE-2026-8441{n}"])
+                row.primary_url = f"https://www.cisa.gov/news-events/ics-advisories/icsa-26-272-0{n}"
+                (await s.scalar(select(ItemSource).where(ItemSource.item_id == row.id))).url = row.primary_url
+                ids[key] = row.id
+            await s.commit()
+            # With a model key (and the one-time backfill done, as in production), the template does
+            # not fill a row the model has not seen.
+            from app import jobstate
+
+            await jobstate.put(s, ics.BACKFILL_STATE, ics.BACKFILL_VERSION)
+            with mock.patch.object(ics, "get_settings", return_value=SimpleNamespace(anthropic_api_key="test")):
+                self.assertEqual(await ics.summarize(s), 0)
+            answers = {
+                # Row 873's model summary (2026-09-30).
+                ids["passes"]: out("An integer underflow in MikroTik RouterOS web management service before version 7.24 allows "
+                                   "unauthenticated attackers to execute arbitrary code. MikroTik recommends updating to version 7.24 or later."),
+                ids["conflicts"]: out("MikroTik RouterOS versions before 7.24 contain an integer underflow that allows remote code "
+                                      "execution. MikroTik recommends updating to version 7.23 or later."),
+            }
+
+            async def fake_run(session, items, call, label):
+                return [answers.get(i.id) for i in items]
+
+            async def nothing(*a, **k):
+                return {} if a and isinstance(a[0], list) else None
+
+            with mock.patch.object(summaries, "get_settings", return_value=SimpleNamespace(anthropic_api_key="test")), \
+                 mock.patch.object(summaries, "_run", fake_run), \
+                 mock.patch.object(summaries, "_fetch_articles", nothing), \
+                 mock.patch.object(summaries, "reset_once", nothing), mock.patch.object(summaries, "_retry_once", nothing), \
+                 mock.patch.object(summaries, "_reask_once", nothing), mock.patch.object(summaries, "log_coverage", nothing), \
+                 mock.patch.object(summaries.article_cves, "after_fetch", nothing):
+                await summaries.summarize_pending(s)
+        async with self.Session() as s:
+            self.assertTrue((await s.get(Item, ids["passes"])).summary.startswith("An integer underflow in MikroTik RouterOS"))
+            self.assertEqual((await s.get(Item, ids["conflicts"])).summary, "CISA industrial control systems advisory for MikroTik RouterOS, covering 1 CVE.")
+
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)
         async with self.Session() as s:

@@ -175,7 +175,7 @@ async def resummarize_933(session) -> None:
 async def refresh_873(session) -> None:
     """Row 873 (CISA's MikroTik RouterOS advisory, corrected from "7.23 or later" to "7.24 or
     later"): the advisory read again and the combined summary + facts call run once on it
-    (advisories.refresh; the row keeps its ICS template summary). Signed off 2026-09-30."""
+    (advisories.refresh). Signed off 2026-09-30; v2: the model summary replaces the template when it passes."""
     from app import advisories
 
     item = await session.scalar(
@@ -310,6 +310,8 @@ STEPS = [
     ("recheck_930_v1", recheck_930),
     # Row 747: patched since its summary ("Two unpatched ... zero-days") was written.
     ("resummarize_747_v1", lambda session: resummarize(session, [747])),
+    # Row 873 again: an ICS advisory now takes the model summary when it passes every check.
+    ("refresh_873_v2", refresh_873),
 ]
 
 

@@ -1,4 +1,6 @@
-"""CISA ICS advisory rows get a deterministic summary built from stored fields, never the model.
+"""CISA ICS advisory rows: the fallback summary built from stored fields. The model summarizes
+them like any row (app/summaries.py); this template is used when its summary fails a check
+(version consistency included), or with no model key.
 
 CISA's ICS advisory titles are the vendor and product ("Siemens Mendix Runtime (Update A)"), and
 the rest comes from the row's own data: how many CVEs it holds (item_cves), the highest CVSS and
@@ -8,8 +10,8 @@ its severity (items.cvss / items.severity, rolled up from NVD), and the fix stat
     python -m app.ics            # dry run: ICS rows with no summary (or ours), stored and new summary
     python -m app.ics --apply    # writes; never against production without sign-off
 
-Each enrich pass fills ICS rows with no summary yet and refreshes the ones this module wrote (they
-start with PREFIX) when a score or fix status changes. Rows the model summarized before this module
+Each enrich pass refreshes the rows this module wrote (they start with PREFIX) when a score or
+fix status changes, and with no model key fills ICS rows with no summary yet. Rows the model summarized before this module
 keep their summary. Rows it declined ("") are rewritten once per BACKFILL_VERSION (set only with
 sign-off); the dry run lists exactly those.
 Uses DATABASE_URL like the app.
@@ -24,6 +26,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import jobstate
+from app.config import get_settings
 from app.models import Item, ItemCve, PatchStatus, Severity, Stream
 
 log = logging.getLogger(__name__)
@@ -77,7 +80,7 @@ def ics_summary(
     return f"{first} {fix}" if fix else first
 
 
-async def _rows(session: AsyncSession, backfill: bool) -> list[tuple[Item, int]]:
+async def _rows(session: AsyncSession, backfill: bool, fill_new: bool = True) -> list[tuple[Item, int]]:
     counts = (
         select(ItemCve.item_id, func.count().label("n")).group_by(ItemCve.item_id).subquery()
     )
@@ -89,7 +92,8 @@ async def _rows(session: AsyncSession, backfill: bool) -> list[tuple[Item, int]]
     )
     # Never a model-written summary; declined ("") rows only in a backfill.
     no_summary = or_(Item.summary.is_(None), Item.summary == "") if backfill else Item.summary.is_(None)
-    stmt = stmt.where(or_(no_summary, Item.summary.startswith(PREFIX, autoescape=True)))
+    ours = Item.summary.startswith(PREFIX, autoescape=True)
+    stmt = stmt.where(or_(no_summary, ours) if fill_new or backfill else ours)
     return list((await session.execute(stmt)).all())
 
 
@@ -98,7 +102,8 @@ async def summarize(session: AsyncSession) -> int:
     Returns how many summaries changed."""
     backfill = bool(BACKFILL_VERSION) and await jobstate.get(session, BACKFILL_STATE) != BACKFILL_VERSION
     changed = 0
-    for item, n in await _rows(session, backfill):
+    # With a model key, rows with no summary go to the model first (app/summaries.py).
+    for item, n in await _rows(session, backfill, fill_new=not get_settings().anthropic_api_key):
         text = ics_summary(item.headline, n, float(item.cvss) if item.cvss is not None else None, item.severity, item.patch_status)
         if item.summary != text:
             if backfill:

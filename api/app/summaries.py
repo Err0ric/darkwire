@@ -586,6 +586,11 @@ async def without_version_conflict(item_id: int, text: str, material: str, patch
     return stripped, why if stripped else "version conflict"
 
 
+async def ics_template(session: AsyncSession, item: Item) -> str:
+    n = await session.scalar(select(func.count()).select_from(ItemCve).where(ItemCve.item_id == item.id)) or 0
+    return ics.ics_summary(item.headline, n, float(item.cvss) if item.cvss is not None else None, item.severity, item.patch_status)
+
+
 async def summarize_pending(session: AsyncSession) -> int | None:
     """Summarize up to PER_RUN items that have none. None when skipped (no key).
     summary NULL = not asked yet; "" = asked, output rejected or SKIP (not re-asked, except by
@@ -605,9 +610,8 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         (
             await session.scalars(
                 select(Item)
-                # CISA ICS advisories are summarized from stored fields instead (app/ics.py).
                 # Not summarized yet, or sources joined since (at most every REGENERATE_AFTER).
-                .where(Item.stream == Stream.main, Item.sources.any(), ~ics.ics_sql(), or_(Item.summary.is_(None), grew))
+                .where(Item.stream == Stream.main, Item.sources.any(), or_(Item.summary.is_(None), grew))
                 .options(selectinload(Item.sources).selectinload(ItemSource.source), selectinload(Item.vendor))
                 .order_by(Item.summary.is_not(None), Item.last_event_at.desc())
                 .limit(PER_RUN)
@@ -640,8 +644,16 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         text, why = review_summary(said, patched=item.patch_status == PatchStatus.patched, material=material[item.id], vendor=vendor)
         if said is None and raw:
             why = "format"
+        is_ics = ics.is_ics_advisory(item.primary_url)
         if text and versions.summary_conflict(text):
-            text, why = await without_version_conflict(item.id, text, material[item.id], item.patch_status == PatchStatus.patched, vendor)
+            if is_ics:
+                text, why = None, "version conflict"  # the template instead (below)
+            else:
+                text, why = await without_version_conflict(item.id, text, material[item.id], item.patch_status == PatchStatus.patched, vendor)
+        if text is None and is_ics and (not previous or previous.startswith(ics.PREFIX)):
+            # A CISA ICS advisory whose model summary failed a check: the template from stored fields.
+            log.info("summaries: item %d ICS advisory, model summary rejected (%s): template instead", item.id, why)
+            text, why = await ics_template(session, item), "ics template"
         # A public-PoC quote that names CVEs must name the row's displayed one (facts.poc_problem).
         found = facts.verify(stated, material[item.id], item.cve_id)
         # Written again: the new reading wins per fact, earlier facts it did not restate stay

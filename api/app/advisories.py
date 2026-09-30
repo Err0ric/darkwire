@@ -81,8 +81,8 @@ def note_reads(items: list[Item], fetched: dict[int, dict[int, str]], now: datet
 async def refresh(session: AsyncSession, item: Item, fetched: dict[int, str], reason: str) -> None:
     """The row's summary and facts made again from its articles, with `fetched` (text read just
     now, by source id) in place of the stored text; nothing else is fetched. Facts are replaced,
-    not merged. A CISA ICS advisory keeps its template summary (app/ics.py); the model's summary
-    is only logged. A failed or rejected summary keeps the old one. Before and after logged."""
+    not merged. A CISA ICS advisory whose model summary fails a check (a version conflict
+    included) gets its template (app/ics.py) if it has none of the model's. A failed or rejected summary keeps the old one. Before and after logged."""
     if not get_settings().anthropic_api_key:
         log.info("advisories: item %d: %s; no model key, not refreshed", item.id, reason)
         return
@@ -99,11 +99,15 @@ async def refresh(session: AsyncSession, item: Item, fetched: dict[int, str], re
     patched = item.patch_status == PatchStatus.patched
     vendor = summaries.fix_vendor(item, fetched)
     text, why = summaries.review_summary(said, patched=patched, material=material, vendor=vendor)
+    is_ics = ics.is_ics_advisory(item.primary_url)
     if text and versions.summary_conflict(text):
-        text, why = await summaries.without_version_conflict(item.id, text, material, patched, vendor)
-    if ics.is_ics_advisory(item.primary_url):
-        log.info("advisories: item %d: ICS advisory keeps its template summary; the model wrote (%s) %r", item.id, why, text)
-    elif text:
+        if is_ics:
+            text, why = None, "version conflict"
+        else:
+            text, why = await summaries.without_version_conflict(item.id, text, material, patched, vendor)
+    if text is None and is_ics and (not before_summary or before_summary.startswith(ics.PREFIX)):
+        text, why = await summaries.ics_template(session, item), "ics template"
+    if text:
         item.summary = text
     else:
         log.info("advisories: item %d: new summary rejected (%s), kept the old one", item.id, why)

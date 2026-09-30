@@ -655,21 +655,22 @@ export function WireBoard({ initial }: { initial: WireData }) {
           className="mt-16 text-[13px] wire2:sticky wire2:mt-[103px] wire2:w-[300px] wire2:shrink-0 wire3:w-(--rail-w)"
         >
           {/* Orders: under 1024 Elsewhere, Most active, Added to KEV, Last 7 days, Services (its
-              impacted lines also sit above the feed). 1024-1599 Elsewhere, Most active, Last 7
-              days, Added to KEV, Services. 1600+ Elsewhere, Services; the rest is in the left
-              rail. The sources line is in the page footer. */}
+              impacted lines also sit above the feed). 1024-1599 Elsewhere, impacted services (when
+              any), Added to KEV, Most active, Last 7 days, the full services list. 1600+
+              Elsewhere, Services; the rest is in the left rail. The sources line is in the page
+              footer. */}
           <div className="flex max-w-[640px] flex-col gap-10 wire2:-ml-5 wire2:max-w-none wire2:border-l wire2:border-rule wire2:pl-5 wire3:-ml-[calc(var(--col-gap)/2)] wire3:pl-[calc(var(--col-gap)/2)]">
-            <div className="order-2 wire3:hidden">
+            <div className="order-2 wire2:order-4 wire3:hidden">
               <MostActive
                 active={active}
                 vendor={filters.vendor}
                 onVendor={(slug) => apply({ vendor: filters.vendor === slug ? "" : slug })}
               />
             </div>
-            <div className="order-4 wire2:order-3 wire3:hidden">
+            <div className="order-4 wire2:order-5 wire3:hidden">
               <LastSevenDays status={status} severity={railSeverity} onSeverity={onRailSeverity} />
             </div>
-            <div className="order-3 wire2:order-4 wire3:hidden">
+            <div className="order-3 wire3:hidden">
               <AddedToKev kev={kev} query={prefs.query()} />
             </div>
             <div className="order-1">
@@ -680,8 +681,15 @@ export function WireBoard({ initial }: { initial: WireData }) {
                 onMore={() => apply({ tab: "elsewhere" })}
               />
             </div>
-            <div className="order-5">
+            {/* The single rail splits Services around the other sections (empty: nothing impacted). */}
+            <div className="hidden empty:hidden wire2:order-2 wire2:block wire3:hidden">
+              <Services data={services} part="impacted" />
+            </div>
+            <div className="order-5 wire2:hidden wire3:block">
               <Services data={services} />
+            </div>
+            <div className="hidden wire2:order-6 wire2:block wire3:hidden">
+              <Services data={services} part="list" />
             </div>
           </div>
         </aside>

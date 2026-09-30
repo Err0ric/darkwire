@@ -14,8 +14,18 @@ import { age, useNow } from "@/lib/time"
  * tooltip. Then every other service in a 2-column grid: a small dim dot and the name. Services
  * the viewer picked (?services= or remembered) lead the grid in --fg-2, above a thin rule. Each
  * name opens that service on /services, expanded. `compact`: only the impacted lines (or one
- * "all operational" line), for the top of the feed under 1200px. */
-export function Services({ data, compact = false }: { data: ServicesOut | null; compact?: boolean }) {
+ * "all operational" line), for the top of the feed under 1024px. `part` splits the block for the
+ * single rail (1024-1599px), which puts other sections between the halves: "impacted" (nothing
+ * when no service is impacted) and "list" (the grid of every other service). */
+export function Services({
+  data,
+  compact = false,
+  part = "all",
+}: {
+  data: ServicesOut | null
+  compact?: boolean
+  part?: "all" | "impacted" | "list"
+}) {
   const now = useNow()
   const prefs = usePrefs()
   if (!data || !data.services.length) return null
@@ -59,13 +69,25 @@ export function Services({ data, compact = false }: { data: ServicesOut | null; 
     )
   }
 
+  if (part === "impacted") {
+    return lines ? (
+      <section aria-label="Services, impacted now">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-[13px] font-medium text-fg-2">Services</h2>
+          {allLink}
+        </div>
+        {lines}
+      </section>
+    ) : null
+  }
+
   return (
-    <section aria-label="Services">
+    <section aria-label={part === "list" ? "All services" : "Services"}>
       <div className="flex items-baseline justify-between">
-        <h2 className="text-[13px] font-medium text-fg-2">Services</h2>
+        <h2 className="text-[13px] font-medium text-fg-2">{part === "list" && impacted.length ? "All services" : "Services"}</h2>
         {allLink}
       </div>
-      {lines}
+      {part === "all" && lines}
       <ul className="mt-3 grid grid-cols-2 gap-x-4 text-[12px] leading-[18px]">
         {mine.map((s) => (
           <GridItem key={s.slug} s={s} href={open(s.slug)} picked />

@@ -318,6 +318,8 @@ STEPS = [
     ("refresh_873_v2", refresh_873),
     ("strip_headline_emoji_v1", strip_headline_emoji),
     ("recategorize_trends_dry_run_v1", recategorize_trends),
+    # The dry run (2026-09-30 19:16 UTC) changed 1 of 164 rows: 926 vulnerability -> research.
+    ("recategorize_trends_apply_v1", lambda session: recategorize_trends(session, apply=True)),
 ]
 
 

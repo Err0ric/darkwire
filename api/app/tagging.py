@@ -238,7 +238,9 @@ BREACH_INCIDENT = _keywords(
 )
 
 
-def guess_category(title: str, excerpt: str, has_cve: bool, trends: bool = True, specific: bool | None = None) -> Category:
+def guess_category(
+    title: str, excerpt: str, has_cve: bool, trends: bool = True, specific: bool | None = None, compromised: bool = False
+) -> Category:
     """Title first. The first paragraph is only consulted when the title matches nothing. An
     explainer title is Research (about threats) or News, never Breach; a breach found only in the
     first paragraph needs an incident word there too. A trend or industry piece with no CVE is not
@@ -246,7 +248,9 @@ def guess_category(title: str, excerpt: str, has_cve: bool, trends: bool = True,
     or threats, else News. `trends=False`: the rule before that (for the one-time re-derivation).
     `specific`: the summary call's verdict (facts specific_vulnerability) when known. With no CVE
     and specific False, a vulnerability keyword does not make it Vulnerability: the other rules
-    decide, else Research when it is about flaws or threats, else News."""
+    decide, else Research when it is about flaws or threats, else News. `compromised`: the call's
+    organization_compromised, the main subject is an organization that was compromised; what would
+    be Vulnerability is then Breach, even when a flaw was the way in."""
     if EXPLAINER.search(title or ""):
         return Category.research if _ABOUT_THREATS.search(title) else Category.news
     general = False  # a vulnerability keyword, but the call says no specific flaw
@@ -255,6 +259,8 @@ def guess_category(title: str, excerpt: str, has_cve: bool, trends: bool = True,
             if pattern.search(text or ""):
                 if category == Category.breach and lead and not BREACH_INCIDENT.search(f"{title} {text}"):
                     continue
+                if category == Category.vulnerability and compromised:
+                    return Category.breach
                 if category == Category.vulnerability and not has_cve:
                     if trends and TREND.search(title or ""):
                         return _not_a_flaw(title)
@@ -265,6 +271,13 @@ def guess_category(title: str, excerpt: str, has_cve: bool, trends: bool = True,
     if general:
         return _not_a_flaw(title)
     return Category.vulnerability if has_cve else Category.news
+
+
+# Manual category overrides, by row id: the category rules are final (2026-09-30), so a misfire
+# is fixed here instead. app/maintenance.py applies them (once per change to this table) and the
+# automatic checks (summaries.check_category, one-time re-derivations) leave these rows alone.
+# {row id: category value}, each with a comment saying why.
+CATEGORY_OVERRIDES: dict[int, str] = {}
 
 
 def _not_a_flaw(title: str) -> Category:

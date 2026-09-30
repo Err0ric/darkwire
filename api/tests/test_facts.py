@@ -65,7 +65,7 @@ class Facts(unittest.TestCase):
 
     def test_the_schema_requires_every_key(self):
         props = facts.SCHEMA["properties"]["facts"]
-        self.assertEqual(set(props["required"]), {"exploited_in_wild", "public_poc", "affected", "fixed", "specific_vulnerability"})
+        self.assertEqual(set(props["required"]), {"exploited_in_wild", "public_poc", "affected", "fixed", "specific_vulnerability", "organization_compromised"})
         self.assertFalse(facts.SCHEMA["additionalProperties"])
 
 

@@ -5,6 +5,7 @@ make. Steps that were signed off conditionally ("apply only if the dry run shows
 check that condition themselves and stop, logging the difference, when it does not hold.
 """
 
+import hashlib
 import json
 import logging
 import re
@@ -238,16 +239,18 @@ async def recategorize_trends(session, apply: bool = False) -> dict[int, tuple[s
 SPECIFIC_PLAN = "maintenance_specific_plan"
 
 
-async def recategorize_specific(session, apply: bool = False) -> dict[str, list[str]]:
-    """Vulnerability rows of the last 7 days with no CVE, asked once whether they are about a
-    specific flaw in a named product (the summary call's specific_vulnerability, quote-checked
-    against the articles), and re-derived with the answer (tagging.guess_category). The dry run
-    logs each row (verdict, quote, old -> new) and stores the plan in job_state; `apply` writes
-    exactly that plan, to rows whose category has not changed since. {row: [old, new]}."""
+async def recategorize_specific(session, apply: bool = False, auto: bool = False) -> dict[str, list[str]]:
+    """Vulnerability rows of the last 7 days, asked once (the summary call's specific_vulnerability
+    and organization_compromised, quote-checked against the articles) and re-derived with the
+    answers (tagging.guess_category). The dry run logs each row (verdicts, quotes, old -> new) and
+    stores the plan in job_state; `apply` writes exactly that plan, to rows whose category has not
+    changed since. `auto` (v2, signed off 2026-09-30): the dry run applies its own plan unless a
+    row with a CVE or on the KEV list would leave Vulnerability; then it STOPs and writes nothing.
+    Rows in tagging.CATEGORY_OVERRIDES are left alone. {row: [old, new]}."""
     import anthropic
 
-    from app import facts
-    from app.tagging import guess_category
+    from app import cve_facts, facts
+    from app.tagging import CATEGORY_OVERRIDES, guess_category
 
     if apply:
         plan = json.loads(await jobstate.get(session, SPECIFIC_PLAN) or "{}")
@@ -263,17 +266,27 @@ async def recategorize_specific(session, apply: bool = False) -> dict[str, list[
     if not get_settings().anthropic_api_key:
         log.info("maintenance: specific (dry run): no model key, nothing asked")
         return {}
-    rows = (
-        await session.scalars(
-            select(Item)
-            .where(Item.stream == Stream.main, Item.category == Category.vulnerability, Item.cve_id.is_(None),
-                   Item.last_event_at >= datetime.now(UTC) - timedelta(days=7))
-            .options(selectinload(Item.sources).selectinload(ItemSource.source), selectinload(Item.vendor))
-            .order_by(Item.id)
-        )
-    ).all()
-    fetched = await summaries._fetch_articles(list(rows)) if rows else {}
+    where = [Item.stream == Stream.main, Item.category == Category.vulnerability,
+             Item.last_event_at >= datetime.now(UTC) - timedelta(days=7)]
+    if not auto:
+        where.append(Item.cve_id.is_(None))  # v1 asked only the rows with no CVE
+    rows = [
+        i for i in (
+            await session.scalars(
+                select(Item).where(*where)
+                .options(selectinload(Item.sources).selectinload(ItemSource.source), selectinload(Item.vendor))
+                .order_by(Item.id)
+            )
+        ).all()
+        if i.id not in CATEGORY_OVERRIDES
+    ]
+    held = {}
+    for item_id, cve_id in (await session.execute(select(ItemCve.item_id, ItemCve.cve_id).where(ItemCve.item_id.in_([i.id for i in rows])))).all():
+        held.setdefault(item_id, set()).add(cve_id)
+    kev = await cve_facts.kev_listed(session, sorted({c for cs in held.values() for c in cs})) if held else set()
+    fetched = await summaries._fetch_articles(rows) if rows else {}
     plan: dict[str, list[str]] = {}
+    stop: list[int] = []
     async with anthropic.AsyncAnthropic(api_key=get_settings().anthropic_api_key, max_retries=3) as client:
         for item in rows:
             material = summaries._articles(item, fetched.get(item.id))
@@ -283,20 +296,45 @@ async def recategorize_specific(session, apply: bool = False) -> dict[str, list[
                 log.info("maintenance: specific (dry run): item %d call failed: %s", item.id, e)
                 continue
             _, stated = facts.parse(" ".join(b.text for b in msg.content if b.type == "text"))
-            found = facts.verify(stated, material, None).get("specific_vulnerability")
-            said = (stated.get("specific_vulnerability") or {}) if isinstance(stated, dict) else {}
+            found = facts.verify(stated, material, None)
+            specific, compromised = found.get("specific_vulnerability"), found.get("organization_compromised")
+            has_cve = bool(held.get(item.id))
             primary = next((s for s in item.sources if s.url == item.primary_url), item.sources[0])
-            new = guess_category(primary.title, primary.excerpt or "", False, specific=found is not None)
-            log.info("maintenance: specific (dry run): item %d %s -> %s | specific %s%s | %s", item.id, item.category.value, new.value,
-                     "yes" if found else "no", f" (quote {found['quote']!r})" if found else
-                     (f" (model said yes, quote not in the articles: {said.get('quote')!r})" if said.get("stated") else ""),
+            new = guess_category(primary.title, primary.excerpt or "", has_cve, specific=specific is not None, compromised=compromised is not None)
+            quote = (compromised or specific or {}).get("quote")
+            log.info("maintenance: specific (dry run): item %d %s -> %s | specific %s, compromised %s%s%s | %s", item.id,
+                     item.category.value, new.value, "yes" if specific else "no", "yes" if compromised else "no",
+                     f" (quote {quote!r})" if quote else "", " | CVE" + (", KEV" if held.get(item.id, set()) & kev else "") if has_cve else "",
                      item.headline[:100])
             if new != item.category:
                 plan[str(item.id)] = [item.category.value, new.value]
+                if has_cve or held.get(item.id, set()) & kev:
+                    stop.append(item.id)
     await jobstate.put(session, SPECIFIC_PLAN, json.dumps(plan))
     await session.commit()
-    log.info("maintenance: specific (dry run): %d of %d rows change; plan stored, nothing written", len(plan), len(rows))
+    if auto and stop:
+        log.info("maintenance: specific (dry run): %d of %d rows change; STOP: rows with a CVE or on KEV would leave Vulnerability (%s); nothing written",
+                 len(plan), len(rows), ", ".join(map(str, stop)))
+        return plan
+    log.info("maintenance: specific (dry run): %d of %d rows change; %s", len(plan), len(rows), "applying" if auto else "plan stored, nothing written")
+    if auto:
+        await recategorize_specific(session, apply=True)
     return plan
+
+
+async def apply_category_overrides(session) -> None:
+    """tagging.CATEGORY_OVERRIDES written to their rows, each change logged. Runs once per version
+    of the table (its step name carries a digest of it)."""
+    from app.tagging import CATEGORY_OVERRIDES
+
+    for item_id, value in sorted(CATEGORY_OVERRIDES.items()):
+        item = await session.get(Item, item_id)
+        if item is None:
+            log.info("maintenance: category override: item %d gone", item_id)
+            continue
+        log.info("maintenance: category override: item %d %s -> %s | %s", item_id, item.category.value, value, item.headline[:100])
+        item.category = Category(value)
+    await session.commit()
 
 
 async def recategorize_breach(session) -> None:
@@ -383,13 +421,27 @@ STEPS = [
     # The dry run (2026-09-30 19:16 UTC) changed 1 of 164 rows: 926 vulnerability -> research.
     ("recategorize_trends_apply_v1", lambda session: recategorize_trends(session, apply=True)),
     ("recategorize_specific_dry_run_v1", recategorize_specific),
+    # v2 (signed off 2026-09-30): main-subject wording and organization_compromised; applies itself
+    # unless a row with a CVE or on KEV would leave Vulnerability.
+    ("recategorize_specific_v2", lambda session: recategorize_specific(session, auto=True)),
 ]
+
+
+def _override_step() -> list:
+    """The manual category overrides as a step named for the table's contents: it runs again
+    whenever the table changes."""
+    from app.tagging import CATEGORY_OVERRIDES
+
+    if not CATEGORY_OVERRIDES:
+        return []
+    digest = hashlib.sha256(json.dumps(sorted(CATEGORY_OVERRIDES.items())).encode()).hexdigest()[:12]
+    return [(f"category_overrides_{digest}", apply_category_overrides)]
 
 
 async def run_once() -> None:
     from app.db import SessionLocal
 
-    for name, step in STEPS:
+    for name, step in [*STEPS, *_override_step()]:
         key = f"{STATE}_{name}"
         try:
             async with SessionLocal() as session:

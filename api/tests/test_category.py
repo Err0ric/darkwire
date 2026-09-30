@@ -88,6 +88,26 @@ class SpecificVulnerability(unittest.TestCase):
             # A CVE on the row is enough whatever the call says.
             self.assertEqual(guess_category(title, "", True, specific=False), Category.vulnerability, title)
 
+    def test_row_943_and_the_cve_rows(self):
+        # Row 943 (2026-09-30): the call said the main subject is not one flaw.
+        self.assertNotEqual(
+            guess_category("Google: Vulnerability disclosures double to 10,000 per month as AI fuels exploitation", "", False, specific=False),
+            Category.vulnerability,
+        )
+        # Zimbra, TeamViewer and Cisco SD-WAN rows carry CVEs; WatchGuard's call names the flaw.
+        for title in ("Attackers Exploit Zimbra Flaw to Deploy Web Shells and Harvest Authentication Secrets",
+                      "TeamViewer urges users to patch severe flaws “as soon as possible”",
+                      "Cisco warns of new SD-WAN zero-day exploited in attacks"):
+            self.assertEqual(guess_category(title, "", True, specific=False), Category.vulnerability, title)
+        self.assertEqual(guess_category("WatchGuard Patches Critical Fireware OS Code Injection Vulnerability", "", False, specific=True),
+                         Category.vulnerability)
+
+    def test_an_organization_compromised_through_a_flaw_is_a_breach(self):
+        # Row 829 (2026-09-30).
+        title = "Bitget Says Attacker Exploited Third-Party Security Product Flaw to Steal $388M"
+        self.assertEqual(guess_category(title, "", False, specific=False, compromised=True), Category.breach)
+        self.assertEqual(guess_category(title, "", False, specific=True, compromised=True), Category.breach)
+
     def test_other_rules_still_apply_without_a_specific_flaw(self):
         self.assertEqual(guess_category("Ransomware gangs exploit flaws faster than ever", "", False, specific=False), Category.ransomware)
         self.assertEqual(guess_category("Patch Tuesday fatigue is real", "", False, specific=False), Category.news)

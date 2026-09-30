@@ -10,14 +10,17 @@ to the row:
   ones, the exploitation sentences', repeated ones, else the first), at most PER_ARTICLE each.
 - From the fetched text only, with related-article blocks already cut (fetcher.main_body).
   Never from the model's output.
-- Not on a row a CISA KEV alert started (it holds exactly the alert's CVEs) or an ICS advisory
-  (its CVEs come from CISA).
+- Only rows that have no CVE yet, and only CVEs published within MAX_CVE_AGE (else numbered in a
+  recent enough year): older IDs are context ("like last year's CVE-2025-43300").
+- Not on a row a CISA KEV alert started (it holds exactly the alert's CVEs), an ICS advisory (its
+  CVEs come from CISA), or a recap / roundup (ROUNDUP: it names many stories' CVEs).
 
-Then the row is checked against the existing clustering rule for shared CVEs (app/dedupe.py),
-within MERGE_WINDOW: the later row folds into the earlier one, never an alert into anything, and
-each merge is logged.
+Then the row is checked against the clustering rule for shared CVEs (app/dedupe.py), within
+MERGE_WINDOW: the later row folds into the earlier one, never an alert into anything, never a
+recap either way, and into a row a KEV alert started only when that row holds exactly one CVE.
+Each merge is logged.
 
-    python -m app.article_cves             # dry run: rows of the last 7 days, CVEs gained, merges
+    python -m app.article_cves             # dry run: rows of the last 9 days, CVEs gained, merges
     python -m app.article_cves --apply     # writes; never against production without sign-off
 
 In production the one-time backfill runs from the scheduler (schedule()): BACKFILL_MODE
@@ -26,6 +29,7 @@ In production the one-time backfill runs from the scheduler (schedule()): BACKFI
 
 import asyncio
 import logging
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -43,9 +47,14 @@ log = logging.getLogger(__name__)
 
 PER_ARTICLE = 10
 MERGE_WINDOW = timedelta(hours=72)
-BACKFILL_DAYS = 7
+# A CVE published (or, before NVD has it, numbered in a year) more than this long ago is a
+# context mention ("like CVE-2025-43300 last year"), not the story's.
+MAX_CVE_AGE = timedelta(days=90)
+# Recaps and roundups name many stories' CVEs: they gain none and never merge.
+ROUNDUP = re.compile(r"\b(weekly recap|recap|round-?up|metasploit|wrap[- ]?up|week in review|this week in)\b", re.I)
+BACKFILL_DAYS = 9
 BACKFILL_STATE = "article_cves_backfill"
-BACKFILL_VERSION = "1"
+BACKFILL_VERSION = "2"
 BACKFILL_MODE = "dry-run"  # "dry-run" logs the plan once; "apply" writes it, only with sign-off
 
 
@@ -54,8 +63,34 @@ def article_cves(title: str, lead: str, fetched: str) -> list[str]:
     return headline_cves(title or "", lead or "", fetched or "")[:PER_ARTICLE]
 
 
+def is_roundup(headline: str | None) -> bool:
+    return bool(ROUNDUP.search(headline or ""))
+
+
 def eligible(item: Item) -> bool:
-    return item.stream == Stream.main and not dedupe.alert_led(item) and not ics.is_ics_advisory(item.primary_url)
+    return (
+        item.stream == Stream.main
+        and not dedupe.alert_led(item)
+        and not ics.is_ics_advisory(item.primary_url)
+        and not is_roundup(item.headline)
+    )
+
+
+def too_old(cve_id: str, published: datetime | None, now: datetime) -> bool:
+    """Published over MAX_CVE_AGE ago; with no NVD date yet, numbered in a year that ended
+    before then."""
+    if published is not None:
+        return now - published > MAX_CVE_AGE
+    return int(cve_id.split("-")[1]) < (now - MAX_CVE_AGE).year
+
+
+async def recent_only(session: AsyncSession, cves: list[str], now: datetime) -> tuple[list[str], list[str]]:
+    """(kept, dropped as context mentions) by too_old()."""
+    if not cves:
+        return [], []
+    dates = dict((await session.execute(select(Cve.id, Cve.published_at).where(Cve.id.in_(cves)))).all())
+    old = [c for c in cves if too_old(c, dates.get(c), now)]
+    return [c for c in cves if c not in old], old
 
 
 def gained(item: Item, fetched: dict[int, str], have: set[str]) -> list[str]:
@@ -98,17 +133,23 @@ class Row:
     last_event_at: datetime
     alert: bool  # holds a CISA KEV alert: never joins another row, joined only by a shared CVE
     cves: set[str] = field(default_factory=set)
+    led: bool = False  # started by a KEV alert (the alert is its primary source)
+    roundup: bool = False  # a recap or roundup: never merges either way
 
 
 def merge_target(n: Row, rows: list[Row]) -> Row | None:
     """The row n folds into under the shared-CVE rule, or None. As dedupe.merge_existing: the
     later-published row joins an earlier one it shares a CVE with, within MERGE_WINDOW, the most
-    recent such row; a row holding a KEV alert never joins another."""
-    if n.alert:
+    recent such row; a row holding a KEV alert never joins another. Stricter here: a row a KEV
+    alert started takes news only when it holds exactly one CVE (a multi-CVE alert would gather
+    unrelated stories), and recaps / roundups never merge."""
+    if n.alert or n.roundup:
         return None
     candidates = [
         o for o in rows
         if o.id != n.id
+        and not o.roundup
+        and not (o.led and len(o.cves) != 1)
         and (o.first_pub, o.id) < (n.first_pub, n.id)
         and o.cves & n.cves
         and abs(n.first_pub - o.last_event_at) <= MERGE_WINDOW
@@ -131,12 +172,18 @@ def pair(n: Row, rows: list[Row]) -> tuple[Row, Row] | None:
 async def _rows(session: AsyncSession, since: datetime) -> dict[int, Row]:
     got = (
         await session.execute(text("""
-            SELECT i.id, i.last_event_at,
+            SELECT i.id, i.last_event_at, i.headline, i.primary_url,
                    coalesce((SELECT min(published_at) FROM item_sources s WHERE s.item_id = i.id), i.last_event_at) AS first_pub
             FROM items i WHERE i.stream = 'main' AND i.last_event_at >= :since
         """), {"since": since})
     ).all()
-    rows = {r.id: Row(r.id, r.first_pub, r.last_event_at, False) for r in got}
+    rows = {
+        r.id: Row(
+            r.id, r.first_pub, r.last_event_at, False,
+            led=dedupe.is_kev_alert(r.headline, r.primary_url), roundup=is_roundup(r.headline),
+        )
+        for r in got
+    }
     for item_id, cve_id in (await session.execute(select(ItemCve.item_id, ItemCve.cve_id).where(ItemCve.item_id.in_(rows)))).all():
         rows[item_id].cves.add(cve_id)
     for item_id, title, url in (await session.execute(select(ItemSource.item_id, ItemSource.title, ItemSource.url).where(ItemSource.item_id.in_(rows)))).all():
@@ -187,8 +234,11 @@ async def after_fetch(session: AsyncSession, items: list[Item], fetched: dict[in
     for item in items:
         if not eligible(item) or not fetched.get(item.id):
             continue
-        have = set((await session.scalars(select(ItemCve.cve_id).where(ItemCve.item_id == item.id))).all())
-        new = gained(item, fetched[item.id], have)
+        if await session.scalar(select(ItemCve.cve_id).where(ItemCve.item_id == item.id).limit(1)):
+            continue  # only rows with no CVE gain them
+        new, old = await recent_only(session, gained(item, fetched[item.id], set()), datetime.now(UTC))
+        if old:
+            log.info("article cves: item %d: dropped %s (published over 90 days ago)", item.id, ",".join(old))
         if new:
             await add_cves(session, item, new, "fetched article")
             changed.append(item.id)
@@ -206,18 +256,23 @@ async def backfill(session: AsyncSession, apply: bool) -> dict:
     """Rows of the last BACKFILL_DAYS days: fetch their articles again (politely, fetcher.py),
     and plan or apply the CVEs they gain and the merges that follow. Logs every line."""
     tag = "apply" if apply else "dry run"
-    items = [
-        i for i in (
-            await session.scalars(
-                select(Item)
-                .where(Item.stream == Stream.main, Item.last_event_at >= datetime.now(UTC) - timedelta(days=BACKFILL_DAYS))
-                .options(selectinload(Item.sources))
-                .order_by(Item.id)
+    candidates = (
+        await session.scalars(
+            select(Item)
+            .where(
+                Item.stream == Stream.main,
+                Item.last_event_at >= datetime.now(UTC) - timedelta(days=BACKFILL_DAYS),
+                ~Item.id.in_(select(ItemCve.item_id)),  # only rows with no CVE
             )
-        ).all()
-        if eligible(i) and i.sources
-    ]
-    log.info("article cves: backfill (%s): fetching articles for %d rows", tag, len(items))
+            .options(selectinload(Item.sources))
+            .order_by(Item.id)
+        )
+    ).all()
+    for i in candidates:
+        if is_roundup(i.headline):
+            log.info("article cves: backfill (%s): item %d skipped (recap/roundup) | %s", tag, i.id, i.headline[:90])
+    items = [i for i in candidates if eligible(i) and i.sources]
+    log.info("article cves: backfill (%s): fetching articles for %d rows with no CVE", tag, len(items))
     fetched: dict[int, dict[int, str]] = {}
     async with fetcher.client() as client:
 
@@ -234,8 +289,13 @@ async def backfill(session: AsyncSession, apply: bool) -> dict:
 
     rows = await _rows(session, datetime.now(UTC) - timedelta(days=14))
     gains: dict[int, list[str]] = {}
+    now = datetime.now(UTC)
     for item in items:
-        new = gained(item, fetched.get(item.id, {}), rows[item.id].cves if item.id in rows else set())
+        if item.id not in rows or rows[item.id].cves:
+            continue  # only rows with no CVE gain them
+        new, old = await recent_only(session, gained(item, fetched.get(item.id, {}), set()), now)
+        if old:
+            log.info("article cves: backfill (%s): item %d dropped %s (published over 90 days ago)", tag, item.id, ",".join(old))
         if new:
             gains[item.id] = new
             log.info("article cves: backfill (%s): item %d +%s | %s", tag, item.id, ",".join(new), item.headline[:90])

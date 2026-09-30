@@ -163,6 +163,24 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"sample item {other.id} | fixed = '9.5.1'", text)
         self.assertIn("source fetched article, one of: BleepingComputer", text)
 
+    async def test_live_check_rechecks_summaries_and_logs_fact_quotes(self):
+        from app import facts_backfill
+
+        async with self.Session() as s:
+            src = Source(name="SecurityWeek", feed_url="https://test.invalid/sw", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            row = await self._row(s, src, "TeamViewer urges users to patch", datetime.now(UTC))
+            row.summary = "TeamViewer fixed two flaws in its remote access client, according to SecurityWeek."
+            row.facts = {"fixed": {"version": "15.70", "quote": "TeamViewer says version 15.70 fixes both flaws."}}
+            await s.commit()
+            with self.assertLogs("app.facts_backfill", level="INFO") as logs:
+                await facts_backfill._live_check(s)
+        text = "\n".join(logs.output)
+        self.assertIn(f"item {row.id}", text)
+        self.assertIn("summary passes, unchanged", text)
+        self.assertIn("fixed = '15.70' | quote 'TeamViewer says version 15.70 fixes both flaws.'", text)
+
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)
         async with self.Session() as s:

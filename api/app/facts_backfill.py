@@ -169,6 +169,43 @@ async def _report(session, state: dict) -> None:
         describe("sample", i, rows[str(i)])
 
 
+LIVE_SINCE = datetime(2026, 9, 30, 4, 21, tzinfo=UTC)  # the combined summary + facts call went live
+LIVE_STATE = "facts_live_check"
+
+
+async def _live_check(session) -> None:
+    """Once: the first 3 rows summarized by the combined call. Each stored summary is run through
+    the summary checks again (it must come back unchanged), and each stored fact is logged with
+    its quote (verified against the article text when it was written; the fetched text is not
+    stored, so here only whether the stored feed text also holds it)."""
+    rows = (
+        await session.scalars(
+            select(Item)
+            .where(Item.stream == Stream.main, Item.first_seen_at >= LIVE_SINCE, Item.facts.is_not(None), Item.summary.is_not(None))
+            .options(selectinload(Item.sources).selectinload(ItemSource.source))
+            .order_by(Item.first_seen_at, Item.id)
+            .limit(3)
+        )
+    ).all()
+    for item in rows:
+        # patched=True skips only the fix-claim rule, which needs the fetched article (not
+        # stored); it ran when the summary was written. Every other rule runs again here.
+        again, why = summaries.review_summary(item.summary, patched=True) if item.summary else (None, "declined")
+        verdict = (
+            "passes, unchanged (fix-claim rule ran at write time)"
+            if item.summary and again == item.summary
+            else f"{why}: {again!r}"
+        )
+        log.info("facts live check: item %d (%s) | summary %s | %r | %s", item.id, item.first_seen_at.isoformat(timespec="minutes"),
+                 verdict, (item.summary or "")[:240], item.headline[:80])
+        if not item.facts:
+            log.info("facts live check: item %d | no facts held up", item.id)
+        for key, fact in (item.facts or {}).items():
+            value = fact.get("text") or fact.get("version") or ""
+            log.info("facts live check: item %d | %s%s | quote %r | in stored feed text: %s", item.id, key,
+                     f" = {value!r}" if value else "", fact.get("quote", "")[:300], _source(item, fact.get("quote", "")))
+
+
 async def run_once() -> None:
     from app.db import SessionLocal
 
@@ -177,6 +214,10 @@ async def run_once() -> None:
         return
     try:
         async with SessionLocal() as session:
+            if not await jobstate.get(session, LIVE_STATE):
+                await _live_check(session)
+                await jobstate.put(session, LIVE_STATE, "1")
+                await session.commit()
             state = json.loads(await jobstate.get(session, STATE) or "{}")
             if state.get("version") != VERSION:
                 state = {"version": VERSION}

@@ -103,7 +103,12 @@ export interface MsrcDetail {
 
 export interface ItemDetail extends FeedItem {
   /** What the articles state (quote-verified), shown only after vendor data, as "per article". */
-  article_facts: { affected: string | null; fixed: string | null } | null
+  article_facts: {
+    affected: string | null
+    fixed: string | null
+    /** One version per release branch, shown one per line. */
+    fixed_branches?: { version: string; branch: string }[] | null
+  } | null
   /** The feed's own excerpt (first sentences, at most 220 chars), sent when there is no summary. */
   excerpt: { source: string; text: string } | null
   /** Workaround read from the articles by the summary model, CVE rows only. Never versions. */

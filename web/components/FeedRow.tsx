@@ -531,8 +531,20 @@ function WhatToDo({ todo }: { todo: Todo }) {
           <>
             <dt className="text-muted">Fixed</dt>
             <dd className="min-w-0">
-              <span className="font-mono text-[13px] text-fg">{todo.fixedPerArticle}</span>
-              <span className="ml-3 text-muted">per article</span>
+              {todo.fixedBranches.length ? (
+                todo.fixedBranches.map((b, i) => (
+                  <span key={i} className="block">
+                    <span className="font-mono text-[13px] text-fg">{b.version}</span>
+                    <span className="ml-2 text-fg-2">{b.branch}</span>
+                    {i === 0 && <span className="ml-3 text-muted">per article</span>}
+                  </span>
+                ))
+              ) : (
+                <>
+                  <span className="font-mono text-[13px] text-fg">{todo.fixedPerArticle}</span>
+                  <span className="ml-3 text-muted">per article</span>
+                </>
+              )}
             </dd>
           </>
         )}

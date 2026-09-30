@@ -273,6 +273,23 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             srcs = (await s.scalars(select(ItemSource).where(ItemSource.item_id == first.id))).all()
             self.assertEqual(len(srcs), 2)
 
+    async def test_summary_versions_gives_an_ics_row_its_template(self):
+        from app import maintenance
+
+        async with self.Session() as s:
+            src = Source(name="CISA", feed_url="https://test.invalid/cisa", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            row = await self._row(s, src, "MikroTik RouterOS", datetime.now(UTC), ["CVE-2026-84411"])
+            row.primary_url = "https://www.cisa.gov/news-events/ics-advisories/icsa-26-272-06"
+            row.summary = ("MikroTik RouterOS versions before 7.24 contain an integer underflow in the web service. "
+                           "MikroTik recommends updating to version 7.23 or later.")
+            await s.commit()
+            await maintenance.summary_versions(s)
+        async with self.Session() as s:
+            self.assertEqual((await s.get(Item, row.id)).summary,
+                             "CISA industrial control systems advisory for MikroTik RouterOS, covering 1 CVE.")
+
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)
         async with self.Session() as s:

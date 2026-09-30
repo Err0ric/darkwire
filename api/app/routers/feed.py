@@ -101,7 +101,8 @@ def _article_facts(found: dict | None) -> ArticleFacts | None:
     found = found or {}
     affected = (found.get("affected") or {}).get("text")
     fixed = (found.get("fixed") or {}).get("version")
-    return ArticleFacts(affected=affected, fixed=fixed) if affected or fixed else None
+    branches = (found.get("fixed") or {}).get("branches") or None
+    return ArticleFacts(affected=affected, fixed=fixed, fixed_branches=branches) if affected or fixed else None
 
 
 @router.get("/feed", response_model=FeedPage)

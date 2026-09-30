@@ -56,9 +56,11 @@ class PublicPoc(unittest.TestCase):
 class FixedAndAffected(unittest.TestCase):
     def test_fixed_must_be_a_version(self):
         self.assertIsNone(fixed_problem("9.5.1"))  # row 6
-        for ok in ("1.6.16 and 1.7.1", "2.0.0-beta.2", "Linux 6.18.51, 7.2.5, and 7.3-rc1", "version 7", "KB5063878"):
+        for ok in ("1.6.16 and 1.7.1", "2.0.0-beta.2", "Linux 6.18.51, 7.2.5, and 7.3-rc1", "KB5063878",
+                   "transports/v2.1.0", "release 7.8", "build 26100"):
             self.assertIsNone(fixed_problem(ok), ok)
-        for bad in ("August 11 patch", "Linux kernel", "OpenPLC v", "the latest release"):
+        # Row 91: a product with a major version is not a fixed version (major.minor at least).
+        for bad in ("OpenPLC v4", "version 7", "August 11 patch", "Linux kernel", "the latest release"):
             self.assertIsNotNone(fixed_problem(bad), bad)
 
     def test_affected_must_be_a_product(self):
@@ -74,6 +76,40 @@ class FixedAndAffected(unittest.TestCase):
         ):
             with self.subTest(row=row):
                 self.assertIsNotNone(affected_problem(bad), bad)
+
+
+class Consistency(unittest.TestCase):
+    def test_76_web_domains_are_not_a_product(self):
+        self.assertIsNotNone(affected_problem("Radaris.com and more than a dozen other data broker domains"))
+
+    def test_873_a_fix_inside_the_affected_range_drops_both(self):
+        # The CISA advisory for MikroTik RouterOS (row 873): affected below 7.24, "fixed" 7.23 or later.
+        stored = {
+            "affected": {"text": "RouterOS <7.24", "quote": "The following versions of MikroTik RouterOS are affected: - RouterOS <7.24 (CVE-2026-84411)"},
+            "fixed": {"version": "7.23 or later", "quote": "MikroTik recommends users update RouterOS to version 7.23 or later."},
+        }
+        kept, removed = recheck(stored, "CVE-2026-84411")
+        self.assertEqual(kept, {})
+        self.assertEqual(sorted(k for k, _ in removed), ["affected", "fixed"])
+
+    def test_separate_release_branches_keep_both_with_labels(self):
+        stored = {
+            "affected": {"text": "RouterOS <7.24", "quote": "RouterOS versions below 7.24 are affected."},
+            "fixed": {"version": "7.24 stable, 7.23.5 long-term",
+                      "quote": "MikroTik fixed the flaw in 7.24 stable, 7.23.5 long-term."},
+        }
+        kept, removed = recheck(stored, None)
+        self.assertEqual(removed, [])
+        self.assertEqual(kept["fixed"]["branches"], [{"version": "7.24", "branch": "stable"}, {"version": "7.23.5", "branch": "long-term"}])
+        self.assertIn("affected", kept)
+
+    def test_fixes_per_line_are_not_a_conflict(self):
+        # Row 30 (Roundcube): one bound per release line, one fix per line.
+        stored = {
+            "affected": {"text": "Roundcube Webmail versions 1.6.x before 1.6.16 and 1.7.x before 1.7.1", "quote": "q"},
+            "fixed": {"version": "1.6.16 and 1.7.1", "quote": "q"},
+        }
+        self.assertEqual(recheck(stored)[1], [])
 
 
 class Recheck(unittest.TestCase):

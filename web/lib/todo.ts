@@ -13,6 +13,8 @@ export interface Todo {
   fixedUrl: string | null
   /** The articles' fixed version, only when vendor, NVD and MSRC data have none. */
   fixedPerArticle: string | null
+  /** The articles' fix per release branch ("7.24 stable", "7.23.5 long-term"), one line each. */
+  fixedBranches: { version: string; branch: string }[]
   workaround: string | null
   workaroundUrl: string | null
   kevDue: Date | null
@@ -38,6 +40,7 @@ export function whatToDo(d: ItemDetail): Todo | null {
     fixed,
     fixedUrl: fixed.length ? (d.patch_url ?? d.msrc?.url ?? null) : null,
     fixedPerArticle: fixed.length ? null : (d.article_facts?.fixed ?? null),
+    fixedBranches: fixed.length ? [] : (d.article_facts?.fixed_branches ?? []),
     workaround: d.action?.workaround ?? null,
     workaroundUrl: cve?.workaround_url ?? null,
     kevDue: cve?.kev && cve.kev_due_date ? new Date(cve.kev_due_date) : null,

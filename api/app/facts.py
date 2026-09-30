@@ -22,6 +22,8 @@ only ever shown labeled "per article", after vendor, NVD and CISA data (CLAUDE.m
 import json
 import re
 
+from app import versions
+
 MAX_QUOTE = 400
 MAX_VALUE = 160
 
@@ -116,7 +118,10 @@ _POC = re.compile(r"proof[- ]of[- ]concept|\bpocs?\b|\bexploits?\b(?!-)", re.I)
 _PUBLIC = re.compile(r"\b(publish(es|ed)?|releas(e|es|ed)|public(ly)?|available|github|posted)\b", re.I)
 _NEGATION = re.compile(r"\b(no longer|not|never|didn'?t|did not|doesn'?t|isn'?t|wasn'?t|patched before)\b|n't\b", re.I)
 _CVE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.I)
-_VERSION = re.compile(r"\d+(\.\d+)+|\b(version|release|build|v)\s*\d+(\.\d+)*\b|\bKB\d{6,}\b|\b\d+\.x\b", re.I)
+# At least major.minor, or a build / release number, or a KB: "OpenPLC v4" and "version 7" are not.
+_VERSION = re.compile(r"\d+\.\d+|\b(build|release|rev(ision)?)\s*\d+\b|\bKB\d{6,}\b", re.I)
+# A web domain or website is not software: "Radaris.com and a dozen other domains".
+_WEB = re.compile(r"\b[a-z0-9-]+\.(com|org|net|io|gov|edu|info|co|us|uk|de)\b|\b(domains?|websites?|web sites?|web pages?)\b", re.I)
 _MONTH = re.compile(
     r"\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b",
     re.I,
@@ -156,7 +161,26 @@ def fixed_problem(value: str) -> str | None:
 
 
 def affected_problem(value: str) -> str | None:
-    return "people, customers or organizations, not a product" if _NOT_PRODUCT.search(value) else None
+    if _NOT_PRODUCT.search(value):
+        return "people, customers or organizations, not a product"
+    if _WEB.search(value):
+        return "web domains or sites, not a product"
+    return None
+
+
+def consistency(kept: dict) -> tuple[dict, list[tuple[str, str]]]:
+    """A fixed version inside the affected range (versions.conflict): both go, unless the quotes
+    name separate release branches and the fix gives one version per branch, which is kept with
+    its branches ({"version", "branch"}) for display line by line."""
+    affected, fixed = kept.get("affected"), kept.get("fixed")
+    if not affected or not fixed or not versions.conflict(affected.get("text", ""), fixed.get("version", "")):
+        return kept, []
+    quotes = f"{fixed.get('quote', '')} {affected.get('quote', '')}"
+    per_branch = versions.branches(fixed.get("version", ""), quotes) if versions.BRANCH.search(quotes) else []
+    if per_branch:
+        return {**kept, "fixed": {**fixed, "branches": per_branch}}, []
+    why = "fixed version inside the affected range"
+    return {k: v for k, v in kept.items() if k not in ("affected", "fixed")}, [("affected", why), ("fixed", why)]
 
 
 def recheck(found: dict, row_cve: str | None = None) -> tuple[dict, list[tuple[str, str]]]:
@@ -177,7 +201,8 @@ def recheck(found: dict, row_cve: str | None = None) -> tuple[dict, list[tuple[s
             removed.append((key, why))
         else:
             kept[key] = fact
-    return kept, removed
+    kept, dropped = consistency(kept)
+    return kept, removed + dropped
 
 
 def verify(facts: dict, material: str, row_cve: str | None = None) -> dict:

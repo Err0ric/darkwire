@@ -31,7 +31,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import article_cves, events, facts, fetcher, ics, jobstate
+from app import article_cves, events, facts, fetcher, ics, jobstate, versions
 from app.config import get_settings
 from app.models import Item, ItemCve, PatchStatus, Stream
 
@@ -424,16 +424,42 @@ async def log_coverage(session: AsyncSession) -> None:
     )
 
 
-def request(material: str) -> dict:
+NO_VERSIONS = "\n\nDo not include any version numbers in the summary."
+
+
+def request(material: str, no_versions: bool = False) -> dict:
     """The summary call's parameters (also the facts backfill's batch requests): no tools, the
-    articles only, JSON out (summary and article facts)."""
+    articles only, JSON out (summary and article facts). no_versions: the retry for a summary
+    whose fix version fell inside its own affected range."""
     return {
         "model": MODEL,
         "max_tokens": 800,
-        "system": SYSTEM + facts.PROMPT,
+        "system": SYSTEM + (NO_VERSIONS if no_versions else "") + facts.PROMPT,
         "messages": [{"role": "user", "content": material}],
         "output_config": facts.OUTPUT_CONFIG,
     }
+
+
+async def without_version_conflict(item_id: int, text: str, material: str, patched: bool) -> tuple[str | None, str]:
+    """A summary that states a fix version inside its own affected range (versions.summary_conflict)
+    is asked for once more without version numbers; if that fails or still conflicts, its version
+    numbers are stripped (versions.strip). Every step is logged. (summary, why)."""
+    log.info("summaries: item %d fix version inside its affected range, regenerating without versions: %r", item_id, text)
+    again: str | None = None
+    try:
+        async with anthropic.AsyncAnthropic(api_key=get_settings().anthropic_api_key, max_retries=3) as client:
+            msg = await client.messages.create(**request(material, no_versions=True))
+        if msg.stop_reason == "end_turn":
+            said, _ = facts.parse(" ".join(b.text for b in msg.content if b.type == "text"))
+            again, why = review_summary(said, patched=patched, material=material)
+    except anthropic.APIError as e:
+        log.info("summaries: item %d regeneration failed: %s", item_id, e)
+    if again and not versions.summary_conflict(again):
+        log.info("summaries: item %d regenerated: %r", item_id, again)
+        return again, "ok"
+    stripped, why = review_summary(versions.strip(text), patched=patched, material=material)
+    log.info("summaries: item %d versions stripped (%s): %r", item_id, why, stripped)
+    return stripped, why if stripped else "version conflict"
 
 
 async def summarize_pending(session: AsyncSession) -> int | None:
@@ -478,6 +504,8 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         text, why = review_summary(said, patched=item.patch_status == PatchStatus.patched, material=material[item.id])
         if said is None and raw:
             why = "format"
+        if text and versions.summary_conflict(text):
+            text, why = await without_version_conflict(item.id, text, material[item.id], item.patch_status == PatchStatus.patched)
         # A public-PoC quote that names CVEs must name the row's displayed one (facts.poc_problem).
         item.facts = facts.verify(stated, material[item.id], item.cve_id)
         reasons[why] = reasons.get(why, 0) + 1

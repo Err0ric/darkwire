@@ -5,13 +5,16 @@ make. Steps that were signed off conditionally ("apply only if the dry run shows
 check that condition themselves and stop, logging the difference, when it does not hold.
 """
 
+import json
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app import article_cves, cve_facts, jobstate
+from app import article_cves, cve_facts, facts_backfill, fetcher, ics, jobstate, summaries, versions
+from app.config import get_settings
 from app.models import Cve, Item, ItemCve, Stream
 from app.tagging import row_subject_cves
 
@@ -89,7 +92,67 @@ async def repin(session) -> bool:
     return True
 
 
-STEPS = [("merge_834_1", merges), ("repin_kev_first_v1", repin)]
+async def explain_873(session) -> None:
+    """For review: row 873's article facts as the batch stored them, and the CISA advisory's own
+    sentences about versions and release channels (fetched politely, as the summarizer does)."""
+    item = await session.get(Item, 873)
+    if item is None:
+        log.info("maintenance: explain 873: row gone")
+        return
+    state = json.loads(await jobstate.get(session, facts_backfill.STATE) or "{}")
+    found = (state.get("results_original") or state.get("results") or {}).get("873") or {}
+    for key, fact in found.items():
+        value = fact.get("text") or fact.get("version") or ""
+        log.info("maintenance: explain 873 | stored %s%s | quote %r", key, f" = {value!r}" if value else "", fact.get("quote", ""))
+    log.info("maintenance: explain 873 | summary %r", item.summary)
+    async with fetcher.client() as client:
+        text = await fetcher.article_text(client, item.primary_url)
+    if not text:
+        log.info("maintenance: explain 873 | the advisory could not be fetched (%s)", item.primary_url)
+        return
+    pattern = re.compile(r"\b7\.2\d|\bstable\b|long[- ]term|\bchannel|\btesting\b|\bbranch", re.I)
+    for sentence in re.split(r"(?<=[.!?])\s+|\n", text):
+        if pattern.search(sentence):
+            log.info("maintenance: explain 873 | article: %r", sentence.strip()[:300])
+
+
+async def summary_versions(session) -> None:
+    """Existing summaries that state a fix version inside their own affected range: an ICS
+    advisory row gets its deterministic summary (it never goes to the model); any other row is
+    regenerated once without version numbers, else its versions are stripped. Each one logged."""
+    rows = (
+        await session.scalars(
+            select(Item)
+            .where(Item.stream == Stream.main, Item.summary.is_not(None), Item.summary != "",
+                   Item.last_event_at >= datetime.now(UTC) - timedelta(days=14))
+            .options(selectinload(Item.sources))
+        )
+    ).all()
+    hits = [i for i in rows if versions.summary_conflict(i.summary)]
+    log.info("maintenance: summary versions: %d of %d summaries state a fix inside their affected range", len(hits), len(rows))
+    for item in hits:
+        before = item.summary
+        if ics.is_ics_advisory(item.primary_url):
+            n = len(set(await session.scalars(select(ItemCve.cve_id).where(ItemCve.item_id == item.id))))
+            item.summary = ics.ics_summary(item.headline, n, float(item.cvss) if item.cvss is not None else None, item.severity, item.patch_status)
+        elif get_settings().anthropic_api_key:
+            fetched = await summaries._fetch_articles([item])
+            material = summaries._articles(item, fetched.get(item.id))
+            text, _ = await summaries.without_version_conflict(item.id, before, material, False)
+            item.summary = text or ""
+        else:
+            log.info("maintenance: summary versions: item %d left as is (no model key)", item.id)
+            continue
+        log.info("maintenance: summary versions: item %d %r -> %r", item.id, before, item.summary)
+    await session.commit()
+
+
+STEPS = [
+    ("merge_834_1", merges),
+    ("repin_kev_first_v1", repin),
+    ("explain_873_v1", explain_873),
+    ("summary_versions_v1", summary_versions),
+]
 
 
 async def run_once() -> None:

@@ -121,6 +121,8 @@ class ArticleFacts(BaseModel):
     """What the articles state (quote-verified); shown only after vendor data, as "per article"."""
     affected: str | None = None
     fixed: str | None = None
+    # When the fix names one version per release branch: [{"version", "branch"}], one line each.
+    fixed_branches: list[dict] | None = None
 
 
 class ItemDetail(FeedItem):

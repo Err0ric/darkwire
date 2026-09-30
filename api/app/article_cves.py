@@ -60,8 +60,10 @@ ROUNDUP = re.compile(r"\b(weekly recap|recap|round-?up|metasploit|wrap[- ]?up|we
 BACKFILL_DAYS = 9
 BACKFILL_STATE = "article_cves_backfill"
 BACKFILL_VERSION = "5"
-BACKFILL_MODE = "dry-run"  # "dry-run" logs the plan once; "apply" writes it, only with sign-off
+BACKFILL_MODE = "apply"  # "dry-run" logs the plan once; "apply" writes it, only with sign-off
 APPLY_MERGES: set[tuple[int, int]] = {(801, 747), (795, 794), (797, 796)}  # (merged, survivor) an apply may make
+# Rows an apply may add CVEs to (the signed-off v5 dry run, 2026-09-30); any other is logged, skipped.
+APPLY_ROWS: set[int] = {129, 135, 138, 788, 789, 790, 792, 793, 795, 797, 801, 834, 882}
 # (merged, survivor) pairs this backfill never makes, whatever the rules say (signed off 2026-09-30:
 # 834 keeps CVE-2026-35273 but stays out of 819). The backfill only; the live path ignores it.
 SKIP_MERGES: set[tuple[int, int]] = {(834, 819)}
@@ -390,6 +392,9 @@ async def backfill(session: AsyncSession, apply: bool) -> dict:
             _log_plan(prefix, item, plan)
             if not plan.new:
                 continue
+            if apply and item.id not in APPLY_ROWS:
+                log.info("article cves: %sitem %d +%s not in the signed-off rows, skipped", prefix, item.id, ",".join(plan.new))
+                continue
             gains[item.id] = plan.new
             rows[item.id].cves |= set(plan.new)
             rows[item.id].subject |= plan.subject
@@ -446,8 +451,35 @@ async def run_once() -> None:
             await backfill(session, apply=BACKFILL_MODE == "apply")
             await jobstate.put(session, key, BACKFILL_VERSION)
             await session.commit()
+            if BACKFILL_MODE == "apply":
+                # The same plan again, nothing written: it must find 0 gains and 0 merges.
+                log.info("article cves: verification dry run after the apply")
+                await backfill(session, apply=False)
+                for item_id, cve in EXPLAIN:
+                    await explain(session, item_id, cve)
     except Exception:
         log.exception("article cves: backfill failed")
+
+
+# Rows whose subject CVE sentences are logged after an apply, for review (834 and row 1 share
+# CVE-2026-35273; 834 -> 1 is not signed off).
+EXPLAIN = [(834, "CVE-2026-35273"), (1, "CVE-2026-35273")]
+
+
+async def explain(session: AsyncSession, item_id: int, cve: str) -> None:
+    """Log a row's headline and, per stored article, the sentence making `cve` a subject (or that
+    it is not one in the stored feed text; a fetched article is not stored)."""
+    item = await session.scalar(
+        select(Item).where(Item.id == item_id).options(selectinload(Item.sources).selectinload(ItemSource.source))
+    )
+    if item is None:
+        log.info("article cves: explain item %d: gone", item_id)
+        return
+    log.info("article cves: explain item %d %s | %s", item_id, cve, item.headline)
+    for s in item.sources:
+        reason = subject_reasons(s.title or "", s.excerpt or "", s.body or "").get(cve)
+        log.info("article cves: explain item %d %s | %s: %s", item_id, cve, s.source.name,
+                 repr(reason[:200]) if reason else "not a subject in the stored feed text")
 
 
 def schedule(scheduler) -> None:

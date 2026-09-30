@@ -181,6 +181,22 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
         self.assertIn("summary passes, unchanged", text)
         self.assertIn("fixed = '15.70' | quote 'TeamViewer says version 15.70 fixes both flaws.'", text)
 
+    async def test_explain_logs_the_qualifying_sentence_per_source(self):
+        async with self.Session() as s:
+            src = Source(name="The Record", feed_url="https://test.invalid/rec", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            row = await self._row(s, src, "Attackers exploit Oracle PeopleSoft flaw", datetime.now(UTC), ["CVE-2026-35273"],
+                                  excerpt="Attackers are exploiting CVE-2026-35273 in PeopleSoft. More later.")
+            await s.commit()
+            with self.assertLogs("app.article_cves", level="INFO") as logs:
+                await article_cves.explain(s, row.id, "CVE-2026-35273")
+                await article_cves.explain(s, 999999, "CVE-2026-35273")
+        text = "\n".join(logs.output)
+        self.assertIn(f"explain item {row.id} CVE-2026-35273 | Attackers exploit Oracle PeopleSoft flaw", text)
+        self.assertIn("The Record: 'Attackers are exploiting CVE-2026-35273 in PeopleSoft.'", text)
+        self.assertIn("explain item 999999: gone", text)
+
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)
         async with self.Session() as s:

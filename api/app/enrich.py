@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import article_cves, dedupe, epss, events, facts_backfill, ics, kev, nvd, summaries, topics
+from app import article_cves, cve_facts, dedupe, epss, events, facts_backfill, ics, kev, maintenance, nvd, summaries, topics
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, KevEntry, MsrcUpdate, PatchStatus, Stream
@@ -79,10 +79,13 @@ async def roll_up(session: AsyncSession) -> int:
         item = items[item_id]
         # The row's displayed CVE is pinned: set when the row got its first CVE, never moved by a
         # merge or a later article. Only a row with none (or a stale pointer) gets one picked:
-        # highest score, ties to the CVE mentioned first, unscored rows the first mention.
+        # KEV-listed first, then the highest score, then the CVE mentioned first (cve_facts.rank).
         pinned = next((c for c in cves if c.id == item.cve_id), None)
-        scored = [c for c in cves if c.base_score is not None]
-        primary = pinned or (max(scored, key=lambda c: (c.base_score, -cves.index(c))) if scored else cves[0])
+        if pinned is None:
+            ids = [c.id for c in cves]
+            best = cve_facts.rank(ids, {c.id for c in cves if c.kev}, {c.id: float(c.base_score) if c.base_score is not None else None for c in cves})
+            pinned = cves[ids.index(best)]
+        primary = pinned
         kev_dates = [c.kev_added_at for c in cves if c.kev and c.kev_added_at]
 
         status, url = primary.patch_status, primary.patch_url
@@ -179,3 +182,4 @@ def schedule(scheduler) -> None:
     log.info("scheduler: enrich every %d min", interval)
     article_cves.schedule(scheduler)
     facts_backfill.schedule(scheduler)
+    maintenance.schedule(scheduler)

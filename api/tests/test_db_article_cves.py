@@ -230,6 +230,47 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"item {ids[1]} | removed affected = '2.76 million living individuals'", text)
         self.assertIn("2 live rows checked, 2 facts removed", text)
 
+    async def test_repin_prefers_kev_and_applies_only_the_expected_change(self):
+        from app import maintenance
+        from app.models import KevEntry
+
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            src = Source(name="The Hacker News", feed_url="https://test.invalid/thn3", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            row = await self._row(s, src, "MikroTrick chain", now, ["CVE-2026-86060", "CVE-2026-67279", "CVE-2026-67276"])
+            (await s.get(Cve, "CVE-2026-86060")).base_score = 9.8
+            (await s.get(Cve, "CVE-2026-67279")).base_score = 6.5
+            s.add(KevEntry(cve_id="CVE-2026-67279", vendor="MikroTik", product="RouterOS", date_added=now.date()))
+            await s.commit()
+            self.assertEqual(await maintenance.repin_plan(s), {row.id: ("CVE-2026-86060", "CVE-2026-67279")})
+            maintenance.REPIN_EXPECTED = {999: "CVE-2026-1111"}
+            self.assertFalse(await maintenance.repin(s))  # not the signed-off set: nothing written
+            self.assertEqual((await s.get(Item, row.id)).cve_id, "CVE-2026-86060")
+            maintenance.REPIN_EXPECTED = {row.id: "CVE-2026-67279"}
+            self.assertTrue(await maintenance.repin(s))
+        async with self.Session() as s:
+            self.assertEqual((await s.get(Item, row.id)).cve_id, "CVE-2026-67279")
+
+    async def test_signed_off_merge(self):
+        from app import maintenance
+
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            src = Source(name="The Record", feed_url="https://test.invalid/rec2", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            first = await self._row(s, src, "Attackers exploit PeopleSoft", now - timedelta(hours=10), ["CVE-2026-35273"])
+            later = await self._row(s, src, "ShinyHunters PeopleSoft workarounds", now - timedelta(hours=5), ["CVE-2026-35273"])
+            await s.commit()
+            maintenance.MERGES = [(later.id, first.id)]
+            await maintenance.merges(s)
+        async with self.Session() as s:
+            self.assertIsNone(await s.get(Item, later.id))
+            srcs = (await s.scalars(select(ItemSource).where(ItemSource.item_id == first.id))).all()
+            self.assertEqual(len(srcs), 2)
+
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)
         async with self.Session() as s:

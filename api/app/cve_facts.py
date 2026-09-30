@@ -5,9 +5,9 @@ published(): when a CVE was published, for telling a context mention from a curr
 (cveawg.mitre.org, cveMetadata.datePublished); None when neither has one, which callers treat as
 recent. Answers are cached for the life of the process.
 
-pick_pinned(): the CVE a new row displays (enrich.roll_up never moves it afterwards): the
-highest-scored of the article's subject CVEs, by the scores already stored; unscored ties go to
-the first mentioned. With no subject CVE, the same over all of them.
+pick_pinned(): the CVE a new row displays (enrich.roll_up never moves it afterwards), among the
+article's subject CVEs (all of them when none is a subject): a KEV-listed one first, then the
+highest CVSS by the scores already stored, then the first mentioned (rank()).
 """
 
 import logging
@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import nvd
-from app.models import Cve
+from app.models import Cve, KevEntry
 
 log = logging.getLogger(__name__)
 
@@ -67,10 +67,19 @@ async def published(session: AsyncSession, http: httpx.AsyncClient, cves: list[s
     return out
 
 
+def rank(pool: list[str], kev: set[str], scores: dict[str, float | None]) -> str:
+    """The displayed CVE of a pool: KEV-listed first, then the highest CVSS, then the first mentioned."""
+    return min(pool, key=lambda c: (c not in kev, -(scores.get(c) if scores.get(c) is not None else -1), pool.index(c)))
+
+
+async def kev_listed(session: AsyncSession, cves: list[str]) -> set[str]:
+    listed = set(await session.scalars(select(KevEntry.cve_id).where(KevEntry.cve_id.in_(cves))))
+    return listed | set(await session.scalars(select(Cve.id).where(Cve.id.in_(cves), Cve.kev.is_(True))))
+
+
 async def pick_pinned(session: AsyncSession, cves: list[str], subject: set[str]) -> str | None:
     if not cves:
         return None
     pool = [c for c in cves if c in subject] or list(cves)
     scores = dict((await session.execute(select(Cve.id, Cve.base_score).where(Cve.id.in_(pool)))).all())
-    scored = [c for c in pool if scores.get(c) is not None]
-    return max(scored, key=lambda c: (scores[c], -pool.index(c))) if scored else pool[0]
+    return rank(pool, await kev_listed(session, pool), {c: float(s) if s is not None else None for c, s in scores.items()})

@@ -500,7 +500,7 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["counts"]["kev_added_7d"], 25)
         self.assertEqual(len(kev), status["counts"]["kev_added_7d"])
 
-    async def test_vulnerability_needs_a_cve_or_a_specific_flaw_from_the_summary_call(self):
+    async def test_the_summary_calls_category_verdicts_are_stored_and_logged_never_used(self):
         import json
         from types import SimpleNamespace
         from unittest import mock
@@ -527,8 +527,7 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             with_cve = await self._row(s, src, "TeamViewer urges users to patch severe flaws", now, ["CVE-2026-92370"])
             bitget_lead = "Bitget said an attacker exploited a flaw in a third-party security product to steal $388 million from the exchange."
             bitget = await self._row(s, src, "Bitget Says Attacker Exploited Third-Party Security Product Flaw to Steal $388M", now, excerpt=bitget_lead)
-            overridden = await self._row(s, src, "Google: Vulnerability disclosures double again", now)
-            for row in (general, specific, with_cve, bitget, overridden):
+            for row in (general, specific, with_cve, bitget):
                 row.category = Category.vulnerability
             await s.commit()
             answers = {
@@ -537,7 +536,6 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
                 specific.id: out("WatchGuard patched a code injection flaw in Fireware OS that lets attackers run commands.", True, watchguard_lead),
                 with_cve.id: out("TeamViewer urges users to install updates for severe flaws in its remote access software.", False),
                 bitget.id: out("Bitget said an attacker exploited a third-party security product flaw to steal $388 million.", True, bitget_lead, bitget_lead),
-                overridden.id: out("Google says vulnerability disclosures doubled again this year across its programs.", False),
             }
 
             async def fake_run(session, items, call, label):
@@ -552,16 +550,33 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
                  mock.patch.object(summaries, "reset_once", nothing), mock.patch.object(summaries, "_retry_once", nothing), \
                  mock.patch.object(summaries, "_reask_once", nothing), mock.patch.object(summaries, "log_coverage", nothing), \
                  mock.patch.object(summaries.article_cves, "after_fetch", nothing), \
-                 mock.patch.dict(summaries.CATEGORY_OVERRIDES, {overridden.id: "vulnerability"}), \
-                 mock.patch.object(summaries, "BREACH_FROM_CALL", True):  # off in production for now
+                 self.assertLogs("app.summaries", "INFO") as logs:
                 await summaries.summarize_pending(s)
         async with self.Session() as s:
-            self.assertEqual((await s.get(Item, bitget.id)).category, Category.breach)
-            self.assertEqual((await s.get(Item, overridden.id)).category, Category.vulnerability)  # manual override: left alone
-            self.assertEqual((await s.get(Item, general.id)).category, Category.research)
-            self.assertEqual((await s.get(Item, specific.id)).category, Category.vulnerability)
+            # Every row keeps the category the rules gave it, whatever the call said.
+            for row in (general, specific, with_cve, bitget):
+                self.assertEqual((await s.get(Item, row.id)).category, Category.vulnerability)
             self.assertEqual((await s.get(Item, specific.id)).facts["specific_vulnerability"], {"quote": watchguard_lead})
-            self.assertEqual((await s.get(Item, with_cve.id)).category, Category.vulnerability)
+            self.assertEqual((await s.get(Item, bitget.id)).facts["organization_compromised"], {"quote": bitget_lead})
+        self.assertIn(f"item {bitget.id} category verdicts (log only): vulnerability | specific yes, compromised yes", " ".join(logs.output))
+
+    async def test_category_rules_dry_run_lists_overrides_and_differences(self):
+        from unittest import mock
+
+        from app import maintenance, tagging
+
+        now = datetime.now(UTC)
+        async with self.Session() as s:
+            src = Source(name="SecurityWeek", feed_url="https://test.invalid/sw4", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            same = await self._row(s, src, "Attackers exploit a flaw in Zimbra", now)
+            override = await self._row(s, src, "Google: Vulnerability disclosures double", now)
+            same.category = override.category = Category.vulnerability
+            await s.commit()
+            with mock.patch.dict(tagging.CATEGORY_OVERRIDES, {override.id: "research"}, clear=True):
+                self.assertEqual(await maintenance.category_rules_dry_run(s), {override.id: ("vulnerability", "research")})
+            self.assertEqual((await s.get(Item, override.id)).category, Category.vulnerability)  # nothing written
 
     async def test_manual_category_override_step(self):
         from unittest import mock
@@ -583,28 +598,8 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
                     self.assertNotEqual(maintenance._override_step()[0][0], name)  # a changed table runs again
         async with self.Session() as s:
             self.assertEqual((await s.get(Item, row.id)).category, Category.research)
-        self.assertEqual(maintenance._override_step(), [])
-
-    async def test_specific_recategorization_applies_exactly_the_dry_run_plan(self):
-        import json
-
-        from app import jobstate, maintenance
-
-        now = datetime.now(UTC)
-        async with self.Session() as s:
-            src = Source(name="SecurityWeek", feed_url="https://test.invalid/sw2", stream=Stream.main)
-            s.add(src)
-            await s.flush()
-            moved = await self._row(s, src, "Google: Vulnerability disclosures double", now)
-            since = await self._row(s, src, "Changed since the dry run", now)
-            moved.category, since.category = Category.vulnerability, Category.news
-            await jobstate.put(s, maintenance.SPECIFIC_PLAN, json.dumps({
-                str(moved.id): ["vulnerability", "research"], str(since.id): ["vulnerability", "research"]}))
-            await s.commit()
-            await maintenance.recategorize_specific(s, apply=True)
-        async with self.Session() as s:
-            self.assertEqual((await s.get(Item, moved.id)).category, Category.research)
-            self.assertEqual((await s.get(Item, since.id)).category, Category.news)  # not the plan's "from": left alone
+        with mock.patch.dict(tagging.CATEGORY_OVERRIDES, clear=True):
+            self.assertEqual(maintenance._override_step(), [])
 
     async def test_merge_keeps_the_survivors_displayed_cve(self):
         now = datetime.now(UTC)

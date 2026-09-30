@@ -62,55 +62,28 @@ class Vulnerability(unittest.TestCase):
         self.assertEqual(guess_category("Exploitation of CVE-2026-76504 is changing the SD-WAN landscape", "", True), Category.vulnerability)
 
 
-class SpecificVulnerability(unittest.TestCase):
-    """The summary call's verdict (facts specific_vulnerability) decides a row with no CVE."""
-
-    GENERAL = (
-        "Google: Vulnerability disclosures double to 10,000 per month as AI fuels exploitation",
-        "Google: AI Is Changing the Pace and Profile of Vulnerability Discovery",
-    )
-    SPECIFIC = (
-        "Attackers Exploit Zimbra Flaw to Deploy Web Shells and Harvest Authentication Secrets",
-        "WatchGuard Patches Critical Fireware OS Code Injection Vulnerability",
-        "TeamViewer urges users to patch severe flaws “as soon as possible”",
-    )
-
-    def test_general_pieces_are_not_vulnerability(self):
-        for title in self.GENERAL:
-            self.assertEqual(guess_category(title, "", False, specific=False), Category.research, title)
-        # Before the call (specific unknown), the keyword pre-filter still catches the trend wording.
-        self.assertEqual(guess_category(self.GENERAL[1], "", False), Category.research)
+class RulesAndOverrides(unittest.TestCase):
+    """Categories come from the rules, the trend pre-filter and manual overrides only; the summary
+    call's verdicts are logged, never used (2026-09-30)."""
 
     def test_specific_flaws_stay_vulnerability(self):
-        for title in self.SPECIFIC:
-            self.assertEqual(guess_category(title, "", False, specific=True), Category.vulnerability, title)
-            self.assertEqual(guess_category(title, "", False), Category.vulnerability, title)  # not asked yet
-            # A CVE on the row is enough whatever the call says.
-            self.assertEqual(guess_category(title, "", True, specific=False), Category.vulnerability, title)
+        for title, has_cve in (
+            ("Attackers Exploit Zimbra Flaw to Deploy Web Shells and Harvest Authentication Secrets", True),
+            ("WatchGuard Patches Critical Fireware OS Code Injection Vulnerability", True),
+            ("TeamViewer urges users to patch severe flaws “as soon as possible”", True),
+            ("Cisco warns of new SD-WAN zero-day exploited in attacks", True),
+            ("WatchGuard Patches Critical Fireware OS Code Injection Vulnerability", False),
+        ):
+            self.assertEqual(guess_category(title, "", has_cve), Category.vulnerability, title)
 
-    def test_row_943_and_the_cve_rows(self):
-        # Row 943 (2026-09-30): the call said the main subject is not one flaw.
-        self.assertNotEqual(
-            guess_category("Google: Vulnerability disclosures double to 10,000 per month as AI fuels exploitation", "", False, specific=False),
-            Category.vulnerability,
-        )
-        # Zimbra, TeamViewer and Cisco SD-WAN rows carry CVEs; WatchGuard's call names the flaw.
-        for title in ("Attackers Exploit Zimbra Flaw to Deploy Web Shells and Harvest Authentication Secrets",
-                      "TeamViewer urges users to patch severe flaws “as soon as possible”",
-                      "Cisco warns of new SD-WAN zero-day exploited in attacks"):
-            self.assertEqual(guess_category(title, "", True, specific=False), Category.vulnerability, title)
-        self.assertEqual(guess_category("WatchGuard Patches Critical Fireware OS Code Injection Vulnerability", "", False, specific=True),
+    def test_misfires_are_manual_overrides(self):
+        from app.tagging import CATEGORY_OVERRIDES
+
+        # The rules call this Vulnerability; a misfire is a manual override.
+        self.assertEqual(guess_category("Google: Vulnerability disclosures double to 10,000 per month as AI fuels exploitation", "", False),
                          Category.vulnerability)
-
-    def test_an_organization_compromised_through_a_flaw_is_a_breach(self):
-        # Row 829 (2026-09-30).
-        title = "Bitget Says Attacker Exploited Third-Party Security Product Flaw to Steal $388M"
-        self.assertEqual(guess_category(title, "", False, specific=False, compromised=True), Category.breach)
-        self.assertEqual(guess_category(title, "", False, specific=True, compromised=True), Category.breach)
-
-    def test_other_rules_still_apply_without_a_specific_flaw(self):
-        self.assertEqual(guess_category("Ransomware gangs exploit flaws faster than ever", "", False, specific=False), Category.ransomware)
-        self.assertEqual(guess_category("Patch Tuesday fatigue is real", "", False, specific=False), Category.news)
+        for value in CATEGORY_OVERRIDES.values():
+            Category(value)  # every override names a real category
 
 
 if __name__ == "__main__":

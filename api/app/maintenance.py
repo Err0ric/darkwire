@@ -236,90 +236,42 @@ async def recategorize_trends(session, apply: bool = False) -> dict[int, tuple[s
     return changes
 
 
-SPECIFIC_PLAN = "maintenance_specific_plan"
-
-
-async def recategorize_specific(session, apply: bool = False, auto: bool = False) -> dict[str, list[str]]:
-    """Vulnerability rows of the last 7 days, asked once (the summary call's specific_vulnerability
-    and organization_compromised, quote-checked against the articles) and re-derived with the
-    answers (tagging.guess_category). The dry run logs each row (verdicts, quotes, old -> new) and
-    stores the plan in job_state; `apply` writes exactly that plan, to rows whose category has not
-    changed since. `auto` (v2, signed off 2026-09-30): the dry run applies its own plan unless a
-    row with a CVE or on the KEV list would leave Vulnerability; then it STOPs and writes nothing.
-    Rows in tagging.CATEGORY_OVERRIDES are left alone. {row: [old, new]}."""
-    import anthropic
-
-    from app import cve_facts, facts
+async def category_rules_dry_run(session) -> dict[int, tuple[str, str]]:
+    """Dry run, writes nothing: rows of the last 7 days whose category differs from what the rules
+    alone give (tagging.guess_category on the primary article, the trend pre-filter included), or
+    that a manual override will set. The summary call's category verdicts are log-only, so they
+    account for none of it. {row: (now, rules or override)}."""
     from app.tagging import CATEGORY_OVERRIDES, guess_category
 
-    if apply:
-        plan = json.loads(await jobstate.get(session, SPECIFIC_PLAN) or "{}")
-        for item_id, (old, new) in plan.items():
-            item = await session.get(Item, int(item_id))
-            if item is None or item.category.value != old:
-                log.info("maintenance: specific (apply): item %s skipped (%s)", item_id, "row gone" if item is None else f"now {item.category.value}")
-                continue
-            log.info("maintenance: specific (apply): item %s %s -> %s | %s", item_id, old, new, item.headline[:100])
-            item.category = Category(new)
-        await session.commit()
-        return plan
-    if not get_settings().anthropic_api_key:
-        log.info("maintenance: specific (dry run): no model key, nothing asked")
-        return {}
-    where = [Item.stream == Stream.main, Item.category == Category.vulnerability,
-             Item.last_event_at >= datetime.now(UTC) - timedelta(days=7)]
-    if not auto:
-        where.append(Item.cve_id.is_(None))  # v1 asked only the rows with no CVE
-    rows = [
-        i for i in (
-            await session.scalars(
-                select(Item).where(*where)
-                .options(selectinload(Item.sources).selectinload(ItemSource.source), selectinload(Item.vendor))
-                .order_by(Item.id)
-            )
-        ).all()
-        if i.id not in CATEGORY_OVERRIDES
-    ]
-    held = {}
-    for item_id, cve_id in (await session.execute(select(ItemCve.item_id, ItemCve.cve_id).where(ItemCve.item_id.in_([i.id for i in rows])))).all():
-        held.setdefault(item_id, set()).add(cve_id)
-    kev = await cve_facts.kev_listed(session, sorted({c for cs in held.values() for c in cs})) if held else set()
-    fetched = await summaries._fetch_articles(rows) if rows else {}
-    plan: dict[str, list[str]] = {}
-    stop: list[int] = []
-    async with anthropic.AsyncAnthropic(api_key=get_settings().anthropic_api_key, max_retries=3) as client:
-        for item in rows:
-            material = summaries._articles(item, fetched.get(item.id))
-            try:
-                msg = await client.messages.create(**summaries.request(material))
-            except anthropic.APIError as e:
-                log.info("maintenance: specific (dry run): item %d call failed: %s", item.id, e)
-                continue
-            _, stated = facts.parse(" ".join(b.text for b in msg.content if b.type == "text"))
-            found = facts.verify(stated, material, None)
-            specific, compromised = found.get("specific_vulnerability"), found.get("organization_compromised")
-            has_cve = bool(held.get(item.id))
-            primary = next((s for s in item.sources if s.url == item.primary_url), item.sources[0])
-            new = guess_category(primary.title, primary.excerpt or "", has_cve, specific=specific is not None, compromised=compromised is not None)
-            quote = (compromised or specific or {}).get("quote")
-            log.info("maintenance: specific (dry run): item %d %s -> %s | specific %s, compromised %s%s%s | %s", item.id,
-                     item.category.value, new.value, "yes" if specific else "no", "yes" if compromised else "no",
-                     f" (quote {quote!r})" if quote else "", " | CVE" + (", KEV" if held.get(item.id, set()) & kev else "") if has_cve else "",
-                     item.headline[:100])
-            if new != item.category:
-                plan[str(item.id)] = [item.category.value, new.value]
-                if has_cve or held.get(item.id, set()) & kev:
-                    stop.append(item.id)
-    await jobstate.put(session, SPECIFIC_PLAN, json.dumps(plan))
-    await session.commit()
-    if auto and stop:
-        log.info("maintenance: specific (dry run): %d of %d rows change; STOP: rows with a CVE or on KEV would leave Vulnerability (%s); nothing written",
-                 len(plan), len(rows), ", ".join(map(str, stop)))
-        return plan
-    log.info("maintenance: specific (dry run): %d of %d rows change; %s", len(plan), len(rows), "applying" if auto else "plan stored, nothing written")
-    if auto:
-        await recategorize_specific(session, apply=True)
-    return plan
+    rows = (
+        await session.scalars(
+            select(Item)
+            .where(Item.stream == Stream.main, Item.last_event_at >= datetime.now(UTC) - timedelta(days=7))
+            .options(selectinload(Item.sources))
+            .order_by(Item.id)
+        )
+    ).all()
+    out: dict[int, tuple[str, str]] = {}
+    for item in rows:
+        if item.id in CATEGORY_OVERRIDES:
+            if item.category.value != CATEGORY_OVERRIDES[item.id]:
+                out[item.id] = (item.category.value, CATEGORY_OVERRIDES[item.id])
+                log.info("maintenance: category rules (dry run): item %d %s -> %s (manual override) | %s",
+                         item.id, item.category.value, CATEGORY_OVERRIDES[item.id], item.headline[:100])
+            continue
+        primary = next((s for s in item.sources if s.url == item.primary_url), item.sources[0] if item.sources else None)
+        if primary is None:
+            continue
+        has_cve = await session.scalar(select(ItemCve.cve_id).where(ItemCve.item_id == item.id).limit(1)) is not None
+        rules = guess_category(primary.title, primary.excerpt or "", has_cve)
+        if rules != item.category:
+            out[item.id] = (item.category.value, rules.value)
+            log.info("maintenance: category rules (dry run): item %d is %s, its primary article alone gives %s | %s",
+                     item.id, item.category.value, rules.value, item.headline[:100])
+    overrides = sum(1 for k in out if k in CATEGORY_OVERRIDES)
+    log.info("maintenance: category rules (dry run): %d of %d rows differ (%d manual overrides, %d other); nothing written",
+             len(out), len(rows), overrides, len(out) - overrides)
+    return out
 
 
 async def apply_category_overrides(session) -> None:
@@ -420,10 +372,8 @@ STEPS = [
     ("recategorize_trends_dry_run_v1", recategorize_trends),
     # The dry run (2026-09-30 19:16 UTC) changed 1 of 164 rows: 926 vulnerability -> research.
     ("recategorize_trends_apply_v1", lambda session: recategorize_trends(session, apply=True)),
-    ("recategorize_specific_dry_run_v1", recategorize_specific),
-    # v2 (signed off 2026-09-30): main-subject wording and organization_compromised; applies itself
-    # unless a row with a CVE or on KEV would leave Vulnerability.
-    ("recategorize_specific_v2", lambda session: recategorize_specific(session, auto=True)),
+    # The summary call's category verdicts became log-only (2026-09-30): what differs from the rules.
+    ("category_rules_dry_run_v1", category_rules_dry_run),
 ]
 
 

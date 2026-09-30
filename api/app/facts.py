@@ -16,8 +16,8 @@ and verify() keeps a fact only when:
   In-the-wild exploitation is stored but not displayed anywhere. specific_vulnerability (the
   article's main subject is one specific flaw in a named product, or a CVE) and
   organization_compromised (its main subject is an organization that was compromised) are stored
-  too and only decide the category (summaries.check_category): with no CVE on the row,
-  Vulnerability needs the first; the second makes a Vulnerability row a Breach.
+  too, and logged for later review (summaries.log_category_verdicts); categories never use
+  them.
 
 Anything else is dropped. Verified facts are stored in items.facts ({} when none held up) and are
 only ever shown labeled "per article", after vendor, NVD and CISA data (CLAUDE.md, Summary model).

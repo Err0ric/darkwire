@@ -35,8 +35,8 @@ from sqlalchemy.orm import selectinload
 
 from app import article_cves, events, facts, fetcher, ics, jobstate, versions
 from app.config import get_settings
-from app.models import Category, Item, ItemCve, ItemSource, PatchStatus, Stream
-from app.tagging import CATEGORY_OVERRIDES, guess_category, says_unpatched
+from app.models import Item, ItemCve, ItemSource, PatchStatus, Stream
+from app.tagging import says_unpatched
 
 log = logging.getLogger(__name__)
 
@@ -586,34 +586,18 @@ async def without_version_conflict(item_id: int, text: str, material: str, patch
     return stripped, why if stripped else "version conflict"
 
 
-# Off (2026-09-30): the call's organization_compromised fired on exploitation stories whose articles
-# mention victims (Zimbra, Citrix NetScaler, row 943), which would move CVE and KEV rows to
-# Breach. The verdict is still stored; only the category change waits for a decision.
-BREACH_FROM_CALL = False
-
-
-def check_category(item: Item) -> None:
-    """With no CVE on the row, Vulnerability needs the summary call to have found a specific flaw
-    in a named product (facts specific_vulnerability, quote-checked); otherwise the category rules
-    run again without it (tagging.guess_category, Research or News for a piece about
-    vulnerabilities in general). A Vulnerability row whose main subject is an organization that was
-    compromised (organization_compromised) is a Breach. Rows in tagging.CATEGORY_OVERRIDES are left
-    alone. Call after item.facts holds this call's reading."""
+def log_category_verdicts(item: Item) -> None:
+    """The summary call's category verdicts (facts specific_vulnerability, organization_compromised,
+    quote-checked and stored on the row), logged for later review. Log only: the category comes
+    from the rules, the trend pre-filter and tagging.CATEGORY_OVERRIDES, never from these."""
     found = item.facts or {}
-    if item.category != Category.vulnerability or item.id in CATEGORY_OVERRIDES:
-        return
-    if BREACH_FROM_CALL and "organization_compromised" in found:
-        new, why = Category.breach, "an organization compromised"
-    elif item.cve_id is None and "specific_vulnerability" not in found:
-        primary = next((s for s in item.sources if s.url == item.primary_url), item.sources[0] if item.sources else None)
-        if primary is None:
-            return
-        new, why = guess_category(primary.title, primary.excerpt or "", False, specific=False), "no CVE, no specific flaw"
-    else:
-        return
-    if new != item.category:
-        log.info("summaries: item %d vulnerability -> %s (%s) | %s", item.id, new.value, why, item.headline[:100])
-        item.category = new
+    specific, compromised = found.get("specific_vulnerability"), found.get("organization_compromised")
+    log.info(
+        "summaries: item %d category verdicts (log only): %s | specific %s, compromised %s%s | %s",
+        item.id, item.category.value, "yes" if specific else "no", "yes" if compromised else "no",
+        f" (quote {(compromised or specific)['quote'][:160]!r})" if compromised or specific else "",
+        item.headline[:100],
+    )
 
 
 async def ics_template(session: AsyncSession, item: Item) -> str:
@@ -689,7 +673,7 @@ async def summarize_pending(session: AsyncSession) -> int | None:
         # Written again: the new reading wins per fact, earlier facts it did not restate stay
         # (then the content rules run once more over the whole set).
         item.facts = facts.recheck({**(item.facts or {}), **found}, item.cve_id)[0] if previous is not None else found
-        check_category(item)
+        log_category_verdicts(item)
         reasons[why] = reasons.get(why, 0) + 1
         if text is None:
             log.info("summaries: item %d rejected (%s, %d chars of input): %r", item.id, why, len(material[item.id]), raw[:160])

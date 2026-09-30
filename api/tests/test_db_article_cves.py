@@ -232,8 +232,6 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
 
     async def test_pinning_fallbacks_first_linked_and_alert_rows(self):
         # Rows 792, 933 and 85 in the 2026-09-30 dry run.
-        from app import maintenance
-
         now = datetime.now(UTC)
         async with self.Session() as s:
             src = Source(name="The Hacker News", feed_url="https://test.invalid/thn4", stream=Stream.main)
@@ -253,43 +251,13 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             (await s.get(Cve, "CVE-2026-93952")).base_score = 9.1
             (await s.get(Cve, "CVE-2026-94127")).base_score = 7.5
             s.add(KevEntry(cve_id="CVE-2026-55040", vendor="Microsoft", product="SharePoint", date_added=now.date()))
-            # Pinned by hand (signed off): the dry run leaves it out.
-            manual = await self._row(s, src, "MikroTrick chain", now, ["CVE-2026-86060", "CVE-2026-67279"],
-                                     excerpt="CVE-2026-86060 lets attackers in.")
-            manual.cve_id = "CVE-2026-67279"
-            await s.commit()
-            self.addCleanup(setattr, maintenance, "REPIN_MANUAL", maintenance.REPIN_MANUAL)
-            maintenance.REPIN_MANUAL = {manual.id: "CVE-2026-67279"}
-            self.assertEqual(await maintenance.repin_plan(s), {})
-            # And the roll-up, picking for a row with none, uses the same fallback.
-            p = await s.get(Item, plain.id)
-            p.cve_id = None
+            plain.cve_id = alert.cve_id = None  # the roll-up picks, by the rule a new row gets
             await s.commit()
             await enrich.roll_up(s)
             self.assertEqual((await s.get(Item, plain.id)).cve_id, "CVE-2026-65660")
+            self.assertEqual((await s.get(Item, alert.id)).cve_id, "CVE-2026-93952")  # the highest score of the four
 
-    async def test_rows_pinned_before_the_rule_are_only_checked_for_context_pins(self):
-        # Rows 79, 100, 876 and 796 in the 2026-09-30 v3 dry run: pinned under an earlier rule.
-        from app import cve_facts, maintenance
-
-        before = cve_facts.PIN_RULE_SINCE - timedelta(days=1)
-        async with self.Session() as s:
-            src = Source(name="The Hacker News", feed_url="https://test.invalid/thn6", stream=Stream.main)
-            s.add(src)
-            await s.flush()
-            excerpt = "CVE-2026-50001 and CVE-2026-50002 are exploited."  # 50003: context, not in the lede
-            kept = await self._row(s, src, "Old row, subject pin", before, ["CVE-2026-50001", "CVE-2026-50002", "CVE-2026-50003"], excerpt=excerpt)
-            kept.cve_id = "CVE-2026-50002"  # a subject, though not the rule's pick
-            context = await self._row(s, src, "Old row, context pin", before, ["CVE-2026-50001", "CVE-2026-50002", "CVE-2026-50003"], excerpt=excerpt)
-            context.cve_id = "CVE-2026-50003"  # a context CVE
-            unknown = await self._row(s, src, "Old row, no subject", before, ["CVE-2026-50004", "CVE-2026-50005"])
-            unknown.cve_id = "CVE-2026-50005"
-            for row in (kept, context, unknown):
-                row.first_seen_at = before
-            await s.commit()
-            self.assertEqual(await maintenance.repin_plan(s), {context.id: ("CVE-2026-50003", "CVE-2026-50001")})
-
-    async def test_pinning_rule_dry_run_and_manual_repin(self):
+    async def test_pinning_rule_and_manual_repin(self):
         from app import cve_facts, maintenance
         from app.models import KevEntry
 
@@ -311,11 +279,6 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await cve_facts.pick_pinned(s, cves, subject), "CVE-2026-67279")
             # Named in the headline beats KEV.
             self.assertEqual(await cve_facts.pick_pinned(s, cves, subject, "Critical CVE-2026-86060 in RouterOS"), "CVE-2026-86060")
-            # The dry run reports the row (displays 86060, the rule picks 67279) and writes nothing.
-            with self.assertLogs("app.maintenance", "INFO") as logs:
-                self.assertEqual(await maintenance.repin_dry_run(s), {row.id: ("CVE-2026-86060", "CVE-2026-67279")})
-            self.assertIn("1 rows would change (STOP: expected 0); nothing written", " ".join(logs.output))
-            self.assertEqual((await s.get(Item, row.id)).cve_id, "CVE-2026-86060")
             # Sticky: a roll-up leaves the pin alone.
             await enrich.roll_up(s)
             self.assertEqual((await s.get(Item, row.id)).cve_id, "CVE-2026-86060")

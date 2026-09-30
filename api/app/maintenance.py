@@ -13,9 +13,9 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app import article_cves, cve_facts, facts_backfill, fetcher, ics, jobstate, summaries, versions
+from app import article_cves, facts_backfill, fetcher, ics, jobstate, summaries, versions
 from app.config import get_settings
-from app.models import Cve, Item, ItemCve, ItemSource, PatchStatus, Stream
+from app.models import Item, ItemCve, ItemSource, PatchStatus, Stream
 
 log = logging.getLogger(__name__)
 
@@ -41,59 +41,6 @@ async def merges(session) -> None:
         await article_cves.merge(session, survivor, merged, "signed off")
         rows.pop(merged_id)
     await session.commit()
-
-
-async def repin_plan(session) -> dict[int, tuple[str, str]]:
-    """{row: (displayed now, what the check would display)} for rows that fail it. A row pinned
-    since the current rule (cve_facts.PIN_RULE_SINCE) must show the rule's pick (subject CVEs, named
-    in the headline first, then KEV-listed, then the highest CVSS, then first mentioned). A row
-    pinned before it is never re-ranked: it fails only when its pin is a context CVE (the row has
-    subject CVEs and the pin is not one of them)."""
-    items = (
-        await session.scalars(
-            select(Item)
-            .where(Item.stream == Stream.main, Item.cve_id.is_not(None))
-            .options(selectinload(Item.sources))
-            .order_by(Item.id)
-        )
-    ).all()
-    links = (await session.execute(select(ItemCve.item_id, ItemCve.cve_id).order_by(ItemCve.item_id, ItemCve.position))).all()
-    by_item: dict[int, list[str]] = {}
-    for item_id, cve_id in links:
-        by_item.setdefault(item_id, []).append(cve_id)
-    all_ids = {c for cs in by_item.values() for c in cs}
-    scores = {c: float(s) if s is not None else None for c, s in (await session.execute(select(Cve.id, Cve.base_score).where(Cve.id.in_(all_ids)))).all()}
-    kev = await cve_facts.kev_listed(session, list(all_ids))
-    changes: dict[int, tuple[str, str]] = {}
-    for item in items:
-        cves = by_item.get(item.id, [])
-        if len(cves) < 2:
-            continue
-        subject = cve_facts.row_subjects(item, cves)
-        pool = cve_facts.eligible(cves, subject)
-        best = cve_facts.rank(pool, kev, scores, item.headline)
-        if item.first_seen_at < cve_facts.PIN_RULE_SINCE and (not subject or item.cve_id in subject):
-            continue  # pinned under an earlier rule, and not on a context CVE
-        if best != item.cve_id:
-            if REPIN_MANUAL.get(item.id) == item.cve_id:
-                # Pinned by hand, signed off: not the rule's pick, and not a change to make.
-                log.info("maintenance: repin (dry run): item %d keeps %s (pinned by hand; the rule picks %s)", item.id, item.cve_id, best)
-                continue
-            changes[item.id] = (item.cve_id, best)
-    return changes
-
-
-async def repin_dry_run(session) -> dict[int, tuple[str, str]]:
-    """Dry run only: pins are sticky, so this writes nothing; it logs every row the rule would pick
-    differently (expected: none), with the row's subject CVEs and headline."""
-    changes = await repin_plan(session)
-    for item_id, (now, new) in sorted(changes.items()):
-        item = await session.scalar(select(Item).where(Item.id == item_id).options(selectinload(Item.sources)))
-        log.info("maintenance: repin (dry run): item %d %s -> %s | subject %s | %s", item_id, now, new,
-                 ",".join(sorted(cve_facts.row_subjects(item, [now, new]))) or "none", item.headline[:90])
-    log.info("maintenance: repin (dry run): %d rows would change%s; nothing written", len(changes),
-             " (STOP: expected 0)" if changes else "")
-    return changes
 
 
 async def repin_manual(session) -> None:
@@ -318,10 +265,7 @@ async def restore_25(session) -> None:
 
 STEPS = [
     ("merge_834_1", merges),
-    ("repin_dry_run_v2", repin_dry_run),
     ("repin_793", repin_manual),
-    ("repin_dry_run_v3", repin_dry_run),
-    ("repin_dry_run_v4", repin_dry_run),
     ("explain_873_v1", explain_873),
     ("summary_versions_v1", summary_versions),
     ("resummarize_933_v1", resummarize_933),

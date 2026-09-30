@@ -70,11 +70,6 @@ async def published(session: AsyncSession, http: httpx.AsyncClient, cves: list[s
     return out
 
 
-# When the current pinning rule went live (e57fbe0 on Railway). Rows pinned before it keep their
-# pins; they were only checked for context-CVE pins (app/maintenance.py dry run).
-PIN_RULE_SINCE = datetime(2026, 9, 30, 18, 0, tzinfo=UTC)
-
-
 def eligible(cves: list[str], subject: set[str]) -> list[str]:
     """The subject CVEs of cves, in order; context CVEs never display. When the stored text shows
     no subject at all, only the first linked CVE (the one that made it a CVE row)."""

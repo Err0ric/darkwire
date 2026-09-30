@@ -90,6 +90,7 @@ Built for wall displays as much as laptops. Primary targets: 1920x1080 and 2560x
 ```
 
 - Phones: the age ends the meta line; the score / bar / badge line shows only when the row has one.
+- Full rows and compact rows (wire, vendor pages, permalinks; not /cves). A row stays full (the two-line anatomy above) when it is Vulnerability, Breach or Ransomware, has a CVE, is on KEV, or carries a red marker (Critical, EXPLOITED, POC). Every other row (news, research, advisories without a CVE) is compact: one line, the headline 14px/500 in `--fg-2` with an ellipsis (two lines under 640px), then the source name and the age at the right in 12px mono `--muted` (under 640px the age only, so the headline has the width), no separator, no category word, no meta line; about 8px above and below; the same icon column, click-to-expand and hover. Its age ends where the full rows' age column ends.
 - Rows with no CVE ID, score, bar or badge drop those columns: the headline runs to the age. Rows with data keep the aligned columns.
 - Headline: `--fg`, 15px/500, line-height 1.35, at most 72ch wide, wrapping to at most two lines (ellipsis). Icon column and text column keep one hard left edge on every row (marks left-aligned in a fixed 20px column).
 - Vendor mark: `/public/vendors/{slug}.svg`, monochrome, `--muted`, 20px, no circle; with no logo, the Lucide category icon (never initials).

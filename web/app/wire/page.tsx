@@ -45,8 +45,6 @@ export default async function Wire({ searchParams }: PageProps<"/wire">) {
     error: feed.status === "rejected",
     stack,
     stackCritical: value(critical, null),
-    // Read here, not after mount, so compact rows are on the first paint (no layout shift).
-    compact: one(params.preview) === "compact",
   }
   return <WireBoard initial={initial} />
 }

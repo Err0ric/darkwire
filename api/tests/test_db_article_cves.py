@@ -244,6 +244,7 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             (await s.get(Cve, "CVE-2026-67279")).base_score = 6.5
             s.add(KevEntry(cve_id="CVE-2026-67279", vendor="MikroTik", product="RouterOS", date_added=now.date()))
             await s.commit()
+            self.addCleanup(setattr, maintenance, "REPIN_EXPECTED", maintenance.REPIN_EXPECTED)
             self.assertEqual(await maintenance.repin_plan(s), {row.id: ("CVE-2026-86060", "CVE-2026-67279")})
             maintenance.REPIN_EXPECTED = {999: "CVE-2026-1111"}
             self.assertFalse(await maintenance.repin(s))  # not the signed-off set: nothing written
@@ -264,6 +265,7 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             first = await self._row(s, src, "Attackers exploit PeopleSoft", now - timedelta(hours=10), ["CVE-2026-35273"])
             later = await self._row(s, src, "ShinyHunters PeopleSoft workarounds", now - timedelta(hours=5), ["CVE-2026-35273"])
             await s.commit()
+            self.addCleanup(setattr, maintenance, "MERGES", maintenance.MERGES)
             maintenance.MERGES = [(later.id, first.id)]
             await maintenance.merges(s)
         async with self.Session() as s:

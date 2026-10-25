@@ -852,5 +852,74 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(left, {old.id, new.id, far.id})
 
 
+    async def test_p1_remerge_dry_run_writes_nothing_and_apply_needs_sign_off(self):
+        from unittest import mock
+
+        from app import p1_remerge
+        from app.models import Vendor
+        from app.seed import VENDORS
+
+        cve, old = "CVE-2026-114625", "CVE-2026-93952"
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        async with self.Session() as s:
+            v = next(x for x in VENDORS if x["slug"] == "arista")
+            s.add(Vendor(slug=v["slug"], name=v["name"], aliases=v["aliases"], domain=v["domain"]))
+            bc = Source(name="BleepingComputer", feed_url="https://test.invalid/bc4", stream=Stream.main)
+            cisa = Source(name="CISA", feed_url="https://test.invalid/cisa2", stream=Stream.main)
+            s.add_all([bc, cisa])
+            await s.flush()
+            a = await self._row(s, bc, "Arista patches new VeloCloud Orchestrator zero-day exploited in attacks", t0, [cve, old])
+            b = await self._row(s, bc, "Arista Warns of Critical VeloCloud SQL Injection Zero-Day Exploited in Attacks",
+                                t0 + timedelta(hours=2), [cve, old])
+            other = await self._row(s, bc, "PHP shares mitigation for new RCE vulnerability", t0 + timedelta(hours=3), ["CVE-2026-115560"])
+            url = "https://www.cisa.gov/news-events/alerts/2026/10/23/cisa-adds-one-known-exploited-vulnerability-catalog"
+            alert = Item(stream=Stream.main, headline="CISA Adds One Known Exploited Vulnerability to Catalog", primary_url=url,
+                         category=Category.vulnerability, last_event_at=t0 + timedelta(hours=19), last_event_kind="published",
+                         cve_id=cve, kev=True)
+            s.add(alert)
+            await s.flush()
+            s.add(ItemSource(item_id=alert.id, source_id=cisa.id, url=url, title=alert.headline, published_at=alert.last_event_at))
+            s.add(ItemCve(item_id=alert.id, cve_id=cve, position=0, subject=True))
+            await s.commit()
+            ids = frozenset({a.id, b.id, other.id, alert.id})
+            srcs = {i.id: i.sources[0].id for i in await self._load(s, [a.id, b.id])}
+        fetched = {srcs[a.id]: f"x\ny\nTracked as {cve}, it is critical.\nEarlier: {old}.",
+                   srcs[b.id]: f"x\ny\nThe flaw is tracked as {cve}."}
+        want = {("cve", b.id, a.id), ("alert", alert.id, a.id)}
+
+        async def count(s):
+            return await s.scalar(select(func.count()).select_from(Item).where(Item.id.in_(ids)))
+
+        from sqlalchemy import func
+
+        with mock.patch.object(p1_remerge, "EXPECTED", frozenset(want)):
+            async with self.Session() as s:
+                plan = await p1_remerge.run(s, False, ids, fetched)
+                self.assertEqual(set(plan.merges), want)
+                self.assertEqual(plan.stop, [])
+                self.assertEqual(plan.flags, {a.id: {cve}, b.id: {cve}})
+                self.assertEqual(await count(s), 4)  # dry run: nothing written
+                with self.assertRaises(SystemExit):  # no sign-off yet
+                    await p1_remerge.run(s, True, ids, fetched)
+                self.assertEqual(await count(s), 4)
+            with mock.patch.object(p1_remerge, "SIGNED_OFF", frozenset(want)):
+                async with self.Session() as s:
+                    with self.assertLogs("app.p1_remerge", level="INFO") as logs:
+                        await p1_remerge.run(s, True, ids, fetched)
+                    self.assertEqual(set(await s.scalars(select(Item.id).where(Item.id.in_(ids)))), {a.id, other.id})
+                    row = (await self._load(s, [a.id]))[0]
+                    self.assertTrue(row.kev)
+                    self.assertEqual(len(row.sources), 3)
+            self.assertIn("p1 remerge (verification): 0 vendor tags, 0 rows flagged, 0 merges", "\n".join(logs.output))
+
+        # A merge outside EXPECTED is a stop condition.
+        async with self.Session() as s:
+            c = await self._row(s, bc, "Arista VeloCloud zero-day exploited again", t0 + timedelta(hours=4), [cve],
+                                excerpt=f"Attackers exploit {cve} again.")
+            await s.commit()
+            plan = await p1_remerge.run(s, False, frozenset({a.id, c.id}), {**fetched})
+            self.assertTrue(any("not in EXPECTED" in x for x in plan.stop))
+
+
 if __name__ == "__main__":
     unittest.main()

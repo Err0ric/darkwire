@@ -154,3 +154,63 @@ class BreachShadow(unittest.TestCase):
         self.assertEqual(breach_victims("State Bank of India Confirms Data Leak After 3,897 Customer Records Found on Dark Web",
                                         "State Bank of India Suffers a Customer PII Data Leak"), [])
         self.assertEqual(breach_victims("Capcom confirms data breach", "Railway warns devs to rotate secrets after breach"), [])
+
+
+
+def live_merge_rules(on: bool):
+    """LIVE_MERGE_RULES for the duration of a with block (settings are cached)."""
+    import contextlib
+    import os
+    from unittest import mock
+
+    from app.config import get_settings
+
+    @contextlib.contextmanager
+    def ctx():
+        with mock.patch.dict(os.environ, {"LIVE_MERGE_RULES": "true" if on else "false"}):
+            get_settings.cache_clear()
+            try:
+                yield
+            finally:
+                get_settings.cache_clear()
+        get_settings.cache_clear()
+
+    return ctx()
+
+
+class LiveFlag(unittest.TestCase):
+    def test_tracked_as_follows_the_flag(self):
+        text = "x\ny\nThe flaw is tracked as CVE-2026-114625."
+        with live_merge_rules(False):
+            self.assertEqual(subject_cves("t", "", text), set())
+            self.assertEqual(subject_cves("t", "", text, introduced=True), {"CVE-2026-114625"})  # the re-merge script
+        with live_merge_rules(True):
+            self.assertEqual(subject_cves("t", "", text), {"CVE-2026-114625"})
+        self.assertEqual(subject_cves("t", "", text), {"CVE-2026-114625"})  # default on
+
+
+class AlertsToRehome(unittest.TestCase):
+    """Only alerts sharing a CVE with a row the pass changed move; held rows never do."""
+
+    def setUp(self):
+        self.cve, self.other = "CVE-2026-114625", "CVE-2026-110447"
+        self.alert = Row(1944, T, T, True, cves={self.cve}, led=True)
+        self.news = Row(1871, T, T, False, cves={self.cve})
+        self.old_alert = Row(1500, T, T, True, cves={self.other}, led=True)
+        self.old_home = Row(1498, T, T, False, cves={self.other})
+        self.rows = {r.id: r for r in (self.alert, self.news, self.old_alert, self.old_home)}
+
+    def test_only_touched_alerts(self):
+        from app.article_cves import alerts_to_rehome
+
+        got = alerts_to_rehome(self.rows, touched={1871})
+        self.assertEqual([(a.id, h.id) for a, h in got], [(1944, 1871)])  # 1500 is not touched: stays
+        self.assertEqual(alerts_to_rehome(self.rows, touched=set()), [])
+
+    def test_held_rows_are_skipped_and_logged(self):
+        from app.article_cves import alerts_to_rehome
+
+        with self.assertLogs("app.article_cves", level="INFO") as logs:
+            self.assertEqual(alerts_to_rehome(self.rows, touched={1871, 1498}, held=frozenset({1944})),
+                             [(self.old_alert, self.old_home)])
+        self.assertIn("KEV alert item 1944 would join item 1871, skipped", "\n".join(logs.output))

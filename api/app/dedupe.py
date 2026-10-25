@@ -50,6 +50,23 @@ MERGE_EXCLUSIONS: frozenset[frozenset[int]] = frozenset({
 
 def excluded(a: int, b: int) -> bool:
     return frozenset({a, b}) in MERGE_EXCLUSIONS
+
+
+# Rows the one-time P1 re-merge (app/p1_remerge.py) plans for: live merges and KEV alert joins
+# after fetching (article_cves.recheck) leave them alone until its apply records HOLD_STATE, so
+# only the signed-off plan merges them. New articles still join them at ingest. Prod ids.
+REMERGE_HOLD: frozenset[int] = frozenset({
+    1871, 1891, 1908, 1944, 1951,  # Arista VeloCloud
+    1948, 1952,  # Popcorn Time
+    1760, 1766, 1796, 1814, 1836, 1839, 1927, 1940, 1945, 1964,  # PHP2Shell
+    1893, 1905, 1906, 1915,  # Capcom, Quest Diagnostics
+})
+HOLD_STATE = "p1_remerge_applied"
+
+
+async def held_rows(session: AsyncSession) -> frozenset[int]:
+    """REMERGE_HOLD until the P1 re-merge is applied, then nothing."""
+    return frozenset() if await jobstate.get(session, HOLD_STATE) else REMERGE_HOLD
 TITLE_WINDOW = timedelta(hours=72)  # title merges: publish times at most this far apart
 SIMILARITY = 0.85
 _NON_WORD = re.compile(r"[^a-z0-9]+")

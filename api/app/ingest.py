@@ -28,6 +28,7 @@ from app.tagging import (
     clean_text,
     cluster_cves,
     headline_cves,
+    live_rules,
     first_paragraph,
     guess_category,
     is_ad,
@@ -177,7 +178,7 @@ async def find_cve_cluster(
             linked = (await session.execute(select(ItemCve.cve_id, ItemCve.subject).where(ItemCve.item_id == row.id))).all()
             held = {c for c, _ in linked}
             # The row's subjects: its stored feed text's, and those kept when linked (item_cves.subject).
-            row_subject = row_subject_cves(row.sources) | {c for c, flag in linked if flag}
+            row_subject = row_subject_cves(row.sources) | ({c for c, flag in linked if flag} if live_rules() else set())
             if not (held & set(cves) & subject & row_subject):
                 log.info("ingest: not joining row %d (shared CVEs are not the subject of both)", row.id)
                 continue

@@ -50,7 +50,7 @@ from sqlalchemy.orm import selectinload
 
 from app import cve_facts, dedupe, events, fetcher, ics, jobstate
 from app.models import Category, Cve, Item, ItemCve, ItemSource, KevEntry, Stream
-from app.tagging import guess_category, headline_cves, subject_cves, subject_reasons
+from app.tagging import guess_category, headline_cves, live_rules, subject_cves, subject_reasons
 
 log = logging.getLogger(__name__)
 
@@ -283,11 +283,12 @@ async def _rows(session: AsyncSession, since: datetime) -> dict[int, Row]:
         )
         for r in got
     }
+    live = live_rules()
     for item_id, cve_id, flag in (
         await session.execute(select(ItemCve.item_id, ItemCve.cve_id, ItemCve.subject).where(ItemCve.item_id.in_(rows)))
     ).all():
         rows[item_id].cves.add(cve_id)
-        if flag:  # a subject when linked, maybe from a fetched article that is not stored
+        if flag and live:  # a subject when linked, maybe from a fetched article that is not stored
             rows[item_id].subject.add(cve_id)
     own = {r.id: vendor_key(r.vendor) for r in got}
     single = {next(iter(r.cves)): r for r in rows.values() if len(r.cves) == 1}
@@ -358,14 +359,29 @@ async def join_alert(session: AsyncSession, home: Row, alert: Row, reason: str) 
              alert.id, home.id, ",".join(sorted(alert.cves)), reason)
 
 
-async def rehome_alerts(session: AsyncSession, rows: dict[int, Row], reason: str) -> int:
-    """Rows started by a KEV alert whose CVEs now sit in exactly one other row join it (alert_home).
-    Returns alerts moved."""
-    done = 0
-    for a in sorted((r for r in rows.values() if r.led), key=lambda r: r.id):
+def alerts_to_rehome(rows: dict[int, Row], touched: set[int], held: frozenset[int] = frozenset()) -> list[tuple[Row, Row]]:
+    """(alert row, home) for rows a KEV alert started that share a CVE with a row this pass
+    changed (`touched`: rows that gained CVEs or took a merge) and whose CVEs now sit in exactly
+    one other row (alert_home). Alerts this pass did not touch stay where they are. A pair with a
+    held row (dedupe.REMERGE_HOLD) is logged and skipped."""
+    changed = set().union(*(rows[i].cves for i in touched if i in rows))
+    out = []
+    for a in sorted((r for r in rows.values() if r.led and r.cves & changed), key=lambda r: r.id):
         home = alert_home(a, list(rows.values()))
         if home is None:
             continue
+        if held & {a.id, home.id}:
+            log.info("article cves: held (P1 re-merge pending): KEV alert item %d would join item %d, skipped", a.id, home.id)
+            continue
+        out.append((a, home))
+    return out
+
+
+async def rehome_alerts(session: AsyncSession, rows: dict[int, Row], reason: str, touched: set[int],
+                        held: frozenset[int] = frozenset()) -> int:
+    """Each alerts_to_rehome pair: the alert's row joins its home. Returns alerts moved."""
+    done = 0
+    for a, home in alerts_to_rehome(rows, touched, held):
         await join_alert(session, home, a, reason)
         rows.pop(a.id, None)
         done += 1
@@ -379,15 +395,28 @@ async def recheck(session: AsyncSession, gained: dict[int, Plan]) -> int:
         if i in rows:
             rows[i].multi_story = plan.multi_story
             rows[i].subject |= plan.subject
+    held = await dedupe.held_rows(session)
     done = 0
+    touched: set[int] = set()
     for item_id in gained:
         n = rows.get(item_id)
-        found = pair(n, list(rows.values())) if n else None
+        if n is None:
+            continue
+        touched.add(n.id)
+        found = pair(n, list(rows.values()))
+        if found and held & {found[0].id, found[1].id}:
+            log.info("article cves: held (P1 re-merge pending): item %d would merge into item %d, skipped",
+                     found[1].id, found[0].id)
+            found = None if n.id in held else pair(n, [r for r in rows.values() if r.id not in held])
         if found:
             await merge(session, *found, reason="after gaining CVEs from its article")
             rows.pop(found[1].id, None)
+            touched.discard(found[1].id)
+            touched.add(found[0].id)
             done += 1
-    return done + await rehome_alerts(session, rows, "after rows gained CVEs from their articles")
+    if live_rules():
+        done += await rehome_alerts(session, rows, "after rows gained CVEs from their articles", touched, held)
+    return done
 
 
 async def after_fetch(session: AsyncSession, items: list[Item], fetched: dict[int, dict[int, str]]) -> None:

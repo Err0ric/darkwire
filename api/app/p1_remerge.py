@@ -15,7 +15,8 @@ Only the rows in SCOPE are read, planned or touched; nothing outside it merges. 
    (article_cves.alert_home).
 5. Breach shadow pairs (dedupe.breach_victims) are logged only.
 
-Stop conditions (nothing is written, exit code 1): a SCOPE row is missing, the "arista" vendor is
+Until an apply, the live re-check leaves these rows alone (dedupe.REMERGE_HOLD); the apply
+releases them (dedupe.HOLD_STATE). Stop conditions (nothing is written, exit code 1): a SCOPE row is missing, the "arista" vendor is
 not seeded, the plan has a merge not in EXPECTED, or more than MAX_MERGES merges. --apply also
 needs SIGNED_OFF to equal the plan exactly; it is empty until the dry run is signed off. After an
 apply the same plan runs again as a dry run and must find no merge.
@@ -33,20 +34,14 @@ from datetime import UTC, datetime
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import article_cves, dedupe, fetcher
+from app import article_cves, dedupe, fetcher, jobstate
 from app.article_cves import MERGE_WINDOW, Row
 from app.models import Vendor
 from app.tagging import VendorMatcher, subject_cves
 
 log = logging.getLogger(__name__)
 
-# Prod row ids of the P1 stories (2026-10-25).
-SCOPE: frozenset[int] = frozenset({
-    1871, 1891, 1908, 1944, 1951,  # Arista VeloCloud
-    1948, 1952,  # Popcorn Time
-    1760, 1766, 1796, 1814, 1836, 1839, 1927, 1940, 1945, 1964,  # PHP2Shell
-    1893, 1905, 1906, 1915,  # Capcom, Quest Diagnostics
-})
+SCOPE: frozenset[int] = dedupe.REMERGE_HOLD  # prod ids of the P1 stories (2026-10-25)
 # What the in-memory dry run over the prod rows found (WIRE_FIXES.md P1): (kind, merged, survivor).
 # 1908's text could not be read locally, so it may come in by CVE or by title; both are listed.
 EXPECTED: frozenset[tuple[str, int, int]] = frozenset({
@@ -166,7 +161,7 @@ async def build(session: AsyncSession, scope: frozenset[int], fetched: dict[int,
             continue
         info[s["item_id"]].titles.append(s["title"])
         r = rows[s["item_id"]]
-        subj = subject_cves(s["title"], s["excerpt"] or "", fetched.get(s["id"], "")) & r.cves
+        subj = subject_cves(s["title"], s["excerpt"] or "", fetched.get(s["id"], ""), introduced=True) & r.cves
         new = subj - r.subject
         if new:
             plan.flags.setdefault(r.id, set()).update(new)
@@ -228,6 +223,8 @@ async def apply(session: AsyncSession, plan: Plan, rows: dict[int, Row]) -> None
             await article_cves.join_alert(session, rows[s], rows[m], "p1 re-merge")
         else:
             await article_cves.merge(session, rows[s], rows[m], f"p1 re-merge ({kind})")
+    # Releases the hold on these rows for the live rules (dedupe.held_rows).
+    await jobstate.put(session, dedupe.HOLD_STATE, datetime.now(UTC))
     await session.commit()
 
 

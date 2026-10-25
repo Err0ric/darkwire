@@ -921,5 +921,93 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(any("not in EXPECTED" in x for x in plan.stop))
 
 
+    async def _gaining_pair(self, s, src, tag):
+        """An earlier row whose CVE is a subject flag only, and a later row that gains it."""
+        cve = f"CVE-2026-7{tag}"
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        await s.merge(Cve(id=cve))
+        first = await self._row(s, src, f"First story {tag}", t0)
+        s.add(ItemCve(item_id=first.id, cve_id=cve, position=0, subject=True))
+        later = await self._row(s, src, f"Later story {tag}", t0 + timedelta(hours=5))
+        await s.commit()
+        return cve, first.id, later.id
+
+    async def _gain(self, item_id, cve):
+        async with self.Session() as s:
+            items = await self._load(s, [item_id])
+            await article_cves.after_fetch(s, items, {item_id: {items[0].sources[0].id: f"x\ny\nIt is tracked as {cve}."}})
+
+    async def _left(self, ids):
+        async with self.Session() as s:
+            return set(await s.scalars(select(Item.id).where(Item.id.in_(ids))))
+
+    async def test_held_rows_wait_for_the_p1_apply(self):
+        from unittest import mock
+
+        from app import dedupe, jobstate
+
+        async with self.Session() as s:
+            src = Source(name="The Record", feed_url="https://test.invalid/rec9", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            cve, first, later = await self._gaining_pair(s, src, "001")
+        with mock.patch.object(dedupe, "REMERGE_HOLD", frozenset({first})):
+            with self.assertLogs("app.article_cves", level="INFO") as logs:
+                await self._gain(later, cve)
+            self.assertIn(f"item {later} would merge into item {first}, skipped", "\n".join(logs.output))
+            self.assertEqual(await self._left([first, later]), {first, later})  # held: not merged
+
+            # Once the P1 apply has run, the hold is released.
+            async with self.Session() as s:
+                cve2, first2, later2 = await self._gaining_pair(s, src, "002")
+                await jobstate.put(s, dedupe.HOLD_STATE, datetime.now(UTC))
+                await s.commit()
+        with mock.patch.object(dedupe, "REMERGE_HOLD", frozenset({first2})):
+            await self._gain(later2, cve2)
+        self.assertEqual(await self._left([first2, later2]), {first2})
+
+    async def test_live_merge_rules_off(self):
+        from tests.test_merge_rules import live_merge_rules
+
+        async with self.Session() as s:
+            src = Source(name="The Record", feed_url="https://test.invalid/rec10", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            cve, first, later = await self._gaining_pair(s, src, "003")
+        with live_merge_rules(False):
+            # "tracked as" is off, so the later row's CVE is context, and the earlier row's flag is ignored.
+            await self._gain(later, cve)
+        self.assertEqual(await self._left([first, later]), {first, later})
+
+
+    async def test_live_merge_rules_off_keeps_alert_rows(self):
+        from tests.test_merge_rules import live_merge_rules
+
+        cve = "CVE-2026-7004"
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        async with self.Session() as s:
+            bc = Source(name="BleepingComputer", feed_url="https://test.invalid/bc11", stream=Stream.main)
+            cisa = Source(name="CISA", feed_url="https://test.invalid/cisa11", stream=Stream.main)
+            s.add_all([bc, cisa])
+            await s.flush()
+            news = await self._row(s, bc, "Vendor patches zero-day", t0)
+            await s.merge(Cve(id=cve))
+            url = "https://www.cisa.gov/news-events/alerts/2026/10/23/cisa-adds-one-known-exploited-vulnerability-catalog-11"
+            alert = Item(stream=Stream.main, headline="CISA Adds One Known Exploited Vulnerability to Catalog", primary_url=url,
+                         category=Category.vulnerability, last_event_at=t0 + timedelta(hours=19), last_event_kind="published",
+                         cve_id=cve, kev=True)
+            s.add(alert)
+            await s.flush()
+            s.add(ItemSource(item_id=alert.id, source_id=cisa.id, url=url, title=alert.headline, published_at=alert.last_event_at))
+            s.add(ItemCve(item_id=alert.id, cve_id=cve, position=0, subject=True))
+            await s.commit()
+            news_id, alert_id = news.id, alert.id
+        with live_merge_rules(False):
+            async with self.Session() as s:
+                items = await self._load(s, [news_id])
+                await article_cves.after_fetch(s, items, {news_id: {items[0].sources[0].id: f"Attackers exploit {cve}."}})
+        self.assertEqual(await self._left([news_id, alert_id]), {news_id, alert_id})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -38,5 +38,35 @@ class Platforms(unittest.TestCase):
         self.assertIsNone(vendor("Ransomware attacks send a strong signal to hospitals"))
 
 
+
+class Arista(unittest.TestCase):
+    # 2026-10-22/23 (prod 1871, 1891, 1908): three VeloCloud zero-day rows, untagged, never merged.
+    TITLES = [
+        "Arista patches new VeloCloud Orchestrator zero-day exploited in attacks",
+        "Arista Warns of Critical VeloCloud SQL Injection Zero-Day Exploited in Attacks",
+        "Attackers Exploit Third VeloCloud Orchestrator Zero-Day in Four Months",
+    ]
+
+    def test_velocloud_rows_are_arista(self):
+        for t in self.TITLES:
+            self.assertEqual(vendor(t), "arista")
+
+    def test_velocloud_zero_day_rows_merge_by_title(self):
+        from datetime import UTC, datetime, timedelta
+
+        from app import dedupe
+
+        arista = next(i for i, s in SLUG.items() if s == "arista")
+        t = datetime(2026, 10, 22, 17, tzinfo=UTC)
+        for i, a in enumerate(self.TITLES):
+            for b in self.TITLES[i + 1:]:
+                self.assertTrue(dedupe.title_merge_ok(a, t, arista, b, t + timedelta(hours=16), arista, MATCHER), (a, b))
+        # The two-story KEV piece is not a zero-day title: it stays out.
+        two = "CISA Flags Two Actively Exploited Critical Flaws in Collabora Online and Arista VeloCloud"
+        self.assertFalse(dedupe.title_merge_ok(self.TITLES[0], t, arista, two, t, arista, MATCHER))
+        # The vendor's name alone is not a product: two unrelated Arista zero-days do not merge.
+        self.assertFalse(dedupe.title_merge_ok("Arista EOS zero-day exploited", t, arista, "Arista patches zero-day in CloudVision", t, arista, MATCHER))
+
+
 if __name__ == "__main__":
     unittest.main()

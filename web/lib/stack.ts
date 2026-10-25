@@ -6,7 +6,7 @@ const MAX_SLUGS = 50
 /** Every vendor slug the API tags (api/app/seed.py VENDORS). A stack can only name these.
  * tests/unit checks this list against seed.py. */
 export const VENDOR_SLUGS: ReadonlySet<string> = new Set([
-  "adobe", "amd", "apache", "apple", "arm", "atlassian", "aws", "broadcom", "check-point", "cisco",
+  "adobe", "amd", "apache", "apple", "arista", "arm", "atlassian", "aws", "broadcom", "check-point", "cisco",
   "citrix", "cloudflare", "connectwise", "crowdstrike", "d-link", "docker", "f5", "fortinet", "github", "gitlab",
   "google", "ibm", "intel", "ivanti", "jenkins", "jetbrains", "juniper", "kaseya", "kubernetes", "linux",
   "microsoft", "mozilla", "npm", "nvidia", "okta", "openssl", "oracle", "palo-alto-networks", "progress", "pypi",

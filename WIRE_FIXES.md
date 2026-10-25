@@ -31,6 +31,48 @@ Notes for diagnosis:
 
 **Acceptance:** a written diagnosis per case, a proposed fix per case, and a dry run of any re-merge showing exactly which rows would combine. No production writes without sign-off.
 
+### P1 diagnosis (2026-10-25)
+
+**Data used.** The local DB could not reproduce the CVE cases: with no `ANTHROPIC_API_KEY` no article is fetched, so rows never gain their CVEs, and CISA returns 403 locally, so there is no KEV alert row. Row layout and CVE sets came from prod's public API (GET `/feed?q=`, `/items/{id}`, read only); article text was fetched again with `app.fetcher` as the summarizer does; title rules ran on local data. Row ids below are prod ids. SecurityWeek article text did not extract locally, so row 1908's text is unknown.
+
+**Arista VeloCloud** (1871 BC, 1891 THN, 1908 SecurityWeek, 1944 CISA alert, 1951 THN "CISA Flags Two").
+- 1871, 1891, 1908 all hold and display CVE-2026-114625, plus context CVEs (1871: 93952; 1891 and 1908: 16812, 93952). No feed text names a CVE; they came from fetched articles.
+- CVE rule: news joins news only on a CVE that is a subject of both. Both articles say "Tracked as CVE-2026-114625", in paragraph 3 or 4, outside the lede window (excerpt plus 2 paragraphs) and named once, so it was a subject of neither. The vendor-data fallback (`row_subject`, a row's only CVE when it is its vendor's) could not apply: Arista was not seeded, and each row holds 2-3 CVEs.
+- Title rules: no vendor on either side; stripped similarity 0.37-0.61; only `arista` and `velocloud` shared, under 3.
+- 1944: when the alert arrived, three rows held its CVE, so it rightly started its own row; nothing ever moved it after that.
+- 1951: holds only Collabora's CVE-2026-110447, from the full RSS summary at ingest. The fetch step adds CVEs only to rows with none, so it never gained Arista's CVE and the 2+ vendor rule never ran. Keeping it separate is right: merged, the Arista row would carry Collabora's CVE.
+
+**Popcorn Time** (1948 BC, 1952 THN). Both hold only CVE-2026-30612, 12h apart. It is a subject of BC's article (paragraph 2), not of THN's (paragraph 10, "now tracked as"). Title similarity 0.31. No vendor data to fall back on (no CPE, CNA "n/a").
+
+**PHP2Shell** (1760, 1766 with 9 sources, 1796, 1836, 1940, 1964; 1839, 1945, 1814 with no CVE; 1927 a different CVE).
+- Bug: subject CVEs found in fetched text were never stored (the article is not stored, and `recheck` kept them only for rows gaining CVEs in that same pass). 1760's BC article makes both PHP CVEs subjects, but when 1766 arrived ingest saw none, so it never joined (prod logs should show `not joining row 1760`).
+- 1836: "Tracked as" in paragraph 5, the same gap as Arista.
+- 1796, 1940 (The Record): the CVE named once, no introducer. They stay separate; widening the rule further is not proposed.
+- 1964: Oct 25, outside 72h of 1760: separate by design.
+- 1839, 1945, 1814: no CVE, no title rule matches: separate (categories are P3). 1814 is tagged Signal from "Bugs Signal Red Alert" (see P3).
+- Mis-merge found: THN's "PHP Warns of Another Unpatched RCE" (CVE-2026-115560) joined the PHP2Shell row by `shared_story` (php, php2shell, rce). With subject CVEs kept, it would pull 1927 (BC on that CVE) in too.
+
+**Capcom** (1893 BC, 1905 SecurityWeek) and **Quest Diagnostics** (1906 SecurityWeek+BC, 1915 The Record). No vendor; similarity Capcom 0.36 (stripped 0.40), Quest 0.48-0.51 (stripped 0.53-0.57); shared distinctive words Capcom `capcom`, Quest `quest`, `diagnostic`: under 3. Seeding them would not help: the same-vendor test still needs > 0.85.
+
+### P1 fixes (approved 2026-10-25, branch wire-fixes-p1)
+
+1. `MERGE_EXCLUSIONS`: 1927 vs 1760 and vs 1766 (either may survive), with the reason. Data fix.
+2. `item_cves.subject` (migration 0020): a CVE's subject flag is stored when linked (ingest, fetched articles, merges) and read with the stored text's subjects by ingest's CVE cluster check and `article_cves.recheck`. Bug fix, no spec change.
+3. Arista seeded (`Arista`, `Arista Networks`, `VeloCloud`, `VeloCloud Orchestrator`; named "Arista" as KEV and CPE write it). The existing zero-day + product alias rule then merges 1871, 1891 and 1908 by title and keeps 1951 out. 58 vendors.
+4. Rule change: a CVE introduced anywhere in the text as the flaw's ID ("tracked as", "identified as", "assigned") is a subject CVE.
+5. Rule change: a KEV alert's own row joins the one other row that comes to hold all its CVEs (no alert of its own, not a recap), after the post-fetch re-check or in a signed-off re-merge (`article_cves.rehome_alerts`).
+6. Shadow mode: Breach rows within 72h whose titles share a proper noun are logged as would-merge pairs (`dedupe.breach_shadow`); nothing merges. Local data, 2 weeks, 12 breach articles: Capcom and Quest found, no false pairs.
+
+**Re-merge dry run** (in memory over the prod rows, with the live `article_cves.pair` rule; the prod dry run is `python -m app.p1_remerge`, waiting for sign-off):
+
+| With | Rows that combine |
+|---|---|
+| Code before these fixes | none |
+| Fix 2 only | 1766→1760, and 1927→1760 (wrong; fix 1 blocks it) |
+| Fixes 1, 2, 4 | 1766→1760, 1836→1760, 1891→1871, 1952→1948 |
+| Fix 3 (titles) | 1908 joins the Arista row; fix 5 then folds 1944 into it |
+| Fix 6 | nothing merges; 1905/1893 and 1915/1906 are logged |
+
 ---
 
 ## P2. Data correctness bugs
@@ -54,12 +96,15 @@ Notes for diagnosis:
 | In Other News: Tor Exit Relays Hijacked... (SecurityWeek) | Ransomware + BREACH + Apple vendor | Recap: no CVE, no badge |
 | ThreatsDay: AI Secrets Leak, PingCAP Source Theft... (THN) | Vulnerability + Signal vendor | Recap |
 | Metasploit Wrap Up (Rapid7) | Vulnerability + CVE-2026-93680 | Recap; CLAUDE.md says Metasploit never gets CVEs attached |
+| 'PHP2Shell' Bugs Signal Red Alert for Security Industry (Dark Reading, prod 1814) | Signal vendor | Untagged: "Signal" here is a verb. `CASE_SENSITIVE_ALIASES` only stops lowercase "signal"; in a Title Case headline every word is capitalized, so it matches (found in P1) |
+| State Bank of India Confirms Data Leak... / State Bank of India Suffers a Customer PII Data Leak (local rows 392, 452) | two Breach rows | One row. Both titles are Title Case, so `dedupe._proper` treats no shared word as a proper noun: `shared_story` (state, bank, india) and the P1 breach shadow rule both miss it (found in P1) |
 
 Tasks:
 1. For each row, say which rule produced the category and whether the code or the rule is at fault
 2. Recap detection: "In Other News" and "ThreatsDay" are not in the recap patterns listed in CLAUDE.md. Propose adding them (and check for other recurring roundup titles in the last 30 days)
 3. The Metasploit row has a CVE despite the rule. Find out how
 4. Where the rule is right and it is a one-off, add a `CATEGORY_OVERRIDES` entry with the reason
+5. Title Case: propose how a case-sensitive alias ("Signal") and the proper-noun test (`dedupe._proper`) should treat headlines where every word is capitalized
 
 ---
 

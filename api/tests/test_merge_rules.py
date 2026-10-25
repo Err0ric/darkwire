@@ -78,3 +78,43 @@ class PhpExclusion(unittest.TestCase):
             self.assertTrue(dedupe.excluded(1927, survivor) and dedupe.excluded(survivor, 1927))
             old.id = survivor
             self.assertIsNone(merge_target(r1927, [old]))
+
+
+class IntroducedCves(unittest.TestCase):
+    """2026-10-22/24: "tracked as CVE-..." below the lede made the CVE no article's subject, so the
+    VeloCloud rows (prod 1871, 1891) and the Popcorn Time rows (1948, 1952) never merged."""
+
+    VELO = "CVE-2026-114625"
+    BC = ("Arista patches new VeloCloud Orchestrator zero-day exploited in attacks", "",
+          "Arista Networks released security updates to patch an actively exploited zero-day.\n"
+          "VCO is a web-based management portal.\n"
+          "Tracked as CVE-2026-114625, this critical-severity flaw can allow attackers to escalate privileges.\n"
+          "This year, Arista has patched three other actively exploited zero-day flaws (CVE-2026-7473 in May, "
+          "CVE-2026-16812 in July, and CVE-2026-93952 in September).")
+    THN = ("Arista Warns of Critical VeloCloud SQL Injection Zero-Day Exploited in Attacks", "",
+           "Attackers are exploiting a zero-day SQL injection flaw in Arista's VeloCloud Orchestrator.\n"
+           "The flaw lets anyone who can log in gain operator privileges.\n"
+           "For on-premises orchestrators, the fix is in VCO 5.2.3.18.\n"
+           "The flaw is tracked as CVE-2026-114625 and rated 9.9 on the CVSS scale.\n"
+           "Neither the July flaw (CVE-2026-16812) nor the September flaw (CVE-2026-93952) needed one.")
+
+    def test_tracked_as_makes_the_subject_and_context_stays_context(self):
+        self.assertEqual(subject_cves(*self.BC), {self.VELO})
+        self.assertEqual(subject_cves(*self.THN), {self.VELO})
+
+    def test_the_velocloud_rows_merge(self):
+        cves = {self.VELO, "CVE-2026-93952"}
+        old = Row(1871, T, T, False, cves=cves, subject=subject_cves(*self.BC))
+        new = Row(1891, T, T, False, cves=cves | {"CVE-2026-16812"}, subject=subject_cves(*self.THN))
+        self.assertTrue(takes(old, new))
+
+    def test_the_forms(self):
+        a, b = "CVE-2026-109618", "CVE-2026-109619"
+        self.assertEqual(subject_cves("t", "", "x\ny\nTracked as CVE-2026-109618 and CVE-2026-109619, both are rated 9.2."), {a, b})
+        self.assertEqual(subject_cves("t", "", "x\ny\nThe bug, identified as CVE-2026-109618, is critical."), {a})
+        self.assertEqual(subject_cves("t", "", "x\ny\nIt was assigned CVE-2026-109618."), {a})
+        self.assertEqual(subject_cves("t", "", "x\ny\nIt has been assigned the identifier CVE-2026-109618."), {a})
+        self.assertEqual(subject_cves("t", "Eye had disclosed the flaw, now tracked as CVE-2026-30612, in June.", ""), {"CVE-2026-30612"})
+        # Named once, below the lede, without an introducer: still context.
+        self.assertEqual(subject_cves("t", "", "x\ny\nIt recalls CVE-2024-3400, exploited last year."), set())
+        self.assertEqual(subject_cves("t", "", "x\ny\nResearchers tracked CVE-2024-3400 activity."), set())

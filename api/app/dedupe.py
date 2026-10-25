@@ -446,10 +446,10 @@ async def _merge(session: AsyncSession, o: dict, n: dict, n_pub: datetime) -> No
     await session.execute(text("UPDATE item_sources SET item_id = :o WHERE item_id = :n"), {"o": oid, "n": nid})
     await session.execute(
         text("""
-            INSERT INTO item_cves (item_id, cve_id, position)
-            SELECT :o, cve_id, (SELECT coalesce(max(position), -1) + 1 FROM item_cves WHERE item_id = :o) + position
+            INSERT INTO item_cves (item_id, cve_id, position, subject)
+            SELECT :o, cve_id, (SELECT coalesce(max(position), -1) + 1 FROM item_cves WHERE item_id = :o) + position, subject
             FROM item_cves WHERE item_id = :n
-            ON CONFLICT DO NOTHING
+            ON CONFLICT (item_id, cve_id) DO UPDATE SET subject = item_cves.subject OR EXCLUDED.subject
         """),
         {"o": oid, "n": nid},
     )

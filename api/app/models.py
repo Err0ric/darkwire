@@ -218,6 +218,10 @@ class ItemCve(Base):
     item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
     cve_id: Mapped[str] = mapped_column(ForeignKey("cves.id", ondelete="CASCADE"), primary_key=True, index=True)
     position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # A subject CVE of one of the row's articles (tagging.subject_cves), as seen when it was
+    # linked: from the feed text at ingest, or from the fetched article (app/article_cves.py),
+    # which is never stored. Merges read it with the stored text's subjects.
+    subject: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class ItemSource(Base):

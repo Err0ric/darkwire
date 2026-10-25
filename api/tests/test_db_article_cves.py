@@ -757,5 +757,42 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await s.get(Item, other.id)).summary_sources, 1)
 
 
+    async def test_a_fetched_subject_is_kept_for_later_merges(self):
+        # PHP2Shell, 2026-10-20/21 (prod 1760, 1766): the earlier row's CVE was a subject only in
+        # its fetched article, which is not stored. A later row gaining the CVE in another pass,
+        # and a later article at ingest, must still find it.
+        from app import ingest
+
+        cve = "CVE-2026-109618"
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        async with self.Session() as s:
+            src = Source(name="BleepingComputer", feed_url="https://test.invalid/bc2", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            first = await self._row(s, src, "PHP warns admins of two critical flaws", t0, excerpt="Patches come tomorrow.")
+            await s.commit()
+            ids = [first.id]
+        async with self.Session() as s:
+            items = await self._load(s, ids)
+            await article_cves.after_fetch(s, items, {first.id: {items[0].sources[0].id: f"The flaws are tracked as {cve}.\nMore."}})
+        async with self.Session() as s:
+            self.assertTrue(await s.scalar(select(ItemCve.subject).where(ItemCve.item_id == first.id, ItemCve.cve_id == cve)))
+
+            # Ingest: a later article whose feed text makes the CVE its subject joins the row.
+            found = await ingest.find_cve_cluster(s, [cve], t0 + timedelta(hours=10), {cve})
+            self.assertEqual(found.id if found else None, first.id)
+
+            later = await self._row(s, src, "Someone tried to exploit PHP early", t0 + timedelta(hours=10), excerpt="Amazon saw a probe.")
+            await s.commit()
+            later_id = later.id
+        async with self.Session() as s:
+            items = await self._load(s, [later_id])
+            await article_cves.after_fetch(s, items, {later_id: {items[0].sources[0].id: f"Attackers probed {cve} early.\nMore."}})
+        async with self.Session() as s:
+            left = set(await s.scalars(select(Item.id).where(Item.id.in_([first.id, later_id]))))
+            self.assertEqual(left, {first.id})  # the later row folded into the first
+            self.assertTrue(await s.scalar(select(ItemCve.subject).where(ItemCve.item_id == first.id, ItemCve.cve_id == cve)))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -175,7 +175,7 @@ async def add_cves(session: AsyncSession, item: Item, cves: list[str], subject: 
     last = await session.scalar(select(func.coalesce(func.max(ItemCve.position), -1)).where(ItemCve.item_id == item.id))
     await session.execute(
         insert(ItemCve)
-        .values([{"item_id": item.id, "cve_id": c, "position": last + 1 + i} for i, c in enumerate(cves)])
+        .values([{"item_id": item.id, "cve_id": c, "position": last + 1 + i, "subject": c in subject} for i, c in enumerate(cves)])
         .on_conflict_do_nothing()
     )
     if item.cve_id is None:
@@ -280,8 +280,12 @@ async def _rows(session: AsyncSession, since: datetime) -> dict[int, Row]:
         )
         for r in got
     }
-    for item_id, cve_id in (await session.execute(select(ItemCve.item_id, ItemCve.cve_id).where(ItemCve.item_id.in_(rows)))).all():
+    for item_id, cve_id, flag in (
+        await session.execute(select(ItemCve.item_id, ItemCve.cve_id, ItemCve.subject).where(ItemCve.item_id.in_(rows)))
+    ).all():
         rows[item_id].cves.add(cve_id)
+        if flag:  # a subject when linked, maybe from a fetched article that is not stored
+            rows[item_id].subject.add(cve_id)
     own = {r.id: vendor_key(r.vendor) for r in got}
     single = {next(iter(r.cves)): r for r in rows.values() if len(r.cves) == 1}
     owners = await cve_vendors(session, list(single)) if single else {}

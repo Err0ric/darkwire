@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app import jobstate, rowtime
-from app.models import Item, ItemCve, ItemSource, Stream
+from app.models import Category, Item, ItemCve, ItemSource, Stream
 from app.tagging import ZERO_DAY, VendorMatcher, cluster_cves
 
 log = logging.getLogger(__name__)
@@ -40,11 +40,33 @@ WINDOW = timedelta(hours=48)  # CVE merges of existing rows (merge_existing)
 # article_cves.merge_target for the re-check after fetching and the re-merge). Each with the reason.
 MERGE_EXCLUSIONS: frozenset[frozenset[int]] = frozenset({
     frozenset({819, 1}),  # 819, an arrest story, only mentions row 1's PeopleSoft CVE (2026-09-30)
+    # 1927 is PHP's new CVE-2026-115560. The PHP2Shell row (1760, which 1766 folds into) holds
+    # THN's article on that CVE only through a title merge (php, php2shell, rce), so 1927 would
+    # follow it in. Both ids, since either may survive (2026-10-25).
+    frozenset({1927, 1760}),
+    frozenset({1927, 1766}),
 })
 
 
 def excluded(a: int, b: int) -> bool:
     return frozenset({a, b}) in MERGE_EXCLUSIONS
+
+
+# Rows the one-time P1 re-merge (app/p1_remerge.py) plans for: live merges and KEV alert joins
+# after fetching (article_cves.recheck) leave them alone until its apply records HOLD_STATE, so
+# only the signed-off plan merges them. New articles still join them at ingest. Prod ids.
+REMERGE_HOLD: frozenset[int] = frozenset({
+    1871, 1891, 1908, 1944, 1951,  # Arista VeloCloud
+    1948, 1952,  # Popcorn Time
+    1760, 1766, 1796, 1814, 1836, 1839, 1927, 1940, 1945, 1964,  # PHP2Shell
+    1893, 1905, 1906, 1915,  # Capcom, Quest Diagnostics
+})
+HOLD_STATE = "p1_remerge_applied"
+
+
+async def held_rows(session: AsyncSession) -> frozenset[int]:
+    """REMERGE_HOLD until the P1 re-merge is applied, then nothing."""
+    return frozenset() if await jobstate.get(session, HOLD_STATE) else REMERGE_HOLD
 TITLE_WINDOW = timedelta(hours=72)  # title merges: publish times at most this far apart
 SIMILARITY = 0.85
 _NON_WORD = re.compile(r"[^a-z0-9]+")
@@ -168,6 +190,44 @@ def shared_story(a: str, b: str) -> bool:
     da, db = distinctive(a), distinctive(b)
     shared = da.keys() & db.keys()
     return len(shared) >= 3 and any(_proper(s, a, b, da, db) for s in shared)
+
+
+def breach_victims(a: str, b: str) -> list[str]:
+    """Distinctive words two titles share that are proper nouns (_proper): for two Breach rows,
+    the victim they name ("Capcom", "Quest Diagnostics")."""
+    da, db = distinctive(a), distinctive(b)
+    return sorted(s for s in da.keys() & db.keys() if _proper(s, a, b, da, db))
+
+
+async def breach_shadow(session: AsyncSession, item_id: int, title: str, published: datetime) -> int:
+    """SHADOW MODE, logs only, merges nothing: a new Breach row and each other Breach row with a
+    news article published within 72h whose title shares a proper noun with it (breach_victims),
+    logged with both titles and the shared words for review. Returns pairs logged."""
+    near = select(ItemSource.item_id).where(
+        ItemSource.published_at.between(published - TITLE_WINDOW, published + TITLE_WINDOW)
+    )
+    rows = (
+        await session.scalars(
+            select(Item)
+            .where(Item.stream == Stream.main, Item.category == Category.breach, Item.id != item_id, Item.id.in_(near))
+            .options(selectinload(Item.sources))
+            .order_by(Item.id)
+        )
+    ).all()
+    logged = 0
+    for row in rows:
+        for s in row.sources:
+            if is_kev_alert(s.title, s.url) or s.published_at is None or abs(s.published_at - published) > TITLE_WINDOW:
+                continue
+            shared = breach_victims(title, s.title)
+            if shared:
+                log.info(
+                    "dedupe: breach shadow (log only): item %d would merge with item %d (shared %s) | %r | %r",
+                    item_id, row.id, ",".join(shared), title, s.title,
+                )
+                logged += 1
+                break
+    return logged
 
 
 def stripped(title: str) -> list[str]:
@@ -441,10 +501,10 @@ async def _merge(session: AsyncSession, o: dict, n: dict, n_pub: datetime) -> No
     await session.execute(text("UPDATE item_sources SET item_id = :o WHERE item_id = :n"), {"o": oid, "n": nid})
     await session.execute(
         text("""
-            INSERT INTO item_cves (item_id, cve_id, position)
-            SELECT :o, cve_id, (SELECT coalesce(max(position), -1) + 1 FROM item_cves WHERE item_id = :o) + position
+            INSERT INTO item_cves (item_id, cve_id, position, subject)
+            SELECT :o, cve_id, (SELECT coalesce(max(position), -1) + 1 FROM item_cves WHERE item_id = :o) + position, subject
             FROM item_cves WHERE item_id = :n
-            ON CONFLICT DO NOTHING
+            ON CONFLICT (item_id, cve_id) DO UPDATE SET subject = item_cves.subject OR EXCLUDED.subject
         """),
         {"o": oid, "n": nid},
     )
@@ -460,19 +520,30 @@ async def _merge(session: AsyncSession, o: dict, n: dict, n_pub: datetime) -> No
             oid, o["last_event_at"].isoformat(), event.isoformat(), nid,
         )
 
-    primary = (
+    # Primary: a vendor feed that owns the row (app/ownership.py), else the earliest. A vendor
+    # only a non-owning feed brought (it tagged its row as its own) is dropped.
+    from types import SimpleNamespace
+
+    from app import ownership
+
+    found = (
         await session.execute(
             text("""
-                SELECT s.url, s.title, src.vendor_id FROM item_sources s JOIN sources src ON src.id = s.source_id
-                WHERE s.item_id = :o
-                ORDER BY (src.vendor_id IS NULL), s.published_at NULLS LAST, s.id LIMIT 1
+                SELECT s.id, s.url, s.title, s.published_at, src.vendor_id FROM item_sources s
+                JOIN sources src ON src.id = s.source_id WHERE s.item_id = :o
             """),
             {"o": oid},
         )
-    ).mappings().one()
+    ).mappings().all()
+    as_sources = [SimpleNamespace(title=r["title"], url=r["url"], source=SimpleNamespace(vendor_id=r["vendor_id"])) for r in found]
+    cve_id = await session.scalar(text("SELECT cve_id FROM items WHERE id = :o"), {"o": oid})
+    owned = await ownership.owned_vendors(session, as_sources, cve_id)
+    primary = min(found, key=lambda r: ownership.primary_key(r["published_at"], r["vendor_id"], owned, r["id"]))
+    unowned = {r["vendor_id"] for r in found if r["vendor_id"] is not None} - owned
+    kept = [v for v in (o["vendor_id"], n["vendor_id"]) if v is not None and v not in unowned]
     scores = [x for x in (o["cvss"], n["cvss"]) if x is not None]
     values = {
-        "vendor_id": primary["vendor_id"] or o["vendor_id"] or n["vendor_id"],
+        "vendor_id": (primary["vendor_id"] if primary["vendor_id"] in owned else None) or (kept[0] if kept else None),
         "category": n["category"] if o["category"] == "news" else o["category"],
         "summary": o["summary"] or n["summary"],
         # Kept at the pair's max so the next roll-up does not see a change and resurface it.

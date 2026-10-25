@@ -17,6 +17,9 @@ are added to it:
 - A multi-story article (its kept CVEs belong to 2+ vendors, by the KEV catalog, CPE or CNA
   data) gets its CVEs but does not merge, except into a KEV alert row whose CVEs it holds all of.
 
+A KEV alert's own row (it started one because 0 or 2+ rows held its CVEs) joins the one other
+row that holds all of them once that is so, as an alert does at ingest (rehome_alerts).
+
 Then the row is checked against the shared-CVE clustering rule (app/dedupe.py) within
 MERGE_WINDOW: the later row folds into the earlier one; never an alert into anything; never a
 recap either way; into a row a KEV alert started only when that row holds one CVE or the article
@@ -45,9 +48,9 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import cve_facts, dedupe, fetcher, ics, jobstate
+from app import cve_facts, dedupe, events, fetcher, ics, jobstate
 from app.models import Category, Cve, Item, ItemCve, ItemSource, KevEntry, Stream
-from app.tagging import guess_category, headline_cves, subject_cves, subject_reasons
+from app.tagging import guess_category, headline_cves, live_rules, subject_cves, subject_reasons
 
 log = logging.getLogger(__name__)
 
@@ -175,7 +178,7 @@ async def add_cves(session: AsyncSession, item: Item, cves: list[str], subject: 
     last = await session.scalar(select(func.coalesce(func.max(ItemCve.position), -1)).where(ItemCve.item_id == item.id))
     await session.execute(
         insert(ItemCve)
-        .values([{"item_id": item.id, "cve_id": c, "position": last + 1 + i} for i, c in enumerate(cves)])
+        .values([{"item_id": item.id, "cve_id": c, "position": last + 1 + i, "subject": c in subject} for i, c in enumerate(cves)])
         .on_conflict_do_nothing()
     )
     if item.cve_id is None:
@@ -280,8 +283,13 @@ async def _rows(session: AsyncSession, since: datetime) -> dict[int, Row]:
         )
         for r in got
     }
-    for item_id, cve_id in (await session.execute(select(ItemCve.item_id, ItemCve.cve_id).where(ItemCve.item_id.in_(rows)))).all():
+    live = live_rules()
+    for item_id, cve_id, flag in (
+        await session.execute(select(ItemCve.item_id, ItemCve.cve_id, ItemCve.subject).where(ItemCve.item_id.in_(rows)))
+    ).all():
         rows[item_id].cves.add(cve_id)
+        if flag and live:  # a subject when linked, maybe from a fetched article that is not stored
+            rows[item_id].subject.add(cve_id)
     own = {r.id: vendor_key(r.vendor) for r in got}
     single = {next(iter(r.cves)): r for r in rows.values() if len(r.cves) == 1}
     owners = await cve_vendors(session, list(single)) if single else {}
@@ -320,6 +328,66 @@ async def merge(session: AsyncSession, survivor: Row, merged: Row, reason: str) 
     log.info("article cves: merged item %d into item %d (shared %s; %s)", merged.id, survivor.id, ",".join(shared), reason)
 
 
+def alert_home(alert: Row, rows: list[Row]) -> Row | None:
+    """The row a KEV alert's own row folds into: the one other row holding every CVE the alert
+    lists, with no alert of its own (dedupe.alert_home_of, as at ingest); never a recap, never
+    an excluded pair. None while 0 or 2+ rows hold them all."""
+    others = [r for r in rows if r.id != alert.id and not r.roundup and not dedupe.excluded(alert.id, r.id)]
+    return dedupe.alert_home_of(alert.cves, [(r, r.cves, r.alert) for r in others])
+
+
+async def join_alert(session: AsyncSession, home: Row, alert: Row, reason: str) -> None:
+    """As ingest's alert join: the alert's sources move to the home row, which keeps its headline,
+    time, vendor and pinned CVE, and gets KEV; the alert's own row goes."""
+    await session.execute(text("UPDATE item_sources SET item_id = :h WHERE item_id = :a"), {"h": home.id, "a": alert.id})
+    await session.execute(
+        text("""
+            INSERT INTO item_cves (item_id, cve_id, position, subject)
+            SELECT :h, cve_id, (SELECT coalesce(max(position), -1) + 1 FROM item_cves WHERE item_id = :h) + position, true
+            FROM item_cves WHERE item_id = :a
+            ON CONFLICT (item_id, cve_id) DO UPDATE SET subject = true
+        """),
+        {"h": home.id, "a": alert.id},
+    )
+    await session.execute(text("UPDATE items SET kev = true, changed_at = now() WHERE id = :h"), {"h": home.id})
+    await session.execute(text("DELETE FROM items WHERE id = :a"), {"a": alert.id})
+    head = await session.scalar(text("SELECT headline FROM items WHERE id = :h"), {"h": home.id})
+    n = await session.scalar(text("SELECT count(*) FROM item_sources WHERE item_id = :h"), {"h": home.id})
+    events.record(session, "cluster", head or "", f"{n} sources", home.id)
+    home.alert = True
+    log.info("article cves: KEV alert item %d joined item %d (its CVEs %s are all there now; %s)",
+             alert.id, home.id, ",".join(sorted(alert.cves)), reason)
+
+
+def alerts_to_rehome(rows: dict[int, Row], touched: set[int], held: frozenset[int] = frozenset()) -> list[tuple[Row, Row]]:
+    """(alert row, home) for rows a KEV alert started that share a CVE with a row this pass
+    changed (`touched`: rows that gained CVEs or took a merge) and whose CVEs now sit in exactly
+    one other row (alert_home). Alerts this pass did not touch stay where they are. A pair with a
+    held row (dedupe.REMERGE_HOLD) is logged and skipped."""
+    changed = set().union(*(rows[i].cves for i in touched if i in rows))
+    out = []
+    for a in sorted((r for r in rows.values() if r.led and r.cves & changed), key=lambda r: r.id):
+        home = alert_home(a, list(rows.values()))
+        if home is None:
+            continue
+        if held & {a.id, home.id}:
+            log.info("article cves: held (P1 re-merge pending): KEV alert item %d would join item %d, skipped", a.id, home.id)
+            continue
+        out.append((a, home))
+    return out
+
+
+async def rehome_alerts(session: AsyncSession, rows: dict[int, Row], reason: str, touched: set[int],
+                        held: frozenset[int] = frozenset()) -> int:
+    """Each alerts_to_rehome pair: the alert's row joins its home. Returns alerts moved."""
+    done = 0
+    for a, home in alerts_to_rehome(rows, touched, held):
+        await join_alert(session, home, a, reason)
+        rows.pop(a.id, None)
+        done += 1
+    return done
+
+
 async def recheck(session: AsyncSession, gained: dict[int, Plan]) -> int:
     """After rows gained CVEs: apply the merge rules to each. Returns merges made."""
     rows = await _rows(session, datetime.now(UTC) - timedelta(days=14))
@@ -327,14 +395,27 @@ async def recheck(session: AsyncSession, gained: dict[int, Plan]) -> int:
         if i in rows:
             rows[i].multi_story = plan.multi_story
             rows[i].subject |= plan.subject
+    held = await dedupe.held_rows(session)
     done = 0
+    touched: set[int] = set()
     for item_id in gained:
         n = rows.get(item_id)
-        found = pair(n, list(rows.values())) if n else None
+        if n is None:
+            continue
+        touched.add(n.id)
+        found = pair(n, list(rows.values()))
+        if found and held & {found[0].id, found[1].id}:
+            log.info("article cves: held (P1 re-merge pending): item %d would merge into item %d, skipped",
+                     found[1].id, found[0].id)
+            found = None if n.id in held else pair(n, [r for r in rows.values() if r.id not in held])
         if found:
             await merge(session, *found, reason="after gaining CVEs from its article")
             rows.pop(found[1].id, None)
+            touched.discard(found[1].id)
+            touched.add(found[0].id)
             done += 1
+    if live_rules():
+        done += await rehome_alerts(session, rows, "after rows gained CVEs from their articles", touched, held)
     return done
 
 

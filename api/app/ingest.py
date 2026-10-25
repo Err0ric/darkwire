@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import alerts, cleanup, cve_facts, dedupe, events, fetcher, jobstate, msrc, rowtime
+from app import alerts, cleanup, cve_facts, dedupe, events, fetcher, jobstate, msrc, ownership, rowtime
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Category, Cve, Health, Item, ItemCve, ItemSource, Source, Stream, SyncRun, Vendor
@@ -28,6 +28,7 @@ from app.tagging import (
     clean_text,
     cluster_cves,
     headline_cves,
+    live_rules,
     first_paragraph,
     guess_category,
     is_ad,
@@ -136,11 +137,13 @@ def to_article(entry, now: datetime) -> Article | None:
     )
 
 
-def _is_better_primary(new: ItemSource, new_source: Source, cur: ItemSource | None) -> bool:
-    """Vendor PSIRT beats everyone, otherwise earliest wins."""
+def _is_better_primary(new: ItemSource, new_source: Source, cur: ItemSource | None, owned: set[int] = frozenset()) -> bool:
+    """A vendor PSIRT that owns the row (`owned`: app/ownership.py) beats everyone, otherwise
+    earliest wins."""
     if cur is None:
         return True
-    new_psirt, cur_psirt = new_source.vendor_id is not None, cur.source.vendor_id is not None
+    new_psirt = new_source.vendor_id is not None and new_source.vendor_id in owned
+    cur_psirt = cur.source.vendor_id is not None and cur.source.vendor_id in owned
     if new_psirt != cur_psirt:
         return new_psirt
     far = datetime.max.replace(tzinfo=UTC)
@@ -174,27 +177,33 @@ async def find_cve_cluster(
                 log.info("ingest: not joining alert row %d (holds %d CVEs, article %s)", row.id, len(held), ",".join(cves))
                 continue
         elif subject is not None:
-            held = set(await session.scalars(select(ItemCve.cve_id).where(ItemCve.item_id == row.id)))
-            if not (held & set(cves) & subject & row_subject_cves(row.sources)):
+            linked = (await session.execute(select(ItemCve.cve_id, ItemCve.subject).where(ItemCve.item_id == row.id))).all()
+            held = {c for c, _ in linked}
+            # The row's subjects: its stored feed text's, and those kept when linked (item_cves.subject).
+            row_subject = row_subject_cves(row.sources) | ({c for c, flag in linked if flag} if live_rules() else set())
+            if not (held & set(cves) & subject & row_subject):
                 log.info("ingest: not joining row %d (shared CVEs are not the subject of both)", row.id)
                 continue
         return row
     return None
 
 
-async def link_cves(session: AsyncSession, item: Item, cves: list[str]) -> None:
-    """Record every CVE an item's articles mention, after the ones it already has."""
+async def link_cves(session: AsyncSession, item: Item, cves: list[str], subject: set[str] = frozenset()) -> None:
+    """Record every CVE an item's articles mention, after the ones it already has. `subject`: the
+    article's subject CVEs, flagged on item_cves (a flag once set stays set)."""
     if not cves:
         return
     await session.flush()
     last = await session.scalar(
         select(func.coalesce(func.max(ItemCve.position), -1)).where(ItemCve.item_id == item.id)
     )
-    await session.execute(
-        insert(ItemCve)
-        .values([{"item_id": item.id, "cve_id": c, "position": last + 1 + i} for i, c in enumerate(cves)])
-        .on_conflict_do_nothing()
+    stmt = insert(ItemCve).values(
+        [{"item_id": item.id, "cve_id": c, "position": last + 1 + i, "subject": c in subject} for i, c in enumerate(cves)]
     )
+    await session.execute(stmt.on_conflict_do_update(
+        index_elements=[ItemCve.item_id, ItemCve.cve_id],
+        set_={"subject": ItemCve.subject | stmt.excluded.subject},
+    ))
 
 
 async def ingest_source(
@@ -269,7 +278,9 @@ async def ingest_source(
         elif cluster is not None:
             alert_row = dedupe.alert_led(cluster)
             current = next((s for s in cluster.sources if s.url == cluster.primary_url), None)
-            if not alert_row and _is_better_primary(link, source, current):
+            # A vendor feed counts as the vendor's own only on a row it owns (app/ownership.py).
+            owned = await ownership.owned_vendors(session, [*cluster.sources, link], cluster.cve_id, matcher)
+            if not alert_row and _is_better_primary(link, source, current, owned):
                 cluster.headline, cluster.primary_url = a.title, a.url
             cluster.sources.append(link)
             # Row time: the earliest of its news sources (app/rowtime.py); logged when it moves.
@@ -278,8 +289,11 @@ async def ingest_source(
                 rowtime.news_time(s.published_at for s in dedupe.time_sources(cluster.sources, alert_row)),
                 f"news source joined: {source.name}",
             )
-            if source.vendor_id is not None or cluster.vendor_id is None:
-                cluster.vendor_id = vendor_id or cluster.vendor_id
+            if source.vendor_id is not None:
+                if source.vendor_id in owned:  # a vendor feed tags only a row it owns
+                    cluster.vendor_id = source.vendor_id
+            elif cluster.vendor_id is None:
+                cluster.vendor_id = vendor_id
             if cluster.category == Category.news:
                 cluster.category = category
             # The cluster's count can tie more IDs than this article alone ("2 zero-days" in one
@@ -290,7 +304,7 @@ async def ingest_source(
                 cves = cluster_cves([*texts, (a.title, a.excerpt or "", " ".join(t or "" for t in (a.text, a.body)))])
                 if cves:
                     await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
-                await link_cves(session, cluster, cves)
+                await link_cves(session, cluster, cves, subject)
             cluster.changed_at = func.now()  # a new source alone does not touch the row's columns
             events.record(session, "cluster", cluster.headline, f"{len(cluster.sources)} sources", cluster.id)
             stored.merged += 1
@@ -302,8 +316,11 @@ async def ingest_source(
                 last_event_at=a.published_at, last_event_kind="published", sources=[link], kev=alert,
             )
             session.add(item)
-            await link_cves(session, item, cves)
+            await link_cves(session, item, cves, set(cves) if alert else subject)
             stored.added += 1
+            if category == Category.breach:
+                await session.flush()
+                await dedupe.breach_shadow(session, item.id, a.title, a.published_at)  # logs only
         # Flush per article so the next one can cluster onto it.
         await session.flush()
         row = cluster if cluster is not None else item
@@ -356,7 +373,7 @@ async def reextract_once(
             if cves:
                 await session.execute(insert(Cve).values([{"id": c} for c in cves]).on_conflict_do_nothing())
                 item = await session.get(Item, link.item_id)
-                await link_cves(session, item, cves)
+                await link_cves(session, item, cves, subject_cves(a.title, a.excerpt, "\n".join(t for t in (a.text, a.body) if t)))
             touched += 1
     await session.commit()
     merged = await dedupe.merge_existing(session, matcher)

@@ -68,6 +68,8 @@ VENDORS: list[dict] = [
     {"slug": "citrix", "name": "Citrix", "domain": "citrix.com", "aliases": ["Citrix", "NetScaler", "Citrix Bleed", "XenServer"]},
     {"slug": "f5", "name": "F5", "domain": "f5.com", "aliases": ["F5", "BIG-IP", "NGINX"]},
     {"slug": "juniper", "name": "Juniper Networks", "domain": "juniper.net", "aliases": ["Juniper", "Junos", "Junos OS"]},
+    # Named "Arista" as the KEV catalog and CPE write it; "Arista Networks" is then not a product alias.
+    {"slug": "arista", "name": "Arista", "domain": "arista.com", "aliases": ["Arista", "Arista Networks", "VeloCloud", "VeloCloud Orchestrator"]},
     {"slug": "sonicwall", "name": "SonicWall", "domain": "sonicwall.com", "aliases": ["SonicWall", "SonicOS", "SMA 100"]},
     {"slug": "sophos", "name": "Sophos", "domain": "sophos.com", "aliases": ["Sophos"]},
     {"slug": "check-point", "name": "Check Point", "domain": "checkpoint.com", "aliases": ["Check Point", "Quantum Security Gateway"]},

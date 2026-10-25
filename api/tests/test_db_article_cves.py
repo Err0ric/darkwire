@@ -757,5 +757,392 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await s.get(Item, other.id)).summary_sources, 1)
 
 
+    async def test_a_fetched_subject_is_kept_for_later_merges(self):
+        # PHP2Shell, 2026-10-20/21 (prod 1760, 1766): the earlier row's CVE was a subject only in
+        # its fetched article, which is not stored. A later row gaining the CVE in another pass,
+        # and a later article at ingest, must still find it.
+        from app import ingest
+
+        cve = "CVE-2026-109618"
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        async with self.Session() as s:
+            src = Source(name="BleepingComputer", feed_url="https://test.invalid/bc2", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            first = await self._row(s, src, "PHP warns admins of two critical flaws", t0, excerpt="Patches come tomorrow.")
+            await s.commit()
+            ids = [first.id]
+        async with self.Session() as s:
+            items = await self._load(s, ids)
+            await article_cves.after_fetch(s, items, {first.id: {items[0].sources[0].id: f"The flaws are tracked as {cve}.\nMore."}})
+        async with self.Session() as s:
+            self.assertTrue(await s.scalar(select(ItemCve.subject).where(ItemCve.item_id == first.id, ItemCve.cve_id == cve)))
+
+            # Ingest: a later article whose feed text makes the CVE its subject joins the row.
+            found = await ingest.find_cve_cluster(s, [cve], t0 + timedelta(hours=10), {cve})
+            self.assertEqual(found.id if found else None, first.id)
+
+            later = await self._row(s, src, "Someone tried to exploit PHP early", t0 + timedelta(hours=10), excerpt="Amazon saw a probe.")
+            await s.commit()
+            later_id = later.id
+        async with self.Session() as s:
+            items = await self._load(s, [later_id])
+            await article_cves.after_fetch(s, items, {later_id: {items[0].sources[0].id: f"Attackers probed {cve} early.\nMore."}})
+        async with self.Session() as s:
+            left = set(await s.scalars(select(Item.id).where(Item.id.in_([first.id, later_id]))))
+            self.assertEqual(left, {first.id})  # the later row folded into the first
+            self.assertTrue(await s.scalar(select(ItemCve.subject).where(ItemCve.item_id == first.id, ItemCve.cve_id == cve)))
+
+
+    async def test_an_alert_row_joins_the_one_row_that_gains_its_cves(self):
+        # VeloCloud, 2026-10-23 (prod 1944): the alert started its own row; a news row then holds
+        # its only CVE, so the alert joins it as at ingest.
+        cve = "CVE-2026-114625"
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        async with self.Session() as s:
+            bc = Source(name="BleepingComputer", feed_url="https://test.invalid/bc3", stream=Stream.main)
+            cisa = Source(name="CISA", feed_url="https://test.invalid/cisa", stream=Stream.main)
+            s.add_all([bc, cisa])
+            await s.flush()
+            news = await self._row(s, bc, "Arista patches new VeloCloud Orchestrator zero-day", t0, excerpt="Arista released updates.")
+            await s.merge(Cve(id=cve))
+            url = "https://www.cisa.gov/news-events/alerts/2026/10/23/cisa-adds-one-known-exploited-vulnerability-catalog"
+            alert = Item(stream=Stream.main, headline="CISA Adds One Known Exploited Vulnerability to Catalog", primary_url=url,
+                         category=Category.vulnerability, last_event_at=t0 + timedelta(hours=19), last_event_kind="published",
+                         cve_id=cve, kev=True)
+            s.add(alert)
+            await s.flush()
+            s.add(ItemSource(item_id=alert.id, source_id=cisa.id, url=url, title=alert.headline, published_at=alert.last_event_at))
+            s.add(ItemCve(item_id=alert.id, cve_id=cve, position=0, subject=True))
+            await s.commit()
+            news_id, alert_id = news.id, alert.id
+        async with self.Session() as s:
+            items = await self._load(s, [news_id])
+            with self.assertLogs("app.article_cves", level="INFO") as logs:
+                await article_cves.after_fetch(s, items, {news_id: {items[0].sources[0].id: f"x\ny\nTracked as {cve}, it is critical."}})
+        self.assertIn(f"KEV alert item {alert_id} joined item {news_id}", "\n".join(logs.output))
+        async with self.Session() as s:
+            self.assertIsNone(await s.get(Item, alert_id))
+            row = (await self._load(s, [news_id]))[0]
+            self.assertEqual(row.headline, "Arista patches new VeloCloud Orchestrator zero-day")  # keeps its headline
+            self.assertTrue(row.kev)
+            self.assertEqual(row.last_event_at, t0)  # and its time
+            self.assertEqual(len(row.sources), 2)
+
+
+    async def test_breach_shadow_logs_and_merges_nothing(self):
+        from app import dedupe
+
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        async with self.Session() as s:
+            src = Source(name="SecurityWeek", feed_url="https://test.invalid/sw2", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            old = await self._row(s, src, "Capcom confirms data breach affecting 11.7 million accounts", t0)
+            new = await self._row(s, src, "11 Million Impacted by Capcom Data Breach", t0 + timedelta(hours=12))
+            far = await self._row(s, src, "Capcom breach notice", t0 - timedelta(hours=80))
+            for i in (old, new, far):
+                i.category = Category.breach
+            await s.commit()
+            with self.assertLogs("app.dedupe", level="INFO") as logs:
+                self.assertEqual(await dedupe.breach_shadow(s, new.id, new.headline, new.last_event_at), 1)
+            await s.commit()
+            self.assertIn(f"item {new.id} would merge with item {old.id} (shared capcom)", "\n".join(logs.output))
+            left = set(await s.scalars(select(Item.id).where(Item.id.in_([old.id, new.id, far.id]))))
+            self.assertEqual(left, {old.id, new.id, far.id})
+
+
+    async def test_p1_remerge_dry_run_writes_nothing_and_apply_needs_sign_off(self):
+        from unittest import mock
+
+        from app import p1_remerge
+        from app.models import Vendor
+        from app.seed import VENDORS
+
+        cve, old = "CVE-2026-114625", "CVE-2026-93952"
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        async with self.Session() as s:
+            v = next(x for x in VENDORS if x["slug"] == "arista")
+            s.add(Vendor(slug=v["slug"], name=v["name"], aliases=v["aliases"], domain=v["domain"]))
+            bc = Source(name="BleepingComputer", feed_url="https://test.invalid/bc4", stream=Stream.main)
+            cisa = Source(name="CISA", feed_url="https://test.invalid/cisa2", stream=Stream.main)
+            s.add_all([bc, cisa])
+            await s.flush()
+            a = await self._row(s, bc, "Arista patches new VeloCloud Orchestrator zero-day exploited in attacks", t0, [cve, old])
+            b = await self._row(s, bc, "Arista Warns of Critical VeloCloud SQL Injection Zero-Day Exploited in Attacks",
+                                t0 + timedelta(hours=2), [cve, old])
+            other = await self._row(s, bc, "PHP shares mitigation for new RCE vulnerability", t0 + timedelta(hours=3), ["CVE-2026-115560"])
+            url = "https://www.cisa.gov/news-events/alerts/2026/10/23/cisa-adds-one-known-exploited-vulnerability-catalog"
+            alert = Item(stream=Stream.main, headline="CISA Adds One Known Exploited Vulnerability to Catalog", primary_url=url,
+                         category=Category.vulnerability, last_event_at=t0 + timedelta(hours=19), last_event_kind="published",
+                         cve_id=cve, kev=True)
+            s.add(alert)
+            await s.flush()
+            s.add(ItemSource(item_id=alert.id, source_id=cisa.id, url=url, title=alert.headline, published_at=alert.last_event_at))
+            s.add(ItemCve(item_id=alert.id, cve_id=cve, position=0, subject=True))
+            await s.commit()
+            ids = frozenset({a.id, b.id, other.id, alert.id})
+            srcs = {i.id: i.sources[0].id for i in await self._load(s, [a.id, b.id])}
+        fetched = {srcs[a.id]: f"x\ny\nTracked as {cve}, it is critical.\nEarlier: {old}.",
+                   srcs[b.id]: f"x\ny\nThe flaw is tracked as {cve}."}
+        want = {("cve", b.id, a.id), ("alert", alert.id, a.id)}
+
+        async def count(s):
+            return await s.scalar(select(func.count()).select_from(Item).where(Item.id.in_(ids)))
+
+        from sqlalchemy import func
+
+        with mock.patch.object(p1_remerge, "EXPECTED", frozenset(want)):
+            async with self.Session() as s:
+                plan = await p1_remerge.run(s, False, ids, fetched)
+                self.assertEqual(set(plan.merges), want)
+                self.assertEqual(plan.stop, [])
+                self.assertEqual(plan.flags, {a.id: {cve}, b.id: {cve}})
+                self.assertEqual(await count(s), 4)  # dry run: nothing written
+                with self.assertRaises(SystemExit):  # no sign-off yet
+                    await p1_remerge.run(s, True, ids, fetched)
+                self.assertEqual(await count(s), 4)
+            with mock.patch.object(p1_remerge, "SIGNED_OFF", frozenset(want)):
+                async with self.Session() as s:
+                    with self.assertLogs("app.p1_remerge", level="INFO") as logs:
+                        await p1_remerge.run(s, True, ids, fetched)
+                    self.assertEqual(set(await s.scalars(select(Item.id).where(Item.id.in_(ids)))), {a.id, other.id})
+                    row = (await self._load(s, [a.id]))[0]
+                    self.assertTrue(row.kev)
+                    self.assertEqual(len(row.sources), 3)
+            self.assertIn("p1 remerge (verification): 0 vendor tags, 0 rows flagged, 0 merges", "\n".join(logs.output))
+
+        # A merge outside EXPECTED is a stop condition.
+        async with self.Session() as s:
+            c = await self._row(s, bc, "Arista VeloCloud zero-day exploited again", t0 + timedelta(hours=4), [cve],
+                                excerpt=f"Attackers exploit {cve} again.")
+            await s.commit()
+            plan = await p1_remerge.run(s, False, frozenset({a.id, c.id}), {**fetched})
+            self.assertTrue(any("not in EXPECTED" in x for x in plan.stop))
+
+
+    async def _gaining_pair(self, s, src, tag):
+        """An earlier row whose CVE is a subject flag only, and a later row that gains it."""
+        cve = f"CVE-2026-7{tag}"
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        await s.merge(Cve(id=cve))
+        first = await self._row(s, src, f"First story {tag}", t0)
+        s.add(ItemCve(item_id=first.id, cve_id=cve, position=0, subject=True))
+        later = await self._row(s, src, f"Later story {tag}", t0 + timedelta(hours=5))
+        await s.commit()
+        return cve, first.id, later.id
+
+    async def _gain(self, item_id, cve):
+        async with self.Session() as s:
+            items = await self._load(s, [item_id])
+            await article_cves.after_fetch(s, items, {item_id: {items[0].sources[0].id: f"x\ny\nIt is tracked as {cve}."}})
+
+    async def _left(self, ids):
+        async with self.Session() as s:
+            return set(await s.scalars(select(Item.id).where(Item.id.in_(ids))))
+
+    async def test_held_rows_wait_for_the_p1_apply(self):
+        from unittest import mock
+
+        from app import dedupe, jobstate
+
+        async with self.Session() as s:
+            src = Source(name="The Record", feed_url="https://test.invalid/rec9", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            cve, first, later = await self._gaining_pair(s, src, "001")
+        with mock.patch.object(dedupe, "REMERGE_HOLD", frozenset({first})):
+            with self.assertLogs("app.article_cves", level="INFO") as logs:
+                await self._gain(later, cve)
+            self.assertIn(f"item {later} would merge into item {first}, skipped", "\n".join(logs.output))
+            self.assertEqual(await self._left([first, later]), {first, later})  # held: not merged
+
+            # Once the P1 apply has run, the hold is released.
+            async with self.Session() as s:
+                cve2, first2, later2 = await self._gaining_pair(s, src, "002")
+                await jobstate.put(s, dedupe.HOLD_STATE, datetime.now(UTC))
+                await s.commit()
+        with mock.patch.object(dedupe, "REMERGE_HOLD", frozenset({first2})):
+            await self._gain(later2, cve2)
+        self.assertEqual(await self._left([first2, later2]), {first2})
+
+    async def test_live_merge_rules_off(self):
+        from tests.test_merge_rules import live_merge_rules
+
+        async with self.Session() as s:
+            src = Source(name="The Record", feed_url="https://test.invalid/rec10", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            cve, first, later = await self._gaining_pair(s, src, "003")
+        with live_merge_rules(False):
+            # "tracked as" is off, so the later row's CVE is context, and the earlier row's flag is ignored.
+            await self._gain(later, cve)
+        self.assertEqual(await self._left([first, later]), {first, later})
+
+
+    async def test_live_merge_rules_off_keeps_alert_rows(self):
+        from tests.test_merge_rules import live_merge_rules
+
+        cve = "CVE-2026-7004"
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        async with self.Session() as s:
+            bc = Source(name="BleepingComputer", feed_url="https://test.invalid/bc11", stream=Stream.main)
+            cisa = Source(name="CISA", feed_url="https://test.invalid/cisa11", stream=Stream.main)
+            s.add_all([bc, cisa])
+            await s.flush()
+            news = await self._row(s, bc, "Vendor patches zero-day", t0)
+            await s.merge(Cve(id=cve))
+            url = "https://www.cisa.gov/news-events/alerts/2026/10/23/cisa-adds-one-known-exploited-vulnerability-catalog-11"
+            alert = Item(stream=Stream.main, headline="CISA Adds One Known Exploited Vulnerability to Catalog", primary_url=url,
+                         category=Category.vulnerability, last_event_at=t0 + timedelta(hours=19), last_event_kind="published",
+                         cve_id=cve, kev=True)
+            s.add(alert)
+            await s.flush()
+            s.add(ItemSource(item_id=alert.id, source_id=cisa.id, url=url, title=alert.headline, published_at=alert.last_event_at))
+            s.add(ItemCve(item_id=alert.id, cve_id=cve, position=0, subject=True))
+            await s.commit()
+            news_id, alert_id = news.id, alert.id
+        with live_merge_rules(False):
+            async with self.Session() as s:
+                items = await self._load(s, [news_id])
+                await article_cves.after_fetch(s, items, {news_id: {items[0].sources[0].id: f"Attackers exploit {cve}."}})
+        self.assertEqual(await self._left([news_id, alert_id]), {news_id, alert_id})
+
+
+    async def _pan_setup(self, s):
+        """Palo Alto (a vendor feed) and two CVEs: PHP's (CPE vendor php) and a PAN-OS one."""
+        from app.models import Vendor
+
+        pan = Vendor(slug="palo-alto-networks", name="Palo Alto Networks", aliases=["Palo Alto Networks", "PAN-OS"])
+        s.add(pan)
+        await s.flush()
+        s.add_all([
+            Cve(id="CVE-2026-109618", cpes=[{"criteria": "cpe:2.3:a:php:php:*:*:*:*:*:*:*:*", "versionEndExcluding": "8.2.35"},
+                                             {"criteria": "cpe:2.3:o:paloaltonetworks:pan-os:*:*:*:*:*:*:*:*", "versionEndExcluding": "10.2.7"}]),
+            Cve(id="CVE-2026-0322", cpes=[{"criteria": "cpe:2.3:o:paloaltonetworks:pan-os:*:*:*:*:*:*:*:*"}]),
+        ])
+        feed = Source(name="Palo Alto Networks", feed_url="https://test.invalid/pan", stream=Stream.main, vendor_id=pan.id)
+        bc = Source(name="BleepingComputer", feed_url="https://test.invalid/bc-pan", stream=Stream.main)
+        s.add_all([feed, bc])
+        await s.flush()
+        return pan, feed, bc
+
+    async def test_a_vendor_feed_owns_only_its_vendors_rows(self):
+        from types import SimpleNamespace
+
+        from app import ownership
+
+        async with self.Session() as s:
+            pan, _, _ = await self._pan_setup(s)
+            await s.commit()
+            news = lambda *titles: list(titles)  # noqa: E731
+            self.assertFalse(await ownership.owns(s, pan.id, "CVE-2026-109618", news("PHP warns admins of two critical flaws")))
+            self.assertTrue(await ownership.owns(s, pan.id, "CVE-2026-0322", news("Hackers exploit firewalls")))
+            # No vendor data: a news headline must name the vendor, or the feed is alone on the row.
+            self.assertTrue(await ownership.owns(s, pan.id, None, news("Palo Alto Networks warns of PAN-OS flaw")))
+            self.assertFalse(await ownership.owns(s, pan.id, None, news("PHP warns admins of two critical flaws")))
+            self.assertTrue(await ownership.owns(s, pan.id, None, []))
+            self.assertFalse(await ownership.owns(s, None, None, []))
+            src = lambda t, v: SimpleNamespace(title=t, url="https://test.invalid/x", source=SimpleNamespace(vendor_id=v))  # noqa: E731
+            self.assertEqual(ownership.news_titles([src("A", None), src("B", pan.id)]), ["A"])
+
+    async def _ingest_pan_advisory(self, s, feed, title, cve, at):
+        import time
+
+        from app import ingest
+        from app.models import Vendor
+        from app.tagging import VendorMatcher
+
+        entry = {"link": f"https://security.paloaltonetworks.com/{cve}", "id": cve, "title": title,
+                 "summary": f"<p>{title}. {cve} affects products.</p>", "published_parsed": time.gmtime(at.timestamp())}
+        matcher = VendorMatcher((await s.scalars(select(Vendor))).all())
+        await ingest.ingest_source(s, feed, [entry], matcher, datetime.now(UTC))
+        await s.commit()
+
+    async def test_palo_alto_does_not_take_over_a_php_row_at_ingest(self):
+        t0 = datetime.now(UTC) - timedelta(hours=20)
+        async with self.Session() as s:
+            pan, feed, bc = await self._pan_setup(s)
+            php = await self._row(s, bc, "PHP warns admins of two critical flaws", t0, ["CVE-2026-109618"],
+                                  excerpt="PHP disclosed CVE-2026-109618 in its core.")
+            panos = await self._row(s, bc, "Palo Alto Networks warns of PAN-OS flaw", t0, ["CVE-2026-0322"],
+                                    excerpt="CVE-2026-0322 lets attackers run code.")
+            await s.commit()
+            php_id, panos_id, pan_id = php.id, panos.id, pan.id
+            await self._ingest_pan_advisory(s, feed, "CVE-2026-109618 Impact of Critical Vulnerabilities in PHP on Palo Alto Networks Products",
+                                            "CVE-2026-109618", t0 + timedelta(hours=5))
+            await self._ingest_pan_advisory(s, feed, "CVE-2026-0322 PAN-OS: Authenticated Remote Code Execution",
+                                            "CVE-2026-0322", t0 + timedelta(hours=5))
+        async with self.Session() as s:
+            rows = {i.id: i for i in await self._load(s, [php_id, panos_id])}
+            self.assertEqual(len(rows[php_id].sources), 2)  # the advisory joined
+            self.assertEqual((rows[php_id].headline, rows[php_id].vendor_id), ("PHP warns admins of two critical flaws", None))
+            # On its own vendor's CVE the advisory still wins the headline and tags the row.
+            self.assertEqual(len(rows[panos_id].sources), 2)
+            self.assertEqual((rows[panos_id].headline, rows[panos_id].vendor_id),
+                             ("CVE-2026-0322 PAN-OS: Authenticated Remote Code Execution", pan_id))
+
+    async def test_a_merge_keeps_the_news_headline_and_drops_the_feeds_vendor(self):
+        t0 = datetime.now(UTC) - timedelta(hours=20)
+        cve = "CVE-2026-109618"
+        async with self.Session() as s:
+            pan, feed, bc = await self._pan_setup(s)
+            php = await self._row(s, bc, "PHP warns admins of two critical flaws", t0, [cve])
+            advisory = await self._row(s, feed, "CVE-2026-109618 Impact of Critical Vulnerabilities in PHP on Palo Alto Networks Products",
+                                       t0 + timedelta(hours=10), [cve])
+            advisory.vendor_id = pan.id  # as the feed tagged it before the ownership rule
+            await s.commit()
+            survivor = article_cves.Row(php.id, t0, t0, False, cves={cve}, subject={cve})
+            merged = article_cves.Row(advisory.id, t0 + timedelta(hours=10), t0 + timedelta(hours=10), False, cves={cve}, subject={cve})
+            await article_cves.merge(s, survivor, merged, "test")
+            await s.commit()
+            row = await s.get(Item, php.id)
+            await s.refresh(row)
+            self.assertEqual((row.headline, row.vendor_id), ("PHP warns admins of two critical flaws", None))
+
+    async def test_p1_remerge_checks_the_survivors_headline_and_vendor(self):
+        from unittest import mock
+
+        from app import p1_remerge
+
+        t0 = datetime.now(UTC) - timedelta(hours=20)
+        cve = "CVE-2026-109618"
+        async with self.Session() as s:
+            pan, feed, bc = await self._pan_setup(s)
+            from app.models import Vendor
+            from app.seed import VENDORS
+
+            v = next(x for x in VENDORS if x["slug"] == "arista")
+            s.add(Vendor(slug=v["slug"], name=v["name"], aliases=v["aliases"], domain=v["domain"]))
+            php = await self._row(s, bc, "PHP warns admins of two critical flaws", t0, [cve], excerpt=f"PHP disclosed {cve}.")
+            big = await self._row(s, feed, "CVE-2026-109618 Impact of Critical Vulnerabilities in PHP on Palo Alto Networks Products",
+                                  t0 + timedelta(hours=10), [cve], excerpt=f"{cve} affects PAN-OS.")
+            big.vendor_id = pan.id
+            await s.commit()
+            ids = frozenset({php.id, big.id})
+        good = {php.id: ("PHP warns admins of two critical flaws", None)}
+        with mock.patch.object(p1_remerge, "EXPECTED", frozenset({("cve", big.id, php.id)})), \
+             mock.patch.object(p1_remerge, "EXPECTED_AFTER", good):
+            async with self.Session() as s:
+                plan = await p1_remerge.run(s, False, ids, {})
+            self.assertEqual(plan.merges, [("cve", big.id, php.id)])
+            self.assertEqual(plan.stop, [])
+            self.assertEqual(plan.after[php.id][0], good[php.id])
+            with mock.patch.object(p1_remerge, "SIGNED_OFF", frozenset(plan.merges)):
+                async with self.Session() as s:
+                    with self.assertLogs("app.p1_remerge", level="INFO") as logs:
+                        await p1_remerge.run(s, True, ids, {})
+            self.assertIn("p1 remerge (verification): 0 vendor tags, 0 rows flagged, 0 merges, 0 breach pairs logged, 0 stop conditions",
+                          "\n".join(logs.output))
+        # A survivor that would show something else stops the plan.
+        async with self.Session() as s:
+            php2 = await self._row(s, bc, "PHP warns admins again", t0, [cve], excerpt=f"PHP disclosed {cve}.")
+            await s.commit()
+        with mock.patch.object(p1_remerge, "EXPECTED_AFTER", {php2.id: ("Something else", "palo-alto-networks")}):
+            async with self.Session() as s:
+                plan = await p1_remerge.run(s, False, frozenset({php2.id}), {})
+        self.assertTrue(any(f"item {php2.id} would show" in x for x in plan.stop))
+
+
 if __name__ == "__main__":
     unittest.main()

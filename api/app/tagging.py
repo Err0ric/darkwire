@@ -4,6 +4,7 @@ import html
 import re
 from dataclasses import dataclass
 
+from app.config import get_settings
 from app.models import Category, Vendor
 
 CVE_RE = re.compile(r"\bCVE-(\d{4})-(\d{4,7})\b", re.IGNORECASE)
@@ -92,22 +93,50 @@ def cluster_cves(articles: list[tuple[str, str, str]]) -> list[str]:
 
 
 LEDE_PARAGRAPHS = 2
+# "Tracked as CVE-...", "identified as", "assigned (the identifier) CVE-...": how an article names
+# its own flaw, often below the lede (the VeloCloud and Popcorn Time rows, 2026-10-22/24).
+_ID = r"CVE-\d{4}-\d{4,7}"
+_INTRODUCED = re.compile(
+    r"\b(?:tracked|identified)\s+as\s+(?:the\s+)?|\bassigned\s+(?:the\s+)?(?:(?:CVE\s+)?identifiers?\s+)?",
+    re.IGNORECASE,
+)
+_INTRODUCED_IDS = re.compile(rf"\s*({_ID}(?:\s*(?:,|and|&|,\s*and)\s*{_ID})*)", re.IGNORECASE)
+
+
+def introduced_cves(text: str) -> set[str]:
+    """CVEs the text introduces as its flaw's ID ("tracked as CVE-A and CVE-B")."""
+    out: set[str] = set()
+    for m in _INTRODUCED.finditer(text or ""):
+        ids = _INTRODUCED_IDS.match(text, m.end())
+        if ids:
+            out |= set(extract_cves(ids.group(1)))
+    return out
 
 
 def _plain_line(line: str | None) -> str:
     return re.sub(r"[^a-z0-9]", "", (line or "").lower())
 
 
-def subject_cves(title: str, lead: str, text: str) -> set[str]:
+def live_rules() -> bool:
+    """LIVE_MERGE_RULES (app/config.py), default on."""
+    return get_settings().live_merge_rules
+
+
+def subject_cves(title: str, lead: str, text: str, introduced: bool | None = None) -> set[str]:
     """The CVEs an article is about, not ones it mentions for context: IDs in the title, in the
-    lede (the feed excerpt and the first LEDE_PARAGRAPHS paragraphs of the text), or named at
-    least twice in the text. Extracted article text often starts with the headline itself; that
-    line is not a lede paragraph."""
+    lede (the feed excerpt and the first LEDE_PARAGRAPHS paragraphs of the text), named at
+    least twice in the text, or introduced anywhere as the flaw's ID (introduced_cves; None:
+    when LIVE_MERGE_RULES is on).
+    Extracted article text often starts with the headline itself; that line is not a lede
+    paragraph."""
     heading = _plain_line(title)
     paragraphs = [p for p in (text or "").splitlines() if p.strip() and _plain_line(p) != heading][:LEDE_PARAGRAPHS]
     found = set(extract_cves(title or "", lead or "", *paragraphs))
     upper = (text or "").upper()
-    return found | {c for c in extract_cves(text or "") if upper.count(c) >= 2}
+    named_twice = {c for c in extract_cves(text or "") if upper.count(c) >= 2}
+    if introduced is None:
+        introduced = live_rules()
+    return found | named_twice | (introduced_cves(f"{lead or ''}\n{text or ''}") if introduced else set())
 
 
 def subject_reasons(title: str, lead: str, text: str) -> dict[str, str]:

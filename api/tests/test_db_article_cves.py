@@ -794,5 +794,41 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(await s.scalar(select(ItemCve.subject).where(ItemCve.item_id == first.id, ItemCve.cve_id == cve)))
 
 
+    async def test_an_alert_row_joins_the_one_row_that_gains_its_cves(self):
+        # VeloCloud, 2026-10-23 (prod 1944): the alert started its own row; a news row then holds
+        # its only CVE, so the alert joins it as at ingest.
+        cve = "CVE-2026-114625"
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        async with self.Session() as s:
+            bc = Source(name="BleepingComputer", feed_url="https://test.invalid/bc3", stream=Stream.main)
+            cisa = Source(name="CISA", feed_url="https://test.invalid/cisa", stream=Stream.main)
+            s.add_all([bc, cisa])
+            await s.flush()
+            news = await self._row(s, bc, "Arista patches new VeloCloud Orchestrator zero-day", t0, excerpt="Arista released updates.")
+            await s.merge(Cve(id=cve))
+            url = "https://www.cisa.gov/news-events/alerts/2026/10/23/cisa-adds-one-known-exploited-vulnerability-catalog"
+            alert = Item(stream=Stream.main, headline="CISA Adds One Known Exploited Vulnerability to Catalog", primary_url=url,
+                         category=Category.vulnerability, last_event_at=t0 + timedelta(hours=19), last_event_kind="published",
+                         cve_id=cve, kev=True)
+            s.add(alert)
+            await s.flush()
+            s.add(ItemSource(item_id=alert.id, source_id=cisa.id, url=url, title=alert.headline, published_at=alert.last_event_at))
+            s.add(ItemCve(item_id=alert.id, cve_id=cve, position=0, subject=True))
+            await s.commit()
+            news_id, alert_id = news.id, alert.id
+        async with self.Session() as s:
+            items = await self._load(s, [news_id])
+            with self.assertLogs("app.article_cves", level="INFO") as logs:
+                await article_cves.after_fetch(s, items, {news_id: {items[0].sources[0].id: f"x\ny\nTracked as {cve}, it is critical."}})
+        self.assertIn(f"KEV alert item {alert_id} joined item {news_id}", "\n".join(logs.output))
+        async with self.Session() as s:
+            self.assertIsNone(await s.get(Item, alert_id))
+            row = (await self._load(s, [news_id]))[0]
+            self.assertEqual(row.headline, "Arista patches new VeloCloud Orchestrator zero-day")  # keeps its headline
+            self.assertTrue(row.kev)
+            self.assertEqual(row.last_event_at, t0)  # and its time
+            self.assertEqual(len(row.sources), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

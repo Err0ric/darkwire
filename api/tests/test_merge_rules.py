@@ -118,3 +118,22 @@ class IntroducedCves(unittest.TestCase):
         # Named once, below the lede, without an introducer: still context.
         self.assertEqual(subject_cves("t", "", "x\ny\nIt recalls CVE-2024-3400, exploited last year."), set())
         self.assertEqual(subject_cves("t", "", "x\ny\nResearchers tracked CVE-2024-3400 activity."), set())
+
+
+class AlertHome(unittest.TestCase):
+    """A KEV alert's own row joins the one other row holding all its CVEs (prod 1944, 2026-10-23)."""
+
+    def test_exactly_one_row(self):
+        from app.article_cves import alert_home
+
+        cve = "CVE-2026-114625"
+        alert = Row(1944, T, T, True, cves={cve}, led=True)
+        news = Row(1871, T, T, False, cves={cve, "CVE-2026-93952"})
+        other = Row(1908, T, T, False, cves={cve})
+        self.assertIs(alert_home(alert, [alert, news]), news)
+        self.assertIsNone(alert_home(alert, [alert, news, other]))  # two rows hold it
+        self.assertIsNone(alert_home(alert, [alert, Row(5, T, T, False, cves={"CVE-2026-1"})]))  # none does
+        self.assertIsNone(alert_home(alert, [alert, Row(6, T, T, True, cves={cve})]))  # it has an alert
+        self.assertIsNone(alert_home(alert, [alert, Row(7, T, T, False, cves={cve}, roundup=True)]))  # a recap
+        two = Row(1945, T, T, True, cves={cve, "CVE-2026-2"}, led=True)
+        self.assertIsNone(alert_home(two, [two, news]))  # the row must hold every CVE it lists

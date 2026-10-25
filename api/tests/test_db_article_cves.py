@@ -830,5 +830,27 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(row.sources), 2)
 
 
+    async def test_breach_shadow_logs_and_merges_nothing(self):
+        from app import dedupe
+
+        t0 = datetime.now(UTC) - timedelta(days=1)
+        async with self.Session() as s:
+            src = Source(name="SecurityWeek", feed_url="https://test.invalid/sw2", stream=Stream.main)
+            s.add(src)
+            await s.flush()
+            old = await self._row(s, src, "Capcom confirms data breach affecting 11.7 million accounts", t0)
+            new = await self._row(s, src, "11 Million Impacted by Capcom Data Breach", t0 + timedelta(hours=12))
+            far = await self._row(s, src, "Capcom breach notice", t0 - timedelta(hours=80))
+            for i in (old, new, far):
+                i.category = Category.breach
+            await s.commit()
+            with self.assertLogs("app.dedupe", level="INFO") as logs:
+                self.assertEqual(await dedupe.breach_shadow(s, new.id, new.headline, new.last_event_at), 1)
+            await s.commit()
+            self.assertIn(f"item {new.id} would merge with item {old.id} (shared capcom)", "\n".join(logs.output))
+            left = set(await s.scalars(select(Item.id).where(Item.id.in_([old.id, new.id, far.id]))))
+            self.assertEqual(left, {old.id, new.id, far.id})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -137,3 +137,20 @@ class AlertHome(unittest.TestCase):
         self.assertIsNone(alert_home(alert, [alert, Row(7, T, T, False, cves={cve}, roundup=True)]))  # a recap
         two = Row(1945, T, T, True, cves={cve, "CVE-2026-2"}, led=True)
         self.assertIsNone(alert_home(two, [two, news]))  # the row must hold every CVE it lists
+
+
+class BreachShadow(unittest.TestCase):
+    """2026-10-22/23 (prod 1893/1905, 1906/1915): breach rows naming one victim, never merged."""
+
+    def test_the_victim_is_found(self):
+        from app.dedupe import breach_victims
+
+        self.assertEqual(breach_victims("Capcom confirms data breach affecting 11.7 million accounts",
+                                        "11 Million Impacted by Capcom Data Breach"), ["capcom"])
+        self.assertEqual(breach_victims("Quest Diagnostics Reports Cyber Breach Affecting 'Certain Patient Records'",
+                                        "Quest Diagnostics warns of potential data theft after attack on lab service system"),
+                         ["diagnostic", "quest"])
+        # Both titles in Title Case: capitals say nothing, so nothing is found (P3 lists this miss).
+        self.assertEqual(breach_victims("State Bank of India Confirms Data Leak After 3,897 Customer Records Found on Dark Web",
+                                        "State Bank of India Suffers a Customer PII Data Leak"), [])
+        self.assertEqual(breach_victims("Capcom confirms data breach", "Railway warns devs to rotate secrets after breach"), [])

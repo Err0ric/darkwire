@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app import jobstate, rowtime
-from app.models import Item, ItemCve, ItemSource, Stream
+from app.models import Category, Item, ItemCve, ItemSource, Stream
 from app.tagging import ZERO_DAY, VendorMatcher, cluster_cves
 
 log = logging.getLogger(__name__)
@@ -173,6 +173,44 @@ def shared_story(a: str, b: str) -> bool:
     da, db = distinctive(a), distinctive(b)
     shared = da.keys() & db.keys()
     return len(shared) >= 3 and any(_proper(s, a, b, da, db) for s in shared)
+
+
+def breach_victims(a: str, b: str) -> list[str]:
+    """Distinctive words two titles share that are proper nouns (_proper): for two Breach rows,
+    the victim they name ("Capcom", "Quest Diagnostics")."""
+    da, db = distinctive(a), distinctive(b)
+    return sorted(s for s in da.keys() & db.keys() if _proper(s, a, b, da, db))
+
+
+async def breach_shadow(session: AsyncSession, item_id: int, title: str, published: datetime) -> int:
+    """SHADOW MODE, logs only, merges nothing: a new Breach row and each other Breach row with a
+    news article published within 72h whose title shares a proper noun with it (breach_victims),
+    logged with both titles and the shared words for review. Returns pairs logged."""
+    near = select(ItemSource.item_id).where(
+        ItemSource.published_at.between(published - TITLE_WINDOW, published + TITLE_WINDOW)
+    )
+    rows = (
+        await session.scalars(
+            select(Item)
+            .where(Item.stream == Stream.main, Item.category == Category.breach, Item.id != item_id, Item.id.in_(near))
+            .options(selectinload(Item.sources))
+            .order_by(Item.id)
+        )
+    ).all()
+    logged = 0
+    for row in rows:
+        for s in row.sources:
+            if is_kev_alert(s.title, s.url) or s.published_at is None or abs(s.published_at - published) > TITLE_WINDOW:
+                continue
+            shared = breach_victims(title, s.title)
+            if shared:
+                log.info(
+                    "dedupe: breach shadow (log only): item %d would merge with item %d (shared %s) | %r | %r",
+                    item_id, row.id, ",".join(shared), title, s.title,
+                )
+                logged += 1
+                break
+    return logged
 
 
 def stripped(title: str) -> list[str]:

@@ -310,6 +310,9 @@ async def ingest_source(
             session.add(item)
             await link_cves(session, item, cves, set(cves) if alert else subject)
             stored.added += 1
+            if category == Category.breach:
+                await session.flush()
+                await dedupe.breach_shadow(session, item.id, a.title, a.published_at)  # logs only
         # Flush per article so the next one can cluster onto it.
         await session.flush()
         row = cluster if cluster is not None else item

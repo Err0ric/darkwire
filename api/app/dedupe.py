@@ -40,6 +40,11 @@ WINDOW = timedelta(hours=48)  # CVE merges of existing rows (merge_existing)
 # article_cves.merge_target for the re-check after fetching and the re-merge). Each with the reason.
 MERGE_EXCLUSIONS: frozenset[frozenset[int]] = frozenset({
     frozenset({819, 1}),  # 819, an arrest story, only mentions row 1's PeopleSoft CVE (2026-09-30)
+    # 1927 is PHP's new CVE-2026-115560. The PHP2Shell row (1760, which 1766 folds into) holds
+    # THN's article on that CVE only through a title merge (php, php2shell, rce), so 1927 would
+    # follow it in. Both ids, since either may survive (2026-10-25).
+    frozenset({1927, 1760}),
+    frozenset({1927, 1766}),
 })
 
 

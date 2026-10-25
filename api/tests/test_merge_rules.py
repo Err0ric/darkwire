@@ -62,3 +62,19 @@ class Exclusions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PhpExclusion(unittest.TestCase):
+    def test_the_new_php_cve_row_stays_out_of_php2shell(self):
+        from app import dedupe
+        from app.article_cves import merge_target
+
+        # 2026-10-25: 1760/1766 hold THN's CVE-2026-115560 article as a subject; 1927 is about it.
+        new = "CVE-2026-115560"
+        old = Row(1760, T, T, False, cves={"CVE-2026-109618", new}, subject={"CVE-2026-109618", new})
+        r1927 = Row(1927, T.replace(hour=9), T.replace(hour=9), False, cves={new}, subject={new})
+        self.assertTrue(takes(old, r1927))
+        for survivor in (1760, 1766):
+            self.assertTrue(dedupe.excluded(1927, survivor) and dedupe.excluded(survivor, 1927))
+            old.id = survivor
+            self.assertIsNone(merge_target(r1927, [old]))

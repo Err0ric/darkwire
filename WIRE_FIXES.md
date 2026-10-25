@@ -1,169 +1,105 @@
 # Wire feed fixes (Oct 2026 review)
 
-Source: review of https://darkwire.tech/wire at 1920, 1366, 768, and 375 widths on Oct 25, 2026.
+Source: review of https://darkwire.tech/wire at 1920, 1366, 768 and 375 widths on Oct 25, 2026.
 
-Work through these in order. Each task has a goal, the evidence that triggered it, and acceptance criteria. Before starting, read the ingestion, enrichment, and feed API code and note in this file where each fix will land (file + function). Do not change the visual design system unless a task says so.
+## How to work this file
 
-Stack reminder: FastAPI + PostgreSQL (api), web front end (web), deployed on Railway.
-
----
-
-## P1. CVE-based story clustering
-
-**Goal:** One row per story, not one row per outlet.
-
-**Evidence (Oct 22-25 data):**
-- Arista VeloCloud CVE-2026-114625: 5 separate rows (CISA x2, The Hacker News, BleepingComputer, SecurityWeek)
-- PHP2Shell CVE-2026-109618: 3 rows in the wire, plus 2 in Elsewhere
-- Popcorn Time CVE-2026-30612: 2 rows
-- Capcom breach: 2 rows (SecurityWeek, BleepingComputer)
-- Quest Diagnostics breach: 2 rows (The Record, SecurityWeek)
-
-Some rows already merge sources ("The Hacker News · BleepingComputer"), so a dedupe step exists but only catches near-identical titles.
-
-**Approach:**
-1. Primary key: any shared CVE ID within a 7-day window joins articles into one cluster
-2. Secondary key (no CVE): same normalized org/vendor name + same category within 72h, plus title similarity above a threshold (start at 0.6 token Jaccard, tune with real data)
-3. Cluster primary article: earliest of (vendor advisory, CISA, NVD) if present, else earliest published
-4. Store cluster membership in the DB (cluster_id on article, or a join table) so it is stable across refreshes, not recomputed client side
-5. Cluster timestamp = most recent member, so an active story stays near the top
-6. Do not cluster across categories that are clearly different (a CISA KEV add and a vendor patch for the same CVE SHOULD cluster; two unrelated stories that share a vendor name should NOT)
-
-**UI:**
-- Row shows the primary title and source, then "+N sources" on the metadata line
-- Expanded panel lists all member articles (source, title, time, link, new tab)
-
-**Acceptance:**
-- [ ] VeloCloud CVE-2026-114625 renders as 1 row with +4 sources
-- [ ] Capcom and Quest Diagnostics each render as 1 row
-- [ ] Fri Oct 23 item count drops noticeably (was 30)
-- [ ] Re-running ingestion does not create duplicate clusters
-- [ ] Unit tests for: shared CVE, no CVE + same org, same vendor but unrelated stories (must not merge)
+- CLAUDE.md is the spec. Most of what is below already has a rule there (dedupe, CVE attachment, categories, recaps, ads, vendor marks). Treat each item as a **misfire to diagnose against the existing rules**, not a feature to build.
+- For each case: find the row(s), state which CLAUDE.md rule applied, explain why it produced this result, then propose the smallest fix. Options in order of preference: (1) bug fix where the code does not match the spec, (2) data fix (`CATEGORY_OVERRIDES`, `MERGE_EXCLUSIONS`, `seed.py` aliases), (3) a rule change.
+- A rule change updates CLAUDE.md in the same commit.
+- Production data rules in CLAUDE.md apply to everything here: read-only diagnosis is fine; any bulk change is a logged dry run first and applies only with sign-off. Propose follow-ups, do not apply them.
+- One P-level per session. Stop for review after each.
 
 ---
 
-## P2. Detail panel data bleed and CVE extraction bugs
+## P1. Dedupe misses
 
-**Evidence:**
-- PHP2Shell (CVE-2026-109618) detail panel shows "Fixed: PAN-OS 10.2.7, 11.1.4" under the PHP fixed versions. Data from another record is leaking into this one.
-- CVE-2026-111497 is attached to both "OpenAI AI Agents Demonstrate VM Escapes" and "Node2Shell RCE Exploit on Node.js". At least one is a wrong extraction.
+Each of these rendered as multiple rows. For each, report which rows exist, their pinned/subject CVEs, and which `dedupe.py` rule should have merged them and why it did not.
 
-**Tasks:**
-1. Trace how affected/fixed version data is joined to a CVE. Check for: joins on vendor instead of CVE ID, a shared mutable object reused across loop iterations, or cached enrichment keyed incorrectly
-2. Trace CVE extraction from article text. When an article mentions multiple CVEs, the row should show the primary one (most mentioned or in title) and the panel should list all
-3. Add a guard: only attach a CVE to an article if the CVE ID string actually appears in the article title, summary, or body
-4. Backfill: re-run enrichment on the last 14 days after the fix
-
-**Acceptance:**
-- [ ] PHP2Shell panel shows only PHP fixed versions
-- [ ] CVE-2026-111497 is attached only to articles that contain that string
-- [ ] Test case: two CVEs from different vendors enriched in the same batch do not cross-contaminate
-
----
-
-## P3. Roundup type and category cleanup
-
-**Evidence:**
-
-| Row | Current | Should be |
+| Story | Rows seen | Shared key |
 |---|---|---|
-| Microsoft: Windows Server 2016 reaches end of support | Vulnerability | Advisory |
-| Why Caribbean Threats Cascade Into Global Cyber-Risk | Vulnerability | Research |
-| Exposed to PHP2Shell? Cyber Experts Weigh In | Vulnerability | Research / commentary |
-| Exposed Infrastructure Reveals How Ransomware Affiliates Used AI Agents | Ransomware + BREACH | Research |
-| In Other News: Tor Exit Relays Hijacked... | Ransomware + BREACH + Apple tag | Roundup |
-| ThreatsDay: AI Secrets Leak... | Vulnerability | Roundup |
-| Metasploit Wrap Up | Vulnerability + single CVE | Roundup |
+| Arista VeloCloud zero-day | 5: "CISA Adds One Known Exploited Vulnerability" (CISA), "CISA Flags Two Actively Exploited Critical Flaws in Collabora Online and Arista VeloCloud" (THN), "Arista Warns of Critical VeloCloud SQL Injection Zero-Day" (THN), "Arista patches new VeloCloud Orchestrator zero-day" (BleepingComputer), "Attackers Exploit Third VeloCloud Orchestrator Zero-Day in Four Months" (SecurityWeek) | CVE-2026-114625 |
+| Popcorn Time updater | 2: THN Oct 24 "Researchers Push Over 2 Million Updates...", BleepingComputer Oct 23 "Abandoned Popcorn Time app exposed millions..." | CVE-2026-30612 |
+| PHP2Shell | 3 wire rows plus Dark Reading "Exposed to PHP2Shell?" | CVE-2026-109618 |
+| Capcom breach | 2: SecurityWeek "11 Million Impacted", BleepingComputer "Capcom confirms data breach affecting 11.7 million accounts" | no CVE, same vendor, breach |
+| Quest Diagnostics breach | 2: The Record Oct 23 05:52, SecurityWeek + BleepingComputer Oct 23 01:25 | no CVE, same org, breach |
 
-**Tasks:**
-1. Add a `roundup` type. Detect by title patterns: "In Other News", "ThreatsDay", "Weekly Recap", "Wrap Up", "This Week in", "Week in Review". Make the pattern list a config constant
-2. Roundups get no CVE, no severity badge, no vendor tag, and a neutral icon
-3. BREACH badge only when the article reports a confirmed incident at a named organization (keywords like "confirms", "discloses", "data breach affecting", "notifies" plus an org entity). Research about attacker infrastructure is not a breach
-4. "Vulnerability" requires a CVE or a vendor-acknowledged flaw. End of support, commentary, and expert opinion pieces go to Advisory or Research
-5. Add "Roundup" to the filter tabs only if it does not crowd mobile; otherwise fold it into Research
+Notes for diagnosis:
+- The THN "CISA Flags Two..." row names two CVEs (Collabora + Arista). Check whether the 2+ vendor rule correctly kept it separate, and whether that is the desired outcome.
+- Capcom and Quest are title-similarity cases. Check normalized similarity scores against the 0.85 threshold and whether either side lacked a vendor tag (Capcom and Quest Diagnostics may not be in `seed.py`).
+- Popcorn Time: check whether CVE-2026-30612 is a subject CVE on both rows, and the 72h window (Oct 23 13:55 to Oct 24 02:04 is inside it).
 
-**Acceptance:**
-- [ ] All 7 rows above land in the correct category
-- [ ] No roundup row shows a CVE, score, or BREACH badge
+**Acceptance:** a written diagnosis per case, a proposed fix per case, and a dry run of any re-merge showing exactly which rows would combine. No production writes without sign-off.
 
 ---
 
-## P4. KEV due date and missing scores
+## P2. Data correctness bugs
 
-**Evidence:**
-- VeloCloud shows "KEV due in 1d" despite being added around Oct 22-23
-- Collabora CVE-2026-110447 (in KEV), HPE "eight max severity" AOS flaws, and Tailscale show no score
+1. **Fixed versions bleed:** the PHP2Shell row (CVE-2026-109618) detail panel shows "Fixed: PAN-OS 10.2.7, 11.1.4" under the PHP versions. Trace where that line comes from (vendor data, NVD CPE, `facts.py` per-article fallback, `versions.py`). PAN-OS on a PHP CVE is wrong regardless of source.
+2. **Same CVE on unrelated rows:** CVE-2026-111497 is the displayed CVE on both "OpenAI AI Agents Demonstrate VM Escapes..." (Oct 24) and "Researchers Demonstrate Node2Shell RCE Exploit on Node.js..." (Oct 23). Check which row's pin is wrong, how it was attached (`article_cves.py` rules), and whether it was a context CVE that should never display.
+3. **KEV due date:** VeloCloud rows show "KEV due in 1d" though added around Oct 22-23. Confirm the value comes from the KEV catalog `dueDate` for CVE-2026-114625 and is not computed from `dateAdded`.
 
-**Tasks:**
-1. Confirm "KEV due in Nd" is computed from the KEV catalog `dueDate` field, not `dateAdded` plus a fixed offset. Compare against the live KEV JSON for CVE-2026-114625
-2. Score fallback order: NVD CVSS 3.1/4.0, then CNA/vendor CVSS from the CVE record, then vendor advisory severity text. If none, show "awaiting NVD" in muted text instead of blank
-3. Mark the score source in the detail panel (NVD vs CNA vs vendor)
-
-**Acceptance:**
-- [ ] KEV due dates match the catalog for 3 spot-checked CVEs
-- [ ] Collabora and HPE rows show a score or "awaiting NVD"
+**Acceptance:** root cause for each, a fix with a unit test that reproduces it, and a dry run listing every other row affected by the same bug.
 
 ---
 
-## P5. Feed hygiene
+## P3. Category and badge misfires
 
-**Evidence:**
-- French-language headline from Dark Reading: "Les supermarchés de l'UE paient d'un firmware de réfrigérateur non mis à jour"
-- Sponsored or opinion pieces mixed into the main wire ("Trust Is Not What It Seems", "Cyber Insurance's New Reality")
-- Services showed "Cloudflare major outage" today and "1Password major outage" for 2+ days last week
+| Row | Shown as | Expected per CLAUDE.md rules |
+|---|---|---|
+| Microsoft: Windows Server 2016 reaches end of support in January | Vulnerability | News (no CVE, no flaw) |
+| Why Caribbean Threats Cascade Into Global Cyber-Risk | Vulnerability | Research (trend piece) |
+| Exposed to PHP2Shell? Cyber Experts Weigh In With Advice | Vulnerability | Research or News |
+| Exposed Infrastructure Reveals How Ransomware Affiliates Used AI Agents | Ransomware + BREACH badge | Research, no BREACH (no named victim) |
+| In Other News: Tor Exit Relays Hijacked... (SecurityWeek) | Ransomware + BREACH + Apple vendor | Recap: no CVE, no badge |
+| ThreatsDay: AI Secrets Leak, PingCAP Source Theft... (THN) | Vulnerability + Signal vendor | Recap |
+| Metasploit Wrap Up (Rapid7) | Vulnerability + CVE-2026-93680 | Recap; CLAUDE.md says Metasploit never gets CVEs attached |
 
-**Tasks:**
-1. Language filter: drop or route non-English items (simple langdetect on title is fine)
-2. Identify sponsored/commentary sources or URL paths (Dark Reading has distinct section paths) and route them to Elsewhere or a quiet "Commentary" tag
-3. Services: verify the status page indicator mapping (statuspage.io `indicator` values: none, minor, major, critical). Show "since [time]" next to any non-green status, and auto-clear when the indicator returns to none
-4. Optional: tag funding/M&A news as "Industry"
-
-**Acceptance:**
-- [ ] No non-English titles in the wire
-- [ ] Services outage line shows start time and clears correctly
-
----
-
-## P6. Mobile and tablet layout
-
-**Evidence (375px):** About half of the first screen is header chrome (nav, stats on 2 lines, large clock, outage line, search) before the first headline. Headlines truncate mid-sentence. Tabs overflow with no scroll cue. CVE IDs hidden.
-
-**Evidence (768px):** CVE IDs hidden from rows. Vuln titles clamp at 2 lines, article titles at 1 line. "Elsewhere" tab touches the right edge.
-
-**Tasks (mobile, under 768px):**
-1. Hide the large clock, or render it as small inline text in the stats line
-2. Stats on one line: "1 crit · 0 high · 8 KEV"
-3. Remove the line clamp on titles. Headlines wrap fully
-4. Show the CVE ID on the metadata line
-5. Horizontal tab row: add a right-edge gradient fade and `scroll-snap` so it reads as scrollable
-
-**Tasks (tablet, 768 to 1279px):**
-1. Keep the CVE ID visible (metadata line if the column is too narrow)
-2. Same clamp rule for all row types (2 lines max, or no clamp)
-3. Add right padding to the tab row
-
-**Acceptance:**
-- [ ] At 375x812, the first headline starts in the top 40% of the screen
-- [ ] At 768x1024, every vuln row shows its CVE ID
-- [ ] No horizontal page scroll at any width
+Tasks:
+1. For each row, say which rule produced the category and whether the code or the rule is at fault
+2. Recap detection: "In Other News" and "ThreatsDay" are not in the recap patterns listed in CLAUDE.md. Propose adding them (and check for other recurring roundup titles in the last 30 days)
+3. The Metasploit row has a CVE despite the rule. Find out how
+4. Where the rule is right and it is a one-off, add a `CATEGORY_OVERRIDES` entry with the reason
 
 ---
 
-## P7. Polish
+## P4. Feed hygiene
 
-1. KEV rail: collapse repeated vendors ("Plex ×4"), expand on click
-2. KEV rail: widen the vendor column or use short names so "EG Secure Solutions" does not truncate
-3. Hide zero rows in "Last 7 days" (Low 0)
-4. Vendor logo coverage: add logos for frequent vendors this week (Arista, PHP, HPE, Tailscale, Collabora, Capcom, Plex). Lettered tile fallback for any vendor without a logo so the icon column is consistent
-5. Optional: at 1920+, move the stats and clock into the nav bar (Option A from the layout review) to remove the centered floating block
-6. Surface the footer source health line ("20 feeds, all healthy") near "Synced just now", or as a tooltip on it
+1. **Non-English headline:** Dark Reading "Les supermarchés de l'UE paient d'un firmware de réfrigérateur non mis à jour" (Oct 22). Find which feed it came from and propose a language check at ingest
+2. **Sponsored/commentary:** "Trust Is Not What It Seems — And Fraudsters Are Counting on It" and "Cyber Insurance's New Reality: Underwriting Isn't Enough" (Dark Reading) got past the ad filter. Check for a URL path or feed marker that identifies them
+3. **Missing scores:** Collabora CVE-2026-110447 (in KEV), the HPE AOS "eight max severity" row, and Tailscale show no score. Check whether NVD has scored them, and whether the CNA score from the CVE record should be shown as a fallback (rule change, needs approval)
+4. **Services:** today showed "Cloudflare major outage"; last week showed 1Password major outage for 2+ days. Verify against each provider's status page and check the indicator mapping and how a status clears
 
 ---
 
-## Verification checklist (run after each P-level)
+## P5. Mobile and tablet
 
-- [ ] Load /wire at 1920x1080, 1366x768, 768x1024, 375x812
-- [ ] Spot-check 5 vuln rows: CVE, score, KEV status, and fixed versions against NVD and the KEV catalog
-- [ ] Count rows per day before and after (P1 should drop counts)
-- [ ] No console errors
-- [ ] Commit per P-level with a clear message so each change is easy to roll back
+**375px:** about half of the first screen is header (nav, stats on two lines, large clock, outage line, search) before the first headline. The tab row overflows with no scroll cue. CVE IDs are hidden.
+
+**768px:** CVE IDs hidden. Vuln rows clamp at two lines, short article rows truncate at one. The Elsewhere tab touches the right edge.
+
+Proposals (each is a spec change, confirm before building):
+1. Under 768px: hide the large clock or make it inline text; stats on one line ("1 crit · 0 high · 8 KEV")
+2. Under 768px: allow headlines to wrap fully (CLAUDE.md currently caps at two lines with ellipsis)
+3. CVE ID on the meta line when the CVE column is hidden
+4. Right-edge fade on the tab row; right padding at tablet width
+
+**Acceptance:** at 375x812 the first headline starts in the top 40% of the screen; no horizontal page scroll at any width.
+
+---
+
+## P6. Polish
+
+1. KEV rail: collapse repeated vendors ("Plex ×4", expandable); "EG Secure Solutions" truncates at 1920
+2. Hide zero rows in "Last 7 days"
+3. Vendor coverage: frequent untagged or logo-less vendors this week (Arista, PHP, HPE, Tailscale, Collabora, Capcom, Plex, Quest Diagnostics). Add to `seed.py` with aliases and `/public/vendors/{slug}.svg` where appropriate. Check the nightly untagged-articles list first
+4. Optional: at desktop width, move the stats and clock into the nav bar to remove the centered block above the feed
+
+---
+
+## Verification after each P-level
+
+- [ ] `npm run lint`, `npm test`, `npm run build` in /web; `python -m unittest discover -s tests` in /api
+- [ ] /wire at 1920x1080, 1366x768, 768x1024, 375x812
+- [ ] Spot-check 5 vuln rows: CVE, score, KEV, fixed versions against NVD and the KEV catalog
+- [ ] Local servers stopped, including child node processes

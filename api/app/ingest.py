@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import alerts, cleanup, cve_facts, dedupe, events, fetcher, jobstate, msrc, rowtime
+from app import alerts, cleanup, cve_facts, dedupe, events, fetcher, jobstate, msrc, ownership, rowtime
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Category, Cve, Health, Item, ItemCve, ItemSource, Source, Stream, SyncRun, Vendor
@@ -137,11 +137,13 @@ def to_article(entry, now: datetime) -> Article | None:
     )
 
 
-def _is_better_primary(new: ItemSource, new_source: Source, cur: ItemSource | None) -> bool:
-    """Vendor PSIRT beats everyone, otherwise earliest wins."""
+def _is_better_primary(new: ItemSource, new_source: Source, cur: ItemSource | None, owned: set[int] = frozenset()) -> bool:
+    """A vendor PSIRT that owns the row (`owned`: app/ownership.py) beats everyone, otherwise
+    earliest wins."""
     if cur is None:
         return True
-    new_psirt, cur_psirt = new_source.vendor_id is not None, cur.source.vendor_id is not None
+    new_psirt = new_source.vendor_id is not None and new_source.vendor_id in owned
+    cur_psirt = cur.source.vendor_id is not None and cur.source.vendor_id in owned
     if new_psirt != cur_psirt:
         return new_psirt
     far = datetime.max.replace(tzinfo=UTC)
@@ -276,7 +278,9 @@ async def ingest_source(
         elif cluster is not None:
             alert_row = dedupe.alert_led(cluster)
             current = next((s for s in cluster.sources if s.url == cluster.primary_url), None)
-            if not alert_row and _is_better_primary(link, source, current):
+            # A vendor feed counts as the vendor's own only on a row it owns (app/ownership.py).
+            owned = await ownership.owned_vendors(session, [*cluster.sources, link], cluster.cve_id, matcher)
+            if not alert_row and _is_better_primary(link, source, current, owned):
                 cluster.headline, cluster.primary_url = a.title, a.url
             cluster.sources.append(link)
             # Row time: the earliest of its news sources (app/rowtime.py); logged when it moves.
@@ -285,8 +289,11 @@ async def ingest_source(
                 rowtime.news_time(s.published_at for s in dedupe.time_sources(cluster.sources, alert_row)),
                 f"news source joined: {source.name}",
             )
-            if source.vendor_id is not None or cluster.vendor_id is None:
-                cluster.vendor_id = vendor_id or cluster.vendor_id
+            if source.vendor_id is not None:
+                if source.vendor_id in owned:  # a vendor feed tags only a row it owns
+                    cluster.vendor_id = source.vendor_id
+            elif cluster.vendor_id is None:
+                cluster.vendor_id = vendor_id
             if cluster.category == Category.news:
                 cluster.category = category
             # The cluster's count can tie more IDs than this article alone ("2 zero-days" in one

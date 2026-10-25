@@ -14,6 +14,8 @@ Only the rows in SCOPE are read, planned or touched; nothing outside it merges. 
 4. KEV alerts: a row a KEV alert started joins the one row now holding all its CVEs
    (article_cves.alert_home).
 5. Breach shadow pairs (dedupe.breach_victims) are logged only.
+6. Each EXPECTED_AFTER survivor's headline and vendor after its merges (app/ownership.py); a
+   difference is a stop condition, and after an apply the stored row is checked too.
 
 Until an apply, the live re-check leaves these rows alone (dedupe.REMERGE_HOLD); the apply
 releases them (dedupe.HOLD_STATE). Stop conditions (nothing is written, exit code 1): a SCOPE row is missing, the "arista" vendor is
@@ -29,12 +31,13 @@ import asyncio
 import logging
 import sys
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from datetime import UTC, datetime
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import article_cves, dedupe, fetcher, jobstate
+from app import article_cves, dedupe, fetcher, jobstate, ownership
 from app.article_cves import MERGE_WINDOW, Row
 from app.models import Vendor
 from app.tagging import VendorMatcher, subject_cves
@@ -48,6 +51,11 @@ EXPECTED: frozenset[tuple[str, int, int]] = frozenset({
     ("cve", 1766, 1760), ("cve", 1836, 1760), ("cve", 1891, 1871), ("cve", 1952, 1948),
     ("title", 1908, 1871), ("cve", 1908, 1871), ("alert", 1944, 1871),
 })
+# What a survivor must show once its merges are made: (headline, vendor slug or None). 1760 must
+# not take Palo Alto's advisory as its headline, nor Palo Alto as its vendor (app/ownership.py).
+EXPECTED_AFTER: dict[int, tuple[str, str | None]] = {
+    1760: ("PHP warns admins of two critical flaws, emergency patches coming tomorrow", None),
+}
 SIGNED_OFF: frozenset[tuple[str, int, int]] = frozenset()  # filled in only from a signed-off dry run
 MAX_MERGES = 8
 
@@ -58,6 +66,8 @@ class Plan:
     flags: dict[int, set[str]] = field(default_factory=dict)  # item -> CVEs to flag as subjects
     merges: list[tuple[str, int, int]] = field(default_factory=list)  # (kind, merged, survivor)
     breach: list[tuple[int, int, list[str]]] = field(default_factory=list)
+    # survivor -> (headline, vendor slug) predicted after its merges, and as stored now
+    after: dict[int, tuple[tuple[str, str | None], tuple[str, str | None]]] = field(default_factory=dict)
     stop: list[str] = field(default_factory=list)
 
 
@@ -134,7 +144,11 @@ async def build(session: AsyncSession, scope: frozenset[int], fetched: dict[int,
     )).mappings().all()
     info = {r["id"]: Info(r["headline"], r["vendor_id"], r["category"], []) for r in got}
     sources = (await session.execute(
-        text("SELECT id, item_id, title, url, excerpt FROM item_sources WHERE item_id = ANY(:ids) ORDER BY published_at, id"),
+        text("""
+            SELECT s.id, s.item_id, s.title, s.url, s.excerpt, s.published_at, src.vendor_id
+            FROM item_sources s JOIN sources src ON src.id = s.source_id
+            WHERE s.item_id = ANY(:ids) ORDER BY s.published_at, s.id
+        """),
         {"ids": list(rows)},
     )).mappings().all()
 
@@ -173,7 +187,29 @@ async def build(session: AsyncSession, scope: frozenset[int], fetched: dict[int,
             r.multi_story = True
 
     # 3 and 4.
+    stored_vendor = {i: x.vendor_id for i, x in info.items()}
     plan.merges, _ = plan_merges(rows, info, matcher)
+
+    # Each EXPECTED_AFTER survivor's headline and vendor once its merges are made, as dedupe._merge
+    # picks them: an owning vendor feed's article first, else the earliest; no non-owning feed's vendor.
+    slug = {v.id: v.slug for v in vendors}
+    cve_of = dict((await session.execute(text("SELECT id, cve_id FROM items WHERE id = ANY(:ids)"), {"ids": list(rows)})).all())
+    for survivor, want in EXPECTED_AFTER.items():
+        if survivor not in rows:
+            continue
+        members = [survivor] + [m for kind, m, s in plan.merges if s == survivor and kind != "alert"]
+        mine = [s for s in sources if s["item_id"] in members]
+        as_sources = [SimpleNamespace(title=s["title"], url=s["url"], source=SimpleNamespace(vendor_id=s["vendor_id"])) for s in mine]
+        owned = await ownership.owned_vendors(session, as_sources, cve_of.get(survivor), matcher)
+        primary = min(mine, key=lambda s: ownership.primary_key(s["published_at"], s["vendor_id"], owned, s["id"]))
+        unowned = {s["vendor_id"] for s in mine if s["vendor_id"] is not None} - owned
+        vendor = primary["vendor_id"] if primary["vendor_id"] in owned else next(
+            (v for v in (plan.vendors.get(m, stored_vendor.get(m)) for m in members) if v is not None and v not in unowned), None)
+        predicted = (primary["title"], slug.get(vendor))
+        now = (info[survivor].headline, slug.get(stored_vendor.get(survivor)))
+        plan.after[survivor] = (predicted, now)
+        if predicted != want:
+            plan.stop.append(f"item {survivor} would show {predicted}, expected {want}")
     unexpected = [m for m in plan.merges if m not in EXPECTED]
     if unexpected:
         plan.stop.append(f"merges not in EXPECTED: {unexpected}")
@@ -205,6 +241,9 @@ def report(plan: Plan, info: dict[int, Info], tag: str) -> None:
     for a, b, shared in plan.breach:
         log.info("%sbreach shadow (log only): item %d / item %d (shared %s) | %s | %s",
                  p, a, b, ",".join(shared), info[a].headline[:70], info[b].headline[:70])
+    for i, (predicted, now) in sorted(plan.after.items()):
+        log.info("%sitem %d after its merges: headline %r, vendor %s (now %r, %s)",
+                 p, i, predicted[0][:90], predicted[1], now[0][:90], now[1])
     for s in plan.stop:
         log.info("%sSTOP: %s", p, s)
     log.info("%s%d vendor tags, %d rows flagged, %d merges, %d breach pairs logged, %d stop conditions",
@@ -240,6 +279,10 @@ async def run(session: AsyncSession, do_apply: bool, scope: frozenset[int] = SCO
     await apply(session, plan, rows)
     log.info("p1 remerge: applied; verification dry run follows")
     after, _, info = await build(session, frozenset(i for i in scope if i not in {m for _, m, _ in plan.merges}), fetched)
+    # As stored now, not only as predicted.
+    for i, (_, now) in after.after.items():
+        if now != EXPECTED_AFTER[i]:
+            after.stop.append(f"item {i} shows {now}, expected {EXPECTED_AFTER[i]}")
     report(after, info, "verification")
     return plan
 

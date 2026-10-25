@@ -1009,5 +1009,140 @@ class LivePath(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self._left([news_id, alert_id]), {news_id, alert_id})
 
 
+    async def _pan_setup(self, s):
+        """Palo Alto (a vendor feed) and two CVEs: PHP's (CPE vendor php) and a PAN-OS one."""
+        from app.models import Vendor
+
+        pan = Vendor(slug="palo-alto-networks", name="Palo Alto Networks", aliases=["Palo Alto Networks", "PAN-OS"])
+        s.add(pan)
+        await s.flush()
+        s.add_all([
+            Cve(id="CVE-2026-109618", cpes=[{"criteria": "cpe:2.3:a:php:php:*:*:*:*:*:*:*:*", "versionEndExcluding": "8.2.35"},
+                                             {"criteria": "cpe:2.3:o:paloaltonetworks:pan-os:*:*:*:*:*:*:*:*", "versionEndExcluding": "10.2.7"}]),
+            Cve(id="CVE-2026-0322", cpes=[{"criteria": "cpe:2.3:o:paloaltonetworks:pan-os:*:*:*:*:*:*:*:*"}]),
+        ])
+        feed = Source(name="Palo Alto Networks", feed_url="https://test.invalid/pan", stream=Stream.main, vendor_id=pan.id)
+        bc = Source(name="BleepingComputer", feed_url="https://test.invalid/bc-pan", stream=Stream.main)
+        s.add_all([feed, bc])
+        await s.flush()
+        return pan, feed, bc
+
+    async def test_a_vendor_feed_owns_only_its_vendors_rows(self):
+        from types import SimpleNamespace
+
+        from app import ownership
+
+        async with self.Session() as s:
+            pan, _, _ = await self._pan_setup(s)
+            await s.commit()
+            news = lambda *titles: list(titles)  # noqa: E731
+            self.assertFalse(await ownership.owns(s, pan.id, "CVE-2026-109618", news("PHP warns admins of two critical flaws")))
+            self.assertTrue(await ownership.owns(s, pan.id, "CVE-2026-0322", news("Hackers exploit firewalls")))
+            # No vendor data: a news headline must name the vendor, or the feed is alone on the row.
+            self.assertTrue(await ownership.owns(s, pan.id, None, news("Palo Alto Networks warns of PAN-OS flaw")))
+            self.assertFalse(await ownership.owns(s, pan.id, None, news("PHP warns admins of two critical flaws")))
+            self.assertTrue(await ownership.owns(s, pan.id, None, []))
+            self.assertFalse(await ownership.owns(s, None, None, []))
+            src = lambda t, v: SimpleNamespace(title=t, url="https://test.invalid/x", source=SimpleNamespace(vendor_id=v))  # noqa: E731
+            self.assertEqual(ownership.news_titles([src("A", None), src("B", pan.id)]), ["A"])
+
+    async def _ingest_pan_advisory(self, s, feed, title, cve, at):
+        import time
+
+        from app import ingest
+        from app.models import Vendor
+        from app.tagging import VendorMatcher
+
+        entry = {"link": f"https://security.paloaltonetworks.com/{cve}", "id": cve, "title": title,
+                 "summary": f"<p>{title}. {cve} affects products.</p>", "published_parsed": time.gmtime(at.timestamp())}
+        matcher = VendorMatcher((await s.scalars(select(Vendor))).all())
+        await ingest.ingest_source(s, feed, [entry], matcher, datetime.now(UTC))
+        await s.commit()
+
+    async def test_palo_alto_does_not_take_over_a_php_row_at_ingest(self):
+        t0 = datetime.now(UTC) - timedelta(hours=20)
+        async with self.Session() as s:
+            pan, feed, bc = await self._pan_setup(s)
+            php = await self._row(s, bc, "PHP warns admins of two critical flaws", t0, ["CVE-2026-109618"],
+                                  excerpt="PHP disclosed CVE-2026-109618 in its core.")
+            panos = await self._row(s, bc, "Palo Alto Networks warns of PAN-OS flaw", t0, ["CVE-2026-0322"],
+                                    excerpt="CVE-2026-0322 lets attackers run code.")
+            await s.commit()
+            php_id, panos_id, pan_id = php.id, panos.id, pan.id
+            await self._ingest_pan_advisory(s, feed, "CVE-2026-109618 Impact of Critical Vulnerabilities in PHP on Palo Alto Networks Products",
+                                            "CVE-2026-109618", t0 + timedelta(hours=5))
+            await self._ingest_pan_advisory(s, feed, "CVE-2026-0322 PAN-OS: Authenticated Remote Code Execution",
+                                            "CVE-2026-0322", t0 + timedelta(hours=5))
+        async with self.Session() as s:
+            rows = {i.id: i for i in await self._load(s, [php_id, panos_id])}
+            self.assertEqual(len(rows[php_id].sources), 2)  # the advisory joined
+            self.assertEqual((rows[php_id].headline, rows[php_id].vendor_id), ("PHP warns admins of two critical flaws", None))
+            # On its own vendor's CVE the advisory still wins the headline and tags the row.
+            self.assertEqual(len(rows[panos_id].sources), 2)
+            self.assertEqual((rows[panos_id].headline, rows[panos_id].vendor_id),
+                             ("CVE-2026-0322 PAN-OS: Authenticated Remote Code Execution", pan_id))
+
+    async def test_a_merge_keeps_the_news_headline_and_drops_the_feeds_vendor(self):
+        t0 = datetime.now(UTC) - timedelta(hours=20)
+        cve = "CVE-2026-109618"
+        async with self.Session() as s:
+            pan, feed, bc = await self._pan_setup(s)
+            php = await self._row(s, bc, "PHP warns admins of two critical flaws", t0, [cve])
+            advisory = await self._row(s, feed, "CVE-2026-109618 Impact of Critical Vulnerabilities in PHP on Palo Alto Networks Products",
+                                       t0 + timedelta(hours=10), [cve])
+            advisory.vendor_id = pan.id  # as the feed tagged it before the ownership rule
+            await s.commit()
+            survivor = article_cves.Row(php.id, t0, t0, False, cves={cve}, subject={cve})
+            merged = article_cves.Row(advisory.id, t0 + timedelta(hours=10), t0 + timedelta(hours=10), False, cves={cve}, subject={cve})
+            await article_cves.merge(s, survivor, merged, "test")
+            await s.commit()
+            row = await s.get(Item, php.id)
+            await s.refresh(row)
+            self.assertEqual((row.headline, row.vendor_id), ("PHP warns admins of two critical flaws", None))
+
+    async def test_p1_remerge_checks_the_survivors_headline_and_vendor(self):
+        from unittest import mock
+
+        from app import p1_remerge
+
+        t0 = datetime.now(UTC) - timedelta(hours=20)
+        cve = "CVE-2026-109618"
+        async with self.Session() as s:
+            pan, feed, bc = await self._pan_setup(s)
+            from app.models import Vendor
+            from app.seed import VENDORS
+
+            v = next(x for x in VENDORS if x["slug"] == "arista")
+            s.add(Vendor(slug=v["slug"], name=v["name"], aliases=v["aliases"], domain=v["domain"]))
+            php = await self._row(s, bc, "PHP warns admins of two critical flaws", t0, [cve], excerpt=f"PHP disclosed {cve}.")
+            big = await self._row(s, feed, "CVE-2026-109618 Impact of Critical Vulnerabilities in PHP on Palo Alto Networks Products",
+                                  t0 + timedelta(hours=10), [cve], excerpt=f"{cve} affects PAN-OS.")
+            big.vendor_id = pan.id
+            await s.commit()
+            ids = frozenset({php.id, big.id})
+        good = {php.id: ("PHP warns admins of two critical flaws", None)}
+        with mock.patch.object(p1_remerge, "EXPECTED", frozenset({("cve", big.id, php.id)})), \
+             mock.patch.object(p1_remerge, "EXPECTED_AFTER", good):
+            async with self.Session() as s:
+                plan = await p1_remerge.run(s, False, ids, {})
+            self.assertEqual(plan.merges, [("cve", big.id, php.id)])
+            self.assertEqual(plan.stop, [])
+            self.assertEqual(plan.after[php.id][0], good[php.id])
+            with mock.patch.object(p1_remerge, "SIGNED_OFF", frozenset(plan.merges)):
+                async with self.Session() as s:
+                    with self.assertLogs("app.p1_remerge", level="INFO") as logs:
+                        await p1_remerge.run(s, True, ids, {})
+            self.assertIn("p1 remerge (verification): 0 vendor tags, 0 rows flagged, 0 merges, 0 breach pairs logged, 0 stop conditions",
+                          "\n".join(logs.output))
+        # A survivor that would show something else stops the plan.
+        async with self.Session() as s:
+            php2 = await self._row(s, bc, "PHP warns admins again", t0, [cve], excerpt=f"PHP disclosed {cve}.")
+            await s.commit()
+        with mock.patch.object(p1_remerge, "EXPECTED_AFTER", {php2.id: ("Something else", "palo-alto-networks")}):
+            async with self.Session() as s:
+                plan = await p1_remerge.run(s, False, frozenset({php2.id}), {})
+        self.assertTrue(any(f"item {php2.id} would show" in x for x in plan.stop))
+
+
 if __name__ == "__main__":
     unittest.main()

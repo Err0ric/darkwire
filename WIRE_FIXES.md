@@ -78,6 +78,9 @@ Notes for diagnosis:
 ## P2. Data correctness bugs
 
 1. **Fixed versions bleed:** the PHP2Shell row (CVE-2026-109618) detail panel shows "Fixed: PAN-OS 10.2.7, 11.1.4" under the PHP versions. Trace where that line comes from (vendor data, NVD CPE, `facts.py` per-article fallback, `versions.py`). PAN-OS on a PHP CVE is wrong regardless of source.
+   - Found in P1 (2026-10-25): the line is NVD's own data. NVD's configurations for CVE-2026-109618 list 295 CPEs as vulnerable, PHP and Palo Alto (PAN-OS, Panorama) among them, and every CPE upper bound becomes a "Fixed" entry, so `cves.fixed_versions` holds PHP 8.2.35 to 8.5.12 and PAN-OS 10.2.7 and 11.1.4. It is not the primary-source rule (fixed separately in P1: Palo Alto's advisory no longer heads the PHP row) and not `facts.py` (the row has no article facts).
+   - Preferred fix (owner, 2026-10-25): label other products' versions separately ("Also affects PAN-OS: fixed in 10.2.7, 11.1.4") rather than hiding them. Affected and Fixed show the displayed CVE's own product first.
+   - Check NVD's AND configurations: some Palo Alto entries sit in `operator: AND` nodes (PAN-OS with Panorama hardware, the hardware `vulnerable: false`). Confirm that only `vulnerable: true` matches become affected or fixed, and how an AND node's platform entries are read.
 2. **Same CVE on unrelated rows:** CVE-2026-111497 is the displayed CVE on both "OpenAI AI Agents Demonstrate VM Escapes..." (Oct 24) and "Researchers Demonstrate Node2Shell RCE Exploit on Node.js..." (Oct 23). Check which row's pin is wrong, how it was attached (`article_cves.py` rules), and whether it was a context CVE that should never display.
 3. **KEV due date:** VeloCloud rows show "KEV due in 1d" though added around Oct 22-23. Confirm the value comes from the KEV catalog `dueDate` for CVE-2026-114625 and is not computed from `dateAdded`.
 

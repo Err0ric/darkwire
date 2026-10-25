@@ -22,7 +22,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
 
-from app import alerts, dedupe, fetcher, rowtime
+from app import alerts, dedupe, fetcher, ownership, rowtime
 from app.db import SessionLocal
 from app.models import Cve, Item, ItemCve, ItemSource, PatchStatus, Stream, Vendor
 from app.tagging import VendorMatcher, cluster_cves, guess_category, headline_cves
@@ -42,12 +42,18 @@ async def _arts(session, client, item: Item, matcher: VendorMatcher) -> list[ded
     return out
 
 
-def _primary(group: dedupe.Group, by_id: dict[int, ItemSource]) -> ItemSource:
-    """The alert on a row it started; else a vendor PSIRT; else the earliest news article."""
+def _primary(group: dedupe.Group, by_id: dict[int, ItemSource], owned: set[int] = frozenset()) -> ItemSource:
+    """The alert on a row it started; else a vendor PSIRT that owns the group (`owned`:
+    app/ownership.py); else the earliest news article."""
     if group.alert_led:
         return by_id[group.arts[0].key]
     sources = [by_id[a.key] for a in group.arts if not a.alert]
-    return min(sources, key=lambda s: (s.source.vendor_id is None, s.published_at, s.id))
+    return min(sources, key=lambda s: ownership.primary_key(s.published_at, s.source.vendor_id, owned, s.id))
+
+
+async def _owned(session, group: dedupe.Group, by_id: dict[int, ItemSource], matcher: VendorMatcher) -> set[int]:
+    cves = _group_cves(group, by_id)
+    return await ownership.owned_vendors(session, [by_id[a.key] for a in group.arts], cves[0] if cves else None, matcher)
 
 
 def _group_cves(group: dedupe.Group, by_id: dict[int, ItemSource]) -> list[str]:
@@ -85,7 +91,7 @@ async def main(apply: bool) -> None:
             keep = next((g for g in groups if any(by_id[a.key].url == item.primary_url for a in g.arts)), groups[0])
             print(f"\nrow {item.id}  {item.last_event_at.isoformat()} ({item.last_event_kind})  {len(item.sources)} sources  |  {item.headline[:80]}")
             for g in sorted(groups, key=lambda g: g.time):
-                primary = _primary(g, by_id)
+                primary = _primary(g, by_id, await _owned(session, g, by_id, matcher))
                 cves = _group_cves(g, by_id)
                 label = f"row {item.id} (kept)" if g is keep else "new row"
                 kind = "KEV alert" if g.alert_led else ("news + KEV alert" if g.has_alert else "news")
@@ -94,15 +100,17 @@ async def main(apply: bool) -> None:
                     s = by_id[a.key]
                     print(f"       {a.published.isoformat()}  {s.source.name:<18} {s.title[:70]}")
             if apply:
-                await _apply(session, item, groups, keep, by_id)
+                await _apply(session, item, groups, keep, by_id, matcher)
         if apply:
             await session.commit()
 
 
-async def _apply(session, item: Item, groups: list[dedupe.Group], keep: dedupe.Group, by_id: dict[int, ItemSource]) -> None:
+async def _apply(session, item: Item, groups: list[dedupe.Group], keep: dedupe.Group, by_id: dict[int, ItemSource],
+                 matcher: VendorMatcher) -> None:
     await session.execute(delete(ItemCve).where(ItemCve.item_id == item.id))
     for g in groups:
-        primary = _primary(g, by_id)
+        owned = await _owned(session, g, by_id, matcher)
+        primary = _primary(g, by_id, owned)
         cves = _group_cves(g, by_id)
         category = guess_category(primary.title, primary.excerpt or "", bool(cves))
         if cves:  # placeholder CVE rows first, so items.cve_id and item_cves hold
@@ -113,7 +121,8 @@ async def _apply(session, item: Item, groups: list[dedupe.Group], keep: dedupe.G
             row = Item(stream=Stream.main, last_event_at=g.time, last_event_kind=rowtime.PUBLISHED)
             session.add(row)
         row.headline, row.primary_url = primary.title, primary.url
-        row.vendor_id = None if g.alert_led else g.vendor_id
+        feeds = {by_id[a.key].source.vendor_id for a in g.arts} - {None}
+        row.vendor_id = None if g.alert_led or g.vendor_id in feeds - owned else g.vendor_id
         row.category = category
         row.cve_id = cves[0] if cves else None
         # Refilled by enrichment (roll_up) for rows with CVEs; cleared for rows without.

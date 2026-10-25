@@ -520,19 +520,30 @@ async def _merge(session: AsyncSession, o: dict, n: dict, n_pub: datetime) -> No
             oid, o["last_event_at"].isoformat(), event.isoformat(), nid,
         )
 
-    primary = (
+    # Primary: a vendor feed that owns the row (app/ownership.py), else the earliest. A vendor
+    # only a non-owning feed brought (it tagged its row as its own) is dropped.
+    from types import SimpleNamespace
+
+    from app import ownership
+
+    found = (
         await session.execute(
             text("""
-                SELECT s.url, s.title, src.vendor_id FROM item_sources s JOIN sources src ON src.id = s.source_id
-                WHERE s.item_id = :o
-                ORDER BY (src.vendor_id IS NULL), s.published_at NULLS LAST, s.id LIMIT 1
+                SELECT s.id, s.url, s.title, s.published_at, src.vendor_id FROM item_sources s
+                JOIN sources src ON src.id = s.source_id WHERE s.item_id = :o
             """),
             {"o": oid},
         )
-    ).mappings().one()
+    ).mappings().all()
+    as_sources = [SimpleNamespace(title=r["title"], url=r["url"], source=SimpleNamespace(vendor_id=r["vendor_id"])) for r in found]
+    cve_id = await session.scalar(text("SELECT cve_id FROM items WHERE id = :o"), {"o": oid})
+    owned = await ownership.owned_vendors(session, as_sources, cve_id)
+    primary = min(found, key=lambda r: ownership.primary_key(r["published_at"], r["vendor_id"], owned, r["id"]))
+    unowned = {r["vendor_id"] for r in found if r["vendor_id"] is not None} - owned
+    kept = [v for v in (o["vendor_id"], n["vendor_id"]) if v is not None and v not in unowned]
     scores = [x for x in (o["cvss"], n["cvss"]) if x is not None]
     values = {
-        "vendor_id": primary["vendor_id"] or o["vendor_id"] or n["vendor_id"],
+        "vendor_id": (primary["vendor_id"] if primary["vendor_id"] in owned else None) or (kept[0] if kept else None),
         "category": n["category"] if o["category"] == "news" else o["category"],
         "summary": o["summary"] or n["summary"],
         # Kept at the pair's max so the next roll-up does not see a change and resurface it.

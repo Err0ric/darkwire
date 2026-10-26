@@ -73,6 +73,12 @@ Notes for diagnosis:
 | Fix 3 (titles) | 1908 joins the Arista row; fix 5 then folds 1944 into it |
 | Fix 6 | nothing merges; 1905/1893 and 1915/1906 are logged |
 
+**Prod dry run, signed off 2026-10-25** (`python -m app.p1_remerge`, branch p1-remerge-signoff): 6 merges (cve 1766, 1836→1760; cve 1891, 1908→1871; cve 1952→1948; alert 1944→1871), 4 Arista tags (1871, 1891, 1908, 1951; 1951's kept), 10 subject flags, 1760 predicted as "PHP warns admins of two critical flaws, emergency patches coming tomorrow" with no vendor, 0 stop conditions. `SIGNED_OFF` holds exactly those merges. Not applied yet.
+
+### P1 follow-ups (proposed, not built)
+
+- THN's "PHP Warns of Another Unpatched RCE Risk Two Days After Emergency PHP2Shell Patches" (thehackernews.com/2026/10/urgent-php-warns-of-another-unpatched.html) is about CVE-2026-115560, a different flaw. It is a source of 1766 from an old title merge (`shared_story`: php, php2shell, rce), so after the re-merge it sits in 1760. It brings no CVE in: it has none stored, and its fetched CVEs are not flagged since none is on the row. `MERGE_EXCLUSIONS` keeps 1927 (BC on 115560) out. Moving the source out to its own row, or into 1927, would be a separate signed-off data change. Whether `shared_story` should merge two stories that share a product and a nickname but name different CVEs in their text is a rule question for later.
+
 ---
 
 ## P2. Data correctness bugs

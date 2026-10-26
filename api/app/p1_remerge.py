@@ -20,7 +20,7 @@ Only the rows in SCOPE are read, planned or touched; nothing outside it merges. 
 Until an apply, the live re-check leaves these rows alone (dedupe.REMERGE_HOLD); the apply
 releases them (dedupe.HOLD_STATE). Stop conditions (nothing is written, exit code 1): a SCOPE row is missing, the "arista" vendor is
 not seeded, the plan has a merge not in EXPECTED, or more than MAX_MERGES merges. --apply also
-needs SIGNED_OFF to equal the plan exactly; it is empty until the dry run is signed off. After an
+needs SIGNED_OFF to equal the plan exactly; it was filled in from the signed-off prod dry run. After an
 apply the same plan runs again as a dry run and must find no merge.
 
     python -m app.p1_remerge            # dry run: logs the plan, writes nothing
@@ -56,7 +56,12 @@ EXPECTED: frozenset[tuple[str, int, int]] = frozenset({
 EXPECTED_AFTER: dict[int, tuple[str, str | None]] = {
     1760: ("PHP warns admins of two critical flaws, emergency patches coming tomorrow", None),
 }
-SIGNED_OFF: frozenset[tuple[str, int, int]] = frozenset()  # filled in only from a signed-off dry run
+# Signed off 2026-10-25 from the prod dry run: these 6 merges, 4 Arista tags (1871, 1891, 1908,
+# 1951; 1951's kept), 10 subject flags, 1760 as EXPECTED_AFTER, 0 stop conditions.
+SIGNED_OFF: frozenset[tuple[str, int, int]] = frozenset({
+    ("cve", 1766, 1760), ("cve", 1836, 1760), ("cve", 1891, 1871), ("cve", 1908, 1871),
+    ("cve", 1952, 1948), ("alert", 1944, 1871),
+})
 MAX_MERGES = 8
 
 

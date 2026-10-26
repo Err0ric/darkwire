@@ -214,3 +214,17 @@ class AlertsToRehome(unittest.TestCase):
             self.assertEqual(alerts_to_rehome(self.rows, touched={1871, 1498}, held=frozenset({1944})),
                              [(self.old_alert, self.old_home)])
         self.assertIn("KEV alert item 1944 would join item 1871, skipped", "\n".join(logs.output))
+
+
+class P1SignOff(unittest.TestCase):
+    def test_the_signed_off_merges_are_the_prod_dry_run(self):
+        from app import p1_remerge
+
+        # 2026-10-25 prod dry run: 6 merges, each one EXPECTED listed; 1908 came in by CVE.
+        self.assertEqual(len(p1_remerge.SIGNED_OFF), 6)
+        self.assertLessEqual(p1_remerge.SIGNED_OFF, p1_remerge.EXPECTED)
+        self.assertLessEqual(len(p1_remerge.SIGNED_OFF), p1_remerge.MAX_MERGES)
+        merged = [m for _, m, _ in p1_remerge.SIGNED_OFF]
+        self.assertEqual(len(merged), len(set(merged)))  # each row merges once
+        self.assertEqual({(m, s) for _, m, s in p1_remerge.SIGNED_OFF},
+                         {(1766, 1760), (1836, 1760), (1891, 1871), (1908, 1871), (1952, 1948), (1944, 1871)})
